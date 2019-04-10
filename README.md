@@ -127,16 +127,21 @@ You may make a RPC service call like this. Note that everything is non-blocking 
 RPC uses a temporary inbox service to simulate a synchronous request-response.
 
 ```
-envelope = EventEnvelope()
-envelope.set_to('hello.world').set_header('x', 'y').set_body("hello world")
+#
+# The signature of the request method is:
+#    request(self, route: str, timeout_seconds: float,
+#            headers: dict = None, body: any = None,
+#            correlation_id: str = None) -> EventEnvelope
+#
 
+po = PostOffice()
 try:
-    result = platform.request(envelope, 2.0)
+    result = po.request('hello.world', 2.0, headers={'some_key': 'some_value'}, body='test message')
     if isinstance(result, EventEnvelope):
+        print('Received RPC response:')
         print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
               ", STATUS =",  result.get_status(),
-              ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip())
-
+              ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
 except TimeoutError as e:
     print("Exception: ", str(e))
 ```
@@ -146,9 +151,12 @@ except TimeoutError as e:
 Unlike RPC, you can make a "drop-n-forget" asynchronous request to a service like this:
 
 ```
-envelope = EventEnvelope()
-envelope.set_to('hello.world').set_header('x', 'y').set_body("hello world")
-platform.send_event(envelope)
+#
+# The signature of the send method is:
+# send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None
+#
+
+po.send('hello.world', headers={'one': 1}, body='hello world one')
 
 ```
 
