@@ -77,22 +77,22 @@ An application can declare one or more Python functions as microservices.
 Your microservices function or method must use one of the following signatures:
 
 ```
-For singleton service
+# For singleton service
 f(headers: dict, body: any)
 
-For service that have concurrent workers
+# For service that have concurrent workers
 f(headers: dict, body: any, instance: int)
 
-For interceptor service - this allows your application to inspect event metdata
+# For interceptor service - this allows your application to inspect event metdata
 f(envelope: EventEnvelope)
 
-f can be any function or method name you like
-headers are input parameters in key-value pairs
-body is application specific. It can be string, byte array, dictionary, etc.
-instance is the instance number when the lambda function is registered to support multiple instances
-envelope is the raw event envelope that contains routing metadata, input parameters and message body
-
-headers, body, instance and envelope are standard parameter names that you functions should use.
+# f can be any function or method name you like
+# headers are input parameters in key-value pairs
+# body is application specific. It can be string, byte array, dictionary, etc.
+# instance is the instance number when the lambda function is registered to support multiple instances
+# envelope is the raw event envelope that contains routing metadata, input parameters and message body
+#
+# headers, body, instance and envelope are standard parameter names that you functions should use.
 ```
 
 You may then register your microservices like this:
@@ -177,18 +177,10 @@ Note that Control-C or Kill signal detection must be done with the main thread.
 platform.stop()
 ```
 
-## sample code for graceful shutdown
+## stopping the application using Control-C
 
-In your main thread, do this:
+You may enable Control-C and Kill signal detection by calling the "run_forever()" method.
 
 ```
-from signal import signal
-...
-
-def graceful_shutdown(signum, frame):
-    platform().stop()
-
-# this will execute the graceful_shutdown function when Control-C or Kill signal is detected
-signal.(signal.SIGTERM, graceful_shutdown)
-signal.(signal.SIGINT, graceful_shutdown)
+platform.run_forever()
 ```
