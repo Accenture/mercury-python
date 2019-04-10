@@ -170,16 +170,13 @@ The platform kernel is running in an event loop using Python asyncio.
 You may want to call the following when your application quits.
 This will ask the system to release resources and stop gracefully.
 
-A good practice is to tie this with a Control-C detection logic. 
-Note that Control-C or Kill signal detection must be done with the main thread.
-
 ```
 platform.stop()
 ```
 
 ## stopping the application using Control-C
 
-You may enable Control-C and Kill signal detection by calling the "run_forever()" method.
+You may enable Control-C and Kill signal detection by calling the "run_forever()" method. Note that this must be done with the main thread.
 
 ```
 platform.run_forever()
