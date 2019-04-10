@@ -141,7 +141,7 @@ except TimeoutError as e:
     print("Exception: ", str(e))
 ```
 
-# making an asynchronous call
+## making an asynchronous call
 
 Unlike RPC, you can make a "drop-n-forget" asynchronous request to a service like this:
 
