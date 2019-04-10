@@ -162,15 +162,12 @@ po.send('hello.world', headers={'one': 1}, body='hello world one')
 
 ## call back
 
-You can set the route of a call back function in the "reply to" of the request in the event envelope. 
+You can set the route of a call back function in the "reply to" of the request in the send() method. 
 When the service responds, the result will be delivered asynchronously to the call back function.
 
-The "me" parameter is optional. If present, it guarantees that the response will be returned to your calling application.
-Otherwise, the system may send the response to another function with the same route name in a different node.
+The default value for the "me" parameter is true. It guarantees that the response will be returned to your calling application.
 
-```
-envelope.set_reply_to('some.return.path', me=True)
-```
+If you want the system to send the response to any function with the same route name, set the "me" parameter to false.
 
 ## stopping the platform event loop
 
