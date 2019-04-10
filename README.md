@@ -148,7 +148,7 @@ except TimeoutError as e:
 
 ## making an asynchronous call
 
-Unlike RPC, you can make a "drop-n-forget" asynchronous request to a service like this:
+You can make a "drop-n-forget" asynchronous request to a service like this:
 
 ```
 #
