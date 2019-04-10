@@ -1,0 +1,564 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright 2018-2019 Accenture Technology
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import asyncio
+import concurrent.futures
+import os
+import sys
+import signal
+import time
+import threading
+import uuid
+from asyncio import QueueEmpty
+from queue import Queue, Empty
+
+from mercury.resources.constants import AppConfig
+from mercury.system.connector import NetworkConnector
+from mercury.system.diskqueue import ElasticQueue
+from mercury.system.logger import LoggingService
+from mercury.system.models import EventEnvelope, AppException
+from mercury.system.singleton import Singleton
+from mercury.system.utility import Utility, FunctionType
+from mercury.system.throttle import Throttle
+
+
+class ServiceQueue:
+
+    def __init__(self, _loop, _executor, queue, route, user_function, total_instances):
+        platform = Platform()
+        util = Utility()
+        self.log = platform.log
+        queue_dir = util.normalize_path(platform.work_dir + "/queues/" + platform.get_origin())
+        self.disk_queue = ElasticQueue(queue_dir=queue_dir, queue_id=route)
+        self._loop = _loop
+        self._executor = _executor
+        self.queue = queue
+        self.route = route
+        self.user_function = user_function
+        self.ready_queue = asyncio.Queue(loop=self._loop)
+        self.worker_list = dict()
+        self._peek_worker = None
+        self._buffering = True
+        self._interceptor = total_instances == 0
+        self._singleton = True if total_instances < 1 else False
+        self._loop.create_task(self.listen(total_instances))
+
+    def peek_next_worker(self):
+        if self._peek_worker is None:
+            self._peek_worker = self._fetch_next_worker()
+        return self._peek_worker
+
+    def get_next_worker(self):
+        if self._peek_worker is not None:
+            result = self._peek_worker
+            self._peek_worker = None
+            return result
+        return self._fetch_next_worker()
+
+    def _fetch_next_worker(self):
+        try:
+            worker_number = self.ready_queue.get_nowait()
+            if worker_number:
+                self.ready_queue.task_done()
+            return worker_number
+        except QueueEmpty:
+            return None
+
+    def send_to_worker(self, item):
+        worker_number = self.get_next_worker()
+        if worker_number:
+            wq = self.worker_list[worker_number]
+            if wq:
+                wq.put_nowait(item)
+            else:
+                self.log.error("Event for " + self.route + " dropped because worker #"+str(worker_number) + "not found")
+        else:
+            self.log.error("Event for " + self.route + " dropped because there are no workers available")
+
+    async def listen(self, total_instances):
+        # create concurrent workers and
+        total = 1 if self._singleton else total_instances
+        for i in range(total):
+            instance_number = i + 1
+            worker_queue = asyncio.Queue(loop=self._loop)
+            self.worker_list[instance_number] = worker_queue
+            WorkerQueue(self._loop, self._executor, self.queue, worker_queue,
+                        self.route, self.user_function, instance_number, self._singleton, self._interceptor)
+            # populate the ready queue with an initial set of worker numbers
+            await self.queue.put(instance_number)
+
+        # minimize logging for temporary inbox that starts with the "r" prefix
+        if self._interceptor and self.route.startswith('r.'):
+            self.log.debug(self.route + " with " + str(total) + " instance" + ('s' if total > 1 else '') + " started")
+        else:
+            self.log.info(self.route + " with "+str(total)+" instance"+('s' if total > 1 else '')+" started")
+
+        # listen for incoming events
+        while True:
+            event = await self.queue.get()
+            self.queue.task_done()
+            if event is None:
+                break
+            else:
+                if isinstance(event, int):
+                    # ready signal from a worker
+                    await self.ready_queue.put(event)
+                    if self._buffering:
+                        buffered = self.disk_queue.read()
+                        if buffered:
+                            self.send_to_worker(buffered)
+                        else:
+                            # nothing buffered in disk queue
+                            self._buffering = False
+                            self.disk_queue.close()
+
+                if isinstance(event, dict):
+                    # it is a data item
+                    if self._buffering:
+                        # Once buffering is started, continue to spool items to disk to guarantee items in order
+                        await self.disk_queue.write(event)
+
+                    else:
+                        w = self.peek_next_worker()
+                        if w:
+                            # Nothing buffered in disk queue. Find a worker to receive the item.
+                            self.send_to_worker(event)
+                        else:
+                            # start buffered because there are no available workers
+                            self._buffering = True
+                            await self.disk_queue.write(event)
+
+        # tell workers to stop
+        for i in self.worker_list:
+            wq = self.worker_list[i]
+            wq.put_nowait(None)
+        # destroy disk queue
+        self.disk_queue.destroy()
+
+        # minimize logging for temporary inbox that starts with the "r" prefix
+        if self._interceptor and self.route.startswith('r.'):
+            self.log.debug(self.route + " stopped")
+        else:
+            self.log.info(self.route + " stopped")
+
+
+class WorkerQueue:
+
+    def __init__(self, _loop, _executor, manager_queue, worker_queue, route, user_function, instance,
+                 singleton, interceptor):
+        self.platform = Platform()
+        self.log = self.platform.log
+        self._loop = _loop
+        self._executor = _executor
+        self.manager_queue = manager_queue
+        self.worker_queue = worker_queue
+        self.route = route
+        self.user_function = user_function
+        self.instance = instance
+        self.singleton = singleton
+        self.interceptor = interceptor
+        self._loop.create_task(self.listen())
+        self.log.debug(route + " #" + str(self.instance) + " started")
+
+    async def listen(self):
+        while True:
+            event = await self.worker_queue.get()
+            self.worker_queue.task_done()
+            if event is None:
+                break
+            else:
+                # Execute the user function in parallel
+                if self.interceptor:
+                    self._loop.run_in_executor(self._executor, self.handle_event, event, 0)
+                elif self.singleton:
+                    self._loop.run_in_executor(self._executor, self.handle_event, event, -1)
+                else:
+                    self._loop.run_in_executor(self._executor, self.handle_event, event, self.instance)
+
+        self.log.debug(self.route + " #" + str(self.instance) + " stopped")
+
+    def handle_event(self, event, instance):
+        headers = dict() if 'headers' not in event else event['headers']
+        body = None if 'body' not in event else event['body']
+        result = None
+        error_code = None
+        error_msg = None
+        begin = end = time.time()
+        try:
+            if instance == 0:
+                # service is an interceptor. e.g. inbox for RPC call.
+                result = self.user_function(event)
+            elif instance == -1:
+                # service is a singleton
+                result = self.user_function(headers, body)
+            else:
+                # service with multiple instances
+                result = self.user_function(headers, body, instance)
+            end = time.time()
+        except AppException as e:
+            error_code = e.get_status()
+            error_msg = e.get_message()
+        except ValueError as e:
+            error_code = 400
+            error_msg = str(e)
+        except Exception as e:
+            error_code = 500
+            error_msg = str(e)
+
+        if error_code:
+            if 'reply_to' in event:
+                # set exception as result
+                result = EventEnvelope()
+                result.set_status(error_code)
+                result.set_body(error_msg)
+            else:
+                self.log.warn("Unhandled exception for "+self.route+" - code="+str(error_code)+", message="+error_msg)
+
+        if 'reply_to' in event:
+            reply_to = event['reply_to']
+            # in case this is a RPC call from within
+            if reply_to.startswith('->'):
+                reply_to = reply_to[2:]
+            response = EventEnvelope()
+            response.set_to(reply_to)
+            if not error_code:
+                response.set_exec_time(float(format((end - begin) * 1000, '.3f')))
+            if 'cid' in event:
+                response.set_correlation_id(event['cid'])
+            if isinstance(result, EventEnvelope):
+                for h in result.get_headers():
+                    response.set_header(h, result.get_header(h))
+                response.set_body(result.get_body())
+                response.set_status(result.get_status())
+            else:
+                response.set_body(result)
+
+            try:
+                self.platform.send_event(response)
+            except Exception as e:
+                self.log.warn("Event dropped because "+str(e))
+
+        self._loop.call_soon_threadsafe(self._ack)
+
+    def _ack(self):
+        self.manager_queue.put_nowait(self.instance)
+
+
+@Singleton
+class Platform:
+
+    def __init__(self, work_dir: str = None, log_file: str = None, log_level: str = None, max_threads: int = None,
+                 network_connector: str = None, network_api_key: str = None):
+        if sys.version_info.major < 3:
+            python_version = str(sys.version_info.major)+"."+str(sys.version_info.minor)
+            raise RuntimeError("Requires python 3.6 and above. Actual: "+python_version)
+
+        self.util = Utility()
+        self.origin = 'py-'+(''.join(str(uuid.uuid4()).split('-')))
+        app_config = AppConfig()
+        _log_file = (app_config.LOG_FILE if hasattr(app_config, 'LOG_FILE') else None) if log_file is None else log_file
+        _log_level = app_config.LOG_LEVEL if log_level is None else log_level
+        self._max_threads = app_config.MAX_THREADS if max_threads is None else max_threads
+        self.network_connector = app_config.NETWORK_CONNECTOR if network_connector is None else network_connector
+        _network_api_key = app_config.NETWORK_API_KEY if network_api_key is None else network_api_key
+        self.work_dir = app_config.WORK_DIRECTORY if work_dir is None else work_dir
+        self.log = LoggingService(log_dir=self.util.normalize_path(self.work_dir + "/log"),
+                                  log_file=_log_file,
+                                  log_level=_log_level).get_logger()
+        self._loop = asyncio.new_event_loop()
+        self._cloud = NetworkConnector(self, self._loop, _network_api_key, self.network_connector+"/"+self.origin)
+        self._function_queues = dict()
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
+        self.log.info("Concurrent thread pool size = "+str(self._max_threads))
+        #
+        # Before we figure out how to solve blocking file I/O, we will regular event output rate.
+        #
+        test_dir = self.util.normalize_path(self.work_dir + "/test")
+        if not os.path.exists(test_dir):
+            os.makedirs(test_dir)
+        self._throttle = Throttle(self.util.normalize_path(test_dir + "/to_be_deleted"), log=self.log)
+        self._seq = 0
+        self.util.cleanup_dir(test_dir)
+        self.log.info("Estimated processing rate is "+format(self._throttle.get_tps(), ',d')
+                      + " events per second for this computer")
+        self.running = True
+
+        # start event loop in a new thread to avoid blocking the main thread
+        def main_event_loop():
+            self.log.info("Event system started")
+            self._loop.run_forever()
+            self.log.info("Event system stopped")
+            self._loop.close()
+        threading.Thread(target=main_event_loop).start()
+
+    def get_origin(self):
+        return self.origin
+
+    def run_forever(self):
+        def graceful_shutdown(signum, frame):
+            self.log.warn("Control-C detected" if signal.SIGINT == signum else "KILL signal detected")
+            self.running = False
+        if threading.current_thread() is threading.main_thread():
+            signal.signal(signal.SIGTERM, graceful_shutdown)
+            signal.signal(signal.SIGINT, graceful_shutdown)
+            # keep the main thread running so CTL-C can be detected
+            self.log.info("To stop this application, press Control-C")
+            while self.running:
+                time.sleep(0.1)
+            self.stop()
+        else:
+            raise ValueError('Unable to register Control-C and KILL signals because this is not the main thread')
+
+    def register(self, route: str, user_function: any, total_instances: int, is_private: bool = False) -> None:
+        self.util.validate_service_name(route)
+        if route in self._function_queues:
+            raise ValueError("route "+route+" already registered")
+        if not isinstance(total_instances, int):
+            raise ValueError("Expect total_instances to be int, actual: "+str(type(total_instances)))
+        if total_instances < 1:
+            raise ValueError("total_instances must be at least 1")
+        if total_instances > self._max_threads:
+            raise ValueError("total_instances must not exceed max threads of "+str(self._max_threads))
+        function_type = self.util.get_function_type(user_function)
+        if function_type == FunctionType.NOT_SUPPORTED:
+            raise ValueError("Function signature should be (headers: dict, body: any, instance: int) or " +
+                             "(headers: dict, body: any) or (envelope: EventEnvelope)")
+
+        queue = asyncio.Queue(loop=self._loop)
+        if function_type == FunctionType.INTERCEPTOR:
+            self._function_queues[route] = {'queue': queue, 'private': is_private, 'instances': 1}
+            ServiceQueue(self._loop, self._executor, queue, route, user_function, 0)
+        elif function_type == FunctionType.REGULAR:
+            self._function_queues[route] = {'queue': queue, 'private': is_private, 'instances': total_instances}
+            ServiceQueue(self._loop, self._executor, queue, route, user_function, total_instances)
+        else:
+            # function_type == FunctionType.SINGLETON
+            self._function_queues[route] = {'queue': queue, 'private': is_private, 'instances': 1}
+            ServiceQueue(self._loop, self._executor, queue, route, user_function, -1)
+        # advertise the new route to the network
+        if self._cloud.is_connected():
+            self._cloud.send_payload({'type': 'add', 'route': route})
+
+    def is_cloud_connected(self):
+        return self._cloud.is_connected()
+
+    def release(self, route: str) -> None:
+        # this will un-register a route
+        if not isinstance(route, str):
+            raise ValueError("Expect route to be str, actual: "+str(type(route)))
+        if route not in self._function_queues:
+            raise ValueError("route "+route+" not found")
+        self._remove_route(route)
+        # advertise the deleted route to the network
+        if self._cloud.is_connected():
+            self._cloud.send_payload({'type': 'remove', 'route': route})
+
+    def has_route(self, route: str) -> bool:
+        if not isinstance(route, str):
+            raise ValueError("Expect route to be str, actual: "+str(type(route)))
+        return route in self._function_queues
+
+    def get_routes(self, options: str = 'all'):
+        result = list()
+        if 'public' == options:
+            for route in self._function_queues:
+                if not self.route_is_private(route):
+                    result.append(route)
+            return result
+        elif 'private' == options:
+            for route in self._function_queues:
+                if self.route_is_private(route):
+                    result.append(route)
+            return result
+        elif 'all' == options:
+            return list(self._function_queues.keys())
+        else:
+            return result
+
+    def route_is_private(self, route: str) -> bool:
+        config = self._function_queues[route]
+        if config and 'private' in config:
+            return config['private']
+        else:
+            return False
+
+    def route_instances(self, route: str) -> int:
+        config = self._function_queues[route]
+        if config and 'instances' in config:
+            return config['instances']
+        else:
+            return 0
+
+    def parallel_request(self, events: list, timeout_seconds: float):
+        timeout_value = self.util.get_float(timeout_seconds)
+        if timeout_value <= 0:
+            raise ValueError("timeout value in seconds must be positive number")
+        if not isinstance(events, list):
+            raise ValueError("events must be a list of EventEnvelope")
+        if len(events) == 0:
+            raise ValueError("event list is empty")
+        if len(events) == 1:
+            result = list()
+            result.append(self.request(events[0], timeout_value))
+            return result
+        for evt in events:
+            if not isinstance(evt, EventEnvelope):
+                raise ValueError("events must be a list of EventEnvelope")
+            if not isinstance(evt.get_to(), str):
+                raise ValueError("parameter 'to' in the event must be str")
+            if evt.get_headers() is not None and not isinstance(evt.get_headers(), dict):
+                raise ValueError("parameter 'headers' in the event must be dict")
+
+        # emulate a RPC call
+        temp_route = 'r.'+(''.join(str(uuid.uuid4()).split('-')))
+        inbox_queue = Queue()
+        begin = time.time()
+
+        # inbox is an interceptor service which must be defined with the parameter "envelope" as below
+        def inbox(envelope: EventEnvelope):
+            response = EventEnvelope().from_map(envelope)
+            response.set_round_trip(float(format((time.time() - begin) * 1000, '.3f')))
+            inbox_queue.put(response)
+        self.register(temp_route, inbox, 1, is_private=True)
+
+        try:
+            for evt in events:
+                route = evt.get_to()
+                evt.set_reply_to(temp_route, me=True)
+                if route in self._function_queues:
+                    self._loop.call_soon_threadsafe(self._send, route, evt.to_map())
+                else:
+                    if self._cloud.is_connected():
+                        self._cloud.send_payload({'type': 'event', 'event': evt.to_map()})
+                    else:
+                        raise ValueError("route " + route + " not found")
+
+            total_requests = len(events)
+            result_list = list()
+            while True:
+                try:
+                    # wait until all response events are delivered to the inbox
+                    result_list.append(inbox_queue.get(True, timeout_value))
+                    if len(result_list) == len(events):
+                        return result_list
+                except Empty:
+                    raise TimeoutError('Requests timeout for '+format(timeout_value, '.3f')+" seconds. Expect: " +
+                                       str(total_requests) + " responses, actual: " + str(len(result_list)))
+        finally:
+            self.release(temp_route)
+
+    def request(self, event: EventEnvelope, timeout_seconds: float):
+        timeout_value = self.util.get_float(timeout_seconds)
+        if timeout_value <= 0:
+            raise ValueError("timeout value in seconds must be positive number")
+        if not isinstance(event, EventEnvelope):
+            raise ValueError("event object must be an EventEnvelope")
+        if not isinstance(event.get_to(), str):
+            raise ValueError("parameter 'to' in the event must be str")
+        if event.get_headers() is not None and not isinstance(event.get_headers(), dict):
+            raise ValueError("parameter 'headers' in the event must be dict")
+
+        # emulate a RPC call
+        temp_route = 'r.'+(''.join(str(uuid.uuid4()).split('-')))
+        inbox_queue = Queue()
+        begin = time.time()
+
+        # inbox is an interceptor service which must be defined with the parameter "envelope" as below
+        def inbox(envelope: EventEnvelope):
+            response = EventEnvelope().from_map(envelope)
+            response.set_round_trip(float(format((time.time() - begin) * 1000, '.3f')))
+            inbox_queue.put(response)
+        self.register(temp_route, inbox, 1, is_private=True)
+
+        try:
+            route = event.get_to()
+            event.set_reply_to(temp_route, me=True)
+            if route in self._function_queues:
+                self._loop.call_soon_threadsafe(self._send, route, event.to_map())
+            else:
+                if self._cloud.is_connected():
+                    self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
+                else:
+                    raise ValueError("route " + route + " not found")
+            # wait until response event is delivered to the inbox
+            return inbox_queue.get(True, timeout_value)
+        except Empty:
+            raise TimeoutError('Route '+event.get_to()+' timeout for '+format(timeout_value, '.3f')+" seconds")
+        finally:
+            self.release(temp_route)
+
+    def send_event(self, event: EventEnvelope, broadcast=False) -> None:
+        if not isinstance(event, EventEnvelope):
+            raise ValueError("event object must be an EventEnvelope class")
+        if not isinstance(event.get_to(), str):
+            raise ValueError("parameter 'to' must be str")
+        if event.get_headers() is not None and not isinstance(event.get_headers(), dict):
+            raise ValueError("parameter 'headers' must be dict")
+        # regulate rate for best performance
+        self._seq += 1
+        self._throttle.regulate_rate(self._seq)
+        route = event.get_to()
+        if broadcast:
+            event.set_broadcast(True)
+        reply_to = event.get_reply_to()
+        if reply_to:
+            target = reply_to[2:] if reply_to.startswith('->') else reply_to
+            if route == target:
+                raise ValueError("route and reply_to must not be the same")
+        if route in self._function_queues:
+            if event.is_broadcast() and self._cloud.is_connected():
+                self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
+            else:
+                self._loop.call_soon_threadsafe(self._send, route, event.to_map())
+        else:
+            if self._cloud.is_connected():
+                self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
+            else:
+                raise ValueError("route "+route+" not found")
+
+    def _remove_route(self, route):
+        if route in self._function_queues:
+            self._send(route, None)
+            self._function_queues.pop(route)
+
+    def _send(self, route, event):
+        if route in self._function_queues:
+            config = self._function_queues[route]
+            if 'queue' in config:
+                config['queue'].put_nowait(event)
+
+    def connect_to_cloud(self):
+        self._loop.run_in_executor(self._executor, self._cloud.start_connection)
+
+    def stop(self):
+        def stopping():
+            route_list = []
+            for route in self.get_routes():
+                route_list.append(route)
+            for route in route_list:
+                self._remove_route(route)
+            self._loop.create_task(full_stop())
+
+        async def full_stop():
+            # give time for registered services to stop
+            await asyncio.sleep(1.0)
+            queue_dir = self.util.normalize_path(self.work_dir + "/queues/" + self.get_origin())
+            self.util.cleanup_dir(queue_dir)
+            self._loop.stop()
+
+        self._cloud.close_connection(1000, 'bye', stop_engine=True)
+        self._loop.call_soon_threadsafe(stopping)
