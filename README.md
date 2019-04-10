@@ -92,7 +92,7 @@ f(envelope: EventEnvelope)
 # instance is the instance number when the lambda function is registered to support multiple instances
 # envelope is the raw event envelope that contains routing metadata, input parameters and message body
 #
-# headers, body, instance and envelope are standard parameter names that you functions should use.
+# headers, body, instance and envelope are standard parameter names that your functions should use.
 ```
 
 You may then register your microservices like this:
