@@ -74,7 +74,8 @@ def main():
             platform.stop()
             return
 
-    # demonstrate broadcast feature
+    # Demonstrate broadcast feature:
+    # the event will be broadcast to multiple application instances that serves the same route
     po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
 
     #
