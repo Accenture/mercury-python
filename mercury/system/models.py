@@ -122,14 +122,14 @@ class EventEnvelope:
         return self.exec_time
 
     def set_exec_time(self, exec_time):
-        self.exec_time = exec_time
+        self.exec_time = float(format(exec_time, '.3f'))
         return self
 
     def get_round_trip(self):
         return self.round_trip
 
     def set_round_trip(self, round_trip):
-        self.round_trip = round_trip
+        self.round_trip = float(format(round_trip, '.3f'))
         return self
 
     def to_map(self):
@@ -172,9 +172,9 @@ class EventEnvelope:
         if 'broadcast' in data:
             self.broadcast = data['broadcast']
         if 'exec_time' in data:
-            self.exec_time = data['exec_time']
+            self.set_exec_time(data['exec_time'])
         if 'round_trip' in data:
-            self.round_trip = data['round_trip']
+            self.set_round_trip(data['round_trip'])
         return self
 
     def to_bytes(self):

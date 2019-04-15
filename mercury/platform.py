@@ -38,14 +38,14 @@ from mercury.system.throttle import Throttle
 
 class ServiceQueue:
 
-    def __init__(self, _loop, _executor, queue, route, user_function, total_instances):
+    def __init__(self, loop, executor, queue, route, user_function, total_instances):
         platform = Platform()
         util = Utility()
         self.log = platform.log
         queue_dir = util.normalize_path(platform.work_dir + "/queues/" + platform.get_origin())
         self.disk_queue = ElasticQueue(queue_dir=queue_dir, queue_id=route)
-        self._loop = _loop
-        self._executor = _executor
+        self._loop = loop
+        self._executor = executor
         self.queue = queue
         self.route = route
         self.user_function = user_function
@@ -158,12 +158,12 @@ class ServiceQueue:
 
 class WorkerQueue:
 
-    def __init__(self, _loop, _executor, manager_queue, worker_queue, route, user_function, instance,
+    def __init__(self, loop, executor, manager_queue, worker_queue, route, user_function, instance,
                  singleton, interceptor):
         self.platform = Platform()
         self.log = self.platform.log
-        self._loop = _loop
-        self._executor = _executor
+        self._loop = loop
+        self._executor = executor
         self.manager_queue = manager_queue
         self.worker_queue = worker_queue
         self.route = route
@@ -236,7 +236,7 @@ class WorkerQueue:
             response = EventEnvelope()
             response.set_to(reply_to)
             if not error_code:
-                response.set_exec_time(float(format((end - begin) * 1000, '.3f')))
+                response.set_exec_time((end - begin) * 1000)
             if 'cid' in event:
                 response.set_correlation_id(event['cid'])
             if isinstance(result, EventEnvelope):
@@ -431,7 +431,7 @@ class Platform:
         # inbox is an interceptor service which must be defined with the parameter "envelope" as below
         def inbox(envelope: EventEnvelope):
             response = EventEnvelope().from_map(envelope)
-            response.set_round_trip(float(format((time.time() - begin) * 1000, '.3f')))
+            response.set_round_trip((time.time() - begin) * 1000)
             inbox_queue.put(response)
         self.register(temp_route, inbox, 1, is_private=True)
 
@@ -480,7 +480,7 @@ class Platform:
         # inbox is an interceptor service which must be defined with the parameter "envelope" as below
         def inbox(envelope: EventEnvelope):
             response = EventEnvelope().from_map(envelope)
-            response.set_round_trip(float(format((time.time() - begin) * 1000, '.3f')))
+            response.set_round_trip((time.time() - begin) * 1000)
             inbox_queue.put(response)
         self.register(temp_route, inbox, 1, is_private=True)
 
@@ -525,9 +525,12 @@ class Platform:
             else:
                 self._loop.call_soon_threadsafe(self._send, route, event.to_map())
         else:
+            print("1--- SENDING TO CLOUD ---", route)
             if self._cloud.is_connected():
                 self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
+                print("2--- SENDING TO CLOUD ---", route)
             else:
+                print("3--- SENDING TO CLOUD ---", route)
                 raise ValueError("route "+route+" not found")
 
     def _remove_route(self, route):

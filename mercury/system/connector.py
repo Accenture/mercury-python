@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import io
 import time
 import asyncio
 import aiohttp
@@ -22,6 +23,7 @@ import msgpack
 
 from mercury.system.models import EventEnvelope
 from mercury.system.utility import Utility
+from mercury.system.cache import SimpleCache
 from mercury.system.singleton import Singleton
 
 
@@ -31,6 +33,8 @@ class NetworkConnector:
     INCOMING_WS_PATH = "ws.incoming"
     OUTGOING_WS_PATH = "ws.outgoing"
     SYSTEM_ALERT = "system.alerts"
+    SERVER_CONFIG = "system.config"
+    MAX_PAYLOAD = "max.payload"
 
     def __init__(self, platform, loop, api_key, url):
         self.url = url
@@ -44,7 +48,9 @@ class NetworkConnector:
         self.close_code = 1000
         self.close_message = 'OK'
         self.last_active = time.time()
+        self.max_ws_payload = 32768
         self.util = Utility()
+        self.cache = SimpleCache(loop, self.log, timeout_seconds=30)
 
     def send_keep_alive(self):
         message = "Keep-Alive "+self.util.get_iso_8601(time.time(), show_ms=True)
@@ -54,9 +60,42 @@ class NetworkConnector:
 
     def send_payload(self, data: dict):
         payload = msgpack.packb(data, use_bin_type=True)
-        envelope = EventEnvelope()
-        envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(payload)
-        self.platform.send_event(envelope)
+        payload_len = len(payload)
+        if 'type' in data and data['type'] == 'event' and 'event' in data and payload_len > self.max_ws_payload:
+            evt = data['event']
+            if 'id' in evt:
+                msg_id = evt['id']
+                total = int(payload_len / self.max_ws_payload)
+                if payload_len > total:
+                    total += 1
+                buffer = io.BytesIO(payload)
+                count = 0
+                for i in range(total):
+                    count += 1
+                    block = EventEnvelope()
+                    block.set_header('id', msg_id)
+                    block.set_header('count', count)
+                    block.set_header('total', total)
+                    block.set_body(buffer.read(self.max_ws_payload))
+                    block_map = dict()
+                    block_map['type'] = 'block'
+                    block_map['block'] = block.to_map()
+                    block_payload = msgpack.packb(block_map, use_bin_type=True)
+                    envelope = EventEnvelope()
+                    envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(block_payload)
+                    self.platform.send_event(envelope)
+        else:
+            envelope = EventEnvelope()
+            envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(payload)
+            self.platform.send_event(envelope)
+
+    def get_server_config(self, headers: dict, body: any):
+        if 'type' in headers and headers['type'] == 'system.config' and isinstance(body, dict):
+            self.log.info('Received network configuration')
+            # set max payload as per server instruction
+            if self.MAX_PAYLOAD in body:
+                self.max_ws_payload = body[self.MAX_PAYLOAD]
+                self.log.info(self.MAX_PAYLOAD+' = '+format(self.max_ws_payload, ',d'))
 
     def alert(self, headers: dict, body: any):
         if 'status' in headers:
@@ -89,11 +128,34 @@ class NetworkConnector:
                 event = msgpack.unpackb(body, raw=False)
                 if 'type' in event:
                     event_type = event['type']
+                    if event_type == 'block' and 'block' in event:
+                        envelope = EventEnvelope()
+                        inner_event = envelope.from_map(event['block'])
+                        inner_headers = inner_event.get_headers()
+                        if 'id' in inner_headers and 'count' in inner_headers and 'total' in inner_headers:
+                            msg_id = inner_headers['id']
+                            msg_count = inner_headers['count']
+                            msg_total = inner_headers['total']
+                            data = inner_event.get_body()
+                            if isinstance(data, bytes):
+                                buffer = self.cache.get(msg_id)
+                                if buffer is None:
+                                    buffer = io.BytesIO()
+                                buffer.write(data)
+                                self.cache.put(msg_id, buffer)
+                                if msg_count == msg_total:
+                                    buffer.seek(0)
+                                    # reconstruct event for processing
+                                    event = msgpack.unpackb(buffer.read(), raw=False)
+                                    event_type = 'event'
+                                    self.cache.remove(msg_id)
                     if event_type == 'event' and 'event' in event:
                         envelope = EventEnvelope()
                         inner_event = envelope.from_map(event['event'])
                         if self.platform.has_route(inner_event.get_to()):
                             self.platform.send_event(inner_event)
+                        else:
+                            self.log.warn('Incoming event dropped because '+str(inner_event.get_to())+' not found')
 
     def outgoing(self, headers: dict, body: any):
         """
@@ -151,6 +213,7 @@ class NetworkConnector:
             self.platform.register(self.INCOMING_WS_PATH, self.incoming, 1, is_private=True)
             self.platform.register(self.OUTGOING_WS_PATH, self.outgoing, 1, is_private=True)
             self.platform.register(self.SYSTEM_ALERT, self.alert, 1, is_private=True)
+            self.platform.register(self.SERVER_CONFIG, self.get_server_config, 1, is_private=True)
             self._loop.create_task(worker())
 
     def close_connection(self, code, reason, stop_engine=False):
@@ -166,6 +229,7 @@ class NetworkConnector:
 
         if stop_engine:
             self.normal = False
+            self.cache.stop()
         self._loop.call_soon_threadsafe(closing, code, reason)
 
     async def connection_handler(self):

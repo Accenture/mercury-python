@@ -32,7 +32,7 @@ class Hi:
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    Platform().log.info("#"+str(instance)+" "+str(headers)+" "+str(body))
+    Platform().log.info("#"+str(instance)+" "+str(headers)+" size="+str(len(body))+", body="+str(body))
     # to set status, headers and body, return them in an event envelope
     result = EventEnvelope().set_header('hello', 'world').set_body(body)
     for h in headers:
@@ -54,7 +54,7 @@ def main():
 
     # make a RPC request
     try:
-        result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='test message')
+        result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
         if isinstance(result, EventEnvelope):
             print('Received RPC response:')
             print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
@@ -74,8 +74,24 @@ def main():
             platform.stop()
             return
 
-    for i in range(10):
-        po.broadcast("hello.world.2", body=str(i)+" this is a broadcast message from "+platform.get_origin())
+    for i in range(1):
+        po.broadcast("hello.world.1", body=str(i)+" this is a broadcast message from "+platform.get_origin())
+
+    s = ''
+    for i in range(50000):
+        s += '123456789.'
+
+    # make a RPC request
+    try:
+        result = po.request('hello.world', 2.0, headers={'some_key': 'some_value'}, body=s)
+        if isinstance(result, EventEnvelope):
+            print('Received RPC response:')
+            print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
+                  ", STATUS =",  result.get_status(),
+                  ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
+    except TimeoutError as e:
+        print("Exception: ", str(e))
+
     #
     # this will keep the main thread running in the background
     # so we can use Control-C or KILL signal to stop the application
