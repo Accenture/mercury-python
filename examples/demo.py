@@ -74,23 +74,8 @@ def main():
             platform.stop()
             return
 
-    for i in range(1):
-        po.broadcast("hello.world.1", body=str(i)+" this is a broadcast message from "+platform.get_origin())
-
-    s = ''
-    for i in range(50000):
-        s += '123456789.'
-
-    # make a RPC request
-    try:
-        result = po.request('hello.world', 2.0, headers={'some_key': 'some_value'}, body=s)
-        if isinstance(result, EventEnvelope):
-            print('Received RPC response:')
-            print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-                  ", STATUS =",  result.get_status(),
-                  ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
-    except TimeoutError as e:
-        print("Exception: ", str(e))
+    # demonstrate broadcast feature
+    po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
 
     #
     # this will keep the main thread running in the background
