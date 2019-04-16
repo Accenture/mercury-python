@@ -36,8 +36,9 @@ class NetworkConnector:
     SERVER_CONFIG = "system.config"
     MAX_PAYLOAD = "max.payload"
 
-    def __init__(self, platform, loop, api_key, url):
+    def __init__(self, platform, loop, api_key_label, api_key, url):
         self.url = url
+        self.api_key_label = api_key_label
         self.api_key = api_key
         self.platform = platform
         self._loop = loop
@@ -91,11 +92,10 @@ class NetworkConnector:
 
     def get_server_config(self, headers: dict, body: any):
         if 'type' in headers and headers['type'] == 'system.config' and isinstance(body, dict):
-            self.log.info('Received network configuration')
             # set max payload as per server instruction
             if self.MAX_PAYLOAD in body:
                 self.max_ws_payload = body[self.MAX_PAYLOAD]
-                self.log.info(self.MAX_PAYLOAD+' = '+format(self.max_ws_payload, ',d'))
+                self.log.info('Automatic segmentation when event payload exceeds '+format(self.max_ws_payload, ',d'))
 
     def alert(self, headers: dict, body: any):
         if 'status' in headers:
@@ -115,8 +115,8 @@ class NetworkConnector:
         """
         if self.ws and 'type' in headers:
             if headers['type'] == 'open':
-                self.log.info("Ready")
-                self.send_payload({'type': 'login', 'api_key': self.api_key})
+                self.log.info("Login with "+self.api_key_label)
+                self.send_payload({'type': 'login', self.api_key_label: self.api_key})
                 for r in self.platform.get_routes('public'):
                     self.send_payload({'type': 'add', 'route': r})
 

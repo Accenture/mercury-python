@@ -274,13 +274,14 @@ class Platform:
         _log_level = app_config.LOG_LEVEL if log_level is None else log_level
         self._max_threads = app_config.MAX_THREADS if max_threads is None else max_threads
         self.network_connector = app_config.NETWORK_CONNECTOR if network_connector is None else network_connector
-        _network_api_key = app_config.NETWORK_API_KEY if network_api_key is None else network_api_key
+        api_key_label = app_config.NETWORK_API_KEY_LABEL
+        api_key = app_config.NETWORK_API_KEY if network_api_key is None else network_api_key
         self.work_dir = app_config.WORK_DIRECTORY if work_dir is None else work_dir
         self.log = LoggingService(log_dir=self.util.normalize_path(self.work_dir + "/log"),
                                   log_file=_log_file,
                                   log_level=_log_level).get_logger()
         self._loop = asyncio.new_event_loop()
-        self._cloud = NetworkConnector(self, self._loop, _network_api_key, self.network_connector+"/"+self.origin)
+        self._cloud = NetworkConnector(self, self._loop, api_key_label, api_key, self.network_connector+"/"+self.origin)
         self._function_queues = dict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
         self.log.info("Concurrent thread pool size = "+str(self._max_threads))
