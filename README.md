@@ -33,7 +33,7 @@ Hope you enjoy this journey to improve the world.
 
 Best regards, the Mercury team
 
-March 2019
+April 2019
 
 p.s. This project is originated from the "platformlambda project" and contributed by Accenture.
 
@@ -84,13 +84,13 @@ f(headers: dict, body: any)
 f(headers: dict, body: any, instance: int)
 
 # For interceptor service - this allows your application to inspect event metdata
-f(envelope: EventEnvelope)
+f(event: EventEnvelope)
 
 # f can be any function or method name you like
 # headers are input parameters in key-value pairs
 # body is application specific. It can be string, byte array, dictionary, etc.
 # instance is the instance number when the lambda function is registered to support multiple instances
-# envelope is the raw event envelope that contains routing metadata, input parameters and message body
+# event is the event envelope that contains routing metadata, input parameters and message body
 #
 # headers, body, instance and envelope are standard parameter names that your functions should use.
 ```
@@ -186,3 +186,23 @@ You may enable Control-C and Kill signal detection by calling the "run_forever()
 ```
 platform.run_forever()
 ```
+
+## Installing mercury
+
+You may install mercury using pip as follows:
+```
+pip install git+https://github.com/Accenture/mercury-python.git
+```
+
+If you have accidentally installed mercury using "python setup.py install", you will see the following error when trying to uninstall.
+```
+Cannot uninstall 'mercury'. It is a distutils installed project and thus we cannot accurately determine which files belong to it which would lead to only a partial uninstall.
+```
+You can resolve this issue by reinstalling mercury with the option "--ignore-installed". This will restore the metadata information for pip.
+```
+pip install --ignore-installed git+https://github.com/Accenture/mercury-python.git
+```
+
+## python3 version
+
+Mercury requires python 3.6.7 or above

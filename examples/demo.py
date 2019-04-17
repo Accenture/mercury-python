@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright 2018-2019 Accenture Technology
@@ -52,7 +53,7 @@ def main():
     po.send('hello.world.1', headers={'one': 1}, body='hello world one')
     po.send('hello.world.2', headers={'two': 2}, body='hello world two')
 
-    # make a RPC request
+    # demonstrate a RPC request
     try:
         result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
         if isinstance(result, EventEnvelope):
@@ -60,6 +61,21 @@ def main():
             print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
                   ", STATUS =",  result.get_status(),
                   ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
+    except TimeoutError as e:
+        print("Exception: ", str(e))
+
+    # illustrate parallel RPC requests
+    event_list = list()
+    event_list.append(EventEnvelope().set_to('hello.world.1').set_body("first request"))
+    event_list.append(EventEnvelope().set_to('hello.world.2').set_body("second request"))
+    try:
+        result = po.parallel_request(event_list, 2.0)
+        if isinstance(result, list):
+            print('Received', len(result), 'RPC responses:')
+            for res in result:
+                print("HEADERS =", res.get_headers(), ", BODY =", res.get_body(),
+                      ", STATUS =",  res.get_status(),
+                      ", EXEC =", res.get_exec_time(), ", ROUND TRIP =", res.get_round_trip(), "ms")
     except TimeoutError as e:
         print("Exception: ", str(e))
 
@@ -75,7 +91,7 @@ def main():
             return
 
     # Demonstrate broadcast feature:
-    # the eventa will be broadcast to multiple application instances that serves the same route
+    # the event will be broadcast to multiple application instances that serve the same route
     po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
 
     #
