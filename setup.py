@@ -4,7 +4,7 @@
 from distutils.core import setup
 
 setup(name='mercury',
-      version='1.11.35',
+      version='1.11.37',
       description='Python Language pack for Mercury',
       author='Eric Law',
       author_email='eric.law@accenture.com',
