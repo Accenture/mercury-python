@@ -88,3 +88,13 @@ class PostOffice:
 
     def parallel_request(self, events: list, timeout_seconds: float) -> list:
         return self.platform.parallel_request(events, timeout_seconds)
+
+    def exists(self, route: str):
+        if self.platform.has_route(route):
+            return True
+        if self.platform.is_cloud_connected():
+            result = self.request('system.service.query', 8.0, headers={'type': 'find', 'route': route})
+            if isinstance(result, EventEnvelope):
+                if result.get_body() is not None:
+                    return result.get_body()
+        return False

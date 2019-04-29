@@ -33,7 +33,7 @@ class Hi:
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    Platform().log.info("#"+str(instance)+" "+str(headers)+" size="+str(len(body))+", body="+str(body))
+    Platform().log.info("#"+str(instance)+" "+str(headers)+" body="+str(body))
     # to set status, headers and body, return them in an event envelope
     result = EventEnvelope().set_header('hello', 'world').set_body(body)
     for h in headers:

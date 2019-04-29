@@ -139,7 +139,7 @@ class EventEnvelope:
             result['to'] = self.to
         result['headers'] = dict() if not self.headers else self.headers
         result['id'] = self.event_id
-        if self.body:
+        if self.body is not None:
             result['body'] = self.body
         if self.reply_to:
             result['reply_to'] = self.reply_to
@@ -165,7 +165,7 @@ class EventEnvelope:
         if 'body' in data:
             self.body = data['body']
         if 'reply_to' in data and isinstance(data['reply_to'], str):
-            self.body = data['reply_to']
+            self.reply_to = data['reply_to']
         if 'cid' in data:
             self.correlation_id = data['cid']
         if 'status' in data:

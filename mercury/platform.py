@@ -202,7 +202,7 @@ class WorkerQueue:
         try:
             if instance == 0:
                 # service is an interceptor. e.g. inbox for RPC call
-                result = self.user_function(EventEnvelope().from_map(event))
+                self.user_function(EventEnvelope().from_map(event))
             elif instance == -1:
                 # service is a singleton
                 result = self.user_function(headers, body)
@@ -225,9 +225,10 @@ class WorkerQueue:
                 # set exception as result
                 result = EventEnvelope().set_status(error_code).set_body(error_msg)
             else:
-                self.log.warn("Unhandled exception for "+self.route+" - code="+str(error_code)+", message="+error_msg)
+                self.log.warn(
+                    "Unhandled exception for " + self.route + " - code=" + str(error_code) + ", message=" + error_msg)
 
-        if 'reply_to' in event:
+        if not self.interceptor and 'reply_to' in event:
             reply_to = event['reply_to']
             # in case this is a RPC call from within
             if reply_to.startswith('->'):
@@ -373,7 +374,7 @@ class Platform:
             self._function_queues[route] = {'queue': queue, 'private': is_private, 'instances': 1}
             ServiceQueue(self._loop, self._executor, queue, route, user_function, -1)
         # advertise the new route to the network
-        if self._cloud.is_connected():
+        if self._cloud.is_connected() and not is_private:
             self._cloud.send_payload({'type': 'add', 'route': route})
 
     def is_cloud_connected(self):
@@ -385,10 +386,10 @@ class Platform:
             raise ValueError("Expect route to be str, actual: "+str(type(route)))
         if route not in self._function_queues:
             raise ValueError("route "+route+" not found")
-        self._remove_route(route)
         # advertise the deleted route to the network
-        if self._cloud.is_connected():
+        if self._cloud.is_connected() and self.route_is_private(route):
             self._cloud.send_payload({'type': 'remove', 'route': route})
+        self._remove_route(route)
 
     def has_route(self, route: str) -> bool:
         if not isinstance(route, str):
