@@ -206,3 +206,7 @@ pip install --ignore-installed git+https://github.com/Accenture/mercury-python.g
 ## python3 version
 
 Mercury requires python 3.6.7 or above
+
+## Developer guide
+
+For more details, please refer to the [Developer Guide](docs/guides/TABLE-OF-CONTENTS.md)
