@@ -62,8 +62,6 @@ To pass a list of stepwise targets, you may send the list as a parameter. Each f
 
 You can use streams for functional programming. One of the approach is to use a singleton function.
 
-1. Singleton functions
-
 To create a singleton, you can set `instances` of the calling and called functions to 1. When you send events from the calling function to the called function, the platform guarantees that the event sequencing of the data stream.
 
 To guarantee that there is only one instance of the calling and called function, you should register them with a globally unique route name. e.g. using UUID like "producer-b351e7df-827f-449c-904f-a80f9f3ecafe" and "consumer-d15b639a-44d9-4bc2-bb54-79db4f866fe3".
