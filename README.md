@@ -3,7 +3,7 @@
 This module requires the Mercury Language Connector application as a sidecar.
 The main Mercury project is available at https://github.com/Accenture/mercury
 
-Please clone the main project and follow the README file to build the mercury core libraries and the "language-connector" application.
+Please clone the main project and follow the README file to build the mercury core libraries and the language-connector application.
 
 ## Welcome to the Mercury project
 
