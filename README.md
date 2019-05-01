@@ -1,9 +1,9 @@
 # Python language pack for the Mercury microservices framework
 
-This module requires the Mercury Language Support application as a sidecar.
+This module requires the Mercury Language Connector application as a sidecar.
 The main Mercury project is available at https://github.com/Accenture/mercury
 
-Please clone the main project and follow the README file to build the mercury core libraries and the "language-support" application.
+Please clone the main project and follow the README file to build the mercury core libraries and the "language-connector" application.
 
 ## Welcome to the Mercury project
 
