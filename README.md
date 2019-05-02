@@ -194,7 +194,7 @@ You may install mercury using pip as follows:
 pip install git+https://github.com/Accenture/mercury-python.git
 ```
 
-If you have accidentally installed mercury using "python setup.py install", you will see the following error when trying to uninstall.
+If you have accidentally installed mercury using "python setup.py install", you will see the following error when trying to upgrade or uninstall.
 ```
 Cannot uninstall 'mercury'. It is a distutils installed project and thus we cannot accurately determine which files belong to it which would lead to only a partial uninstall.
 ```
