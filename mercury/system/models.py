@@ -42,6 +42,7 @@ class EventEnvelope:
         self.body = None
         self.status = None
         self.to = None
+        self.sender = None
         self.reply_to = None
         self.correlation_id = None
         self.broadcast = False
@@ -62,8 +63,15 @@ class EventEnvelope:
         self.to = to
         return self
 
+    def set_from(self, sender: str):
+        self.sender = sender
+        return self
+
     def get_to(self):
         return self.to
+
+    def get_from(self):
+        return self.sender
 
     def get_status(self):
         return self.status if self.status else 200
@@ -137,6 +145,8 @@ class EventEnvelope:
         result = dict()
         if self.to:
             result['to'] = self.to
+        if self.sender:
+            result['from'] = self.sender
         result['headers'] = dict() if not self.headers else self.headers
         result['id'] = self.event_id
         if self.body is not None:
@@ -160,6 +170,8 @@ class EventEnvelope:
             self.event_id = data['id']
         if 'to' in data and isinstance(data['to'], str):
             self.to = data['to']
+        if 'from' in data and isinstance(data['from'], str):
+            self.sender = data['from']
         if 'headers' in data and isinstance(data['headers'], dict):
             self.headers = data['headers']
         if 'body' in data:

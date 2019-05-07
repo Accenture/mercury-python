@@ -247,7 +247,7 @@ class WorkerQueue:
                 response.set_body(result)
 
             try:
-                self.platform.send_event(response)
+                self.platform.send_event(response.set_from(self.route))
             except Exception as e:
                 self.log.warn("Event dropped because "+str(e))
 
