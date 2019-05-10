@@ -13,7 +13,7 @@ Please follow the [README](../../README.md) file in the project root to build th
 ## Writing your first microservices function
 
 Your first function may look like this using Python 3 syntax:
-```
+```python
 def regular_service(headers: dict, body: any, instance: int):
     # some business logic
     return some_thing
@@ -25,12 +25,11 @@ The easiest way to write your first microservices module is to use the "demo.py"
 
 To install the Mercury python library, you can do this:
 
-```
+```shell
 pip install git+https://github.com/Accenture/mercury-python.git
 ```
 
 You will then see "mercury" using the "pip list" command.
-
 
 ## Application unit
 
@@ -45,7 +44,8 @@ You can use Mercury to write standalone Python microservices. To create a scalab
 For each application unit, you will need a main application. This is the entry of your application unit.
 
 In Python, this is super easy.
-```
+
+```python
 if __name__ == '__main__':
     main()
 
@@ -57,7 +57,8 @@ if __name__ == '__main__':
 Unlike traditional programming, you call a function by sending an event instead of calling its method. Mercury resolves routing automatically so events are delivered correctly no matter where the target function is, in the same memory space or another computer elsewhere in the network.
 
 To make a service call to a function, you may do the following:
-```
+
+```python
 # demonstrate a RPC request
 try:
     result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
