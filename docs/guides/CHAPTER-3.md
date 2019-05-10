@@ -54,7 +54,7 @@ You can register a call back function and uses its route name as the "reply_to" 
 
 ### Pipeline
 
-In a pipeline operation, there is stepwise event propagation. e.g. Function A sends to B and set the "reply-to" as C. Function B sends to C and set the "reply_to" as D, etc.
+In a pipeline operation, there is stepwise event propagation. e.g. Function A sends to B and set the "reply_to" as C. Function B sends to C and set the "reply_to" as D, etc.
 
 To pass a list of stepwise targets, you may send the list as a parameter. Each function of the pipeline should forward the pipeline list to the next function.
 
