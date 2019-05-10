@@ -21,7 +21,7 @@ Mercury is truly schemaless. It does not care if you are sending a primitive or 
 
 ### Obtain an instance of the platform object
 
-```
+```python
 platform = Platform();
 
 # platform is a singleton object so it is safe to invoke this class multiple times
@@ -33,7 +33,7 @@ To register a function, you can assign a route name to a function instance. You 
 
 To create a singleton function, set instances to 1.
 
-```
+```python
 register(self, route: str, user_function: any, total_instances: int, is_private: bool = False) -> None
 
 e.g.
@@ -47,7 +47,7 @@ platform.register('hello.world.2', hello, 10)
 
 Your service function must use one of the following signatures:
 
-```
+```python
 def regular_service(headers: dict, body: any, instance: int):
 def singleton_service(headers: dict, body: any):
 def interceptor(event: EventEnvelope):
@@ -71,7 +71,7 @@ You may define your function as `private` if it is used internally by other func
 
 A function can be long term or transient. When a function is no longer required, you can cancel the function using the "release" method.
 
-```
+```python
 release(self, route: str) -> None
 ```
 
@@ -80,7 +80,8 @@ release(self, route: str) -> None
 You can write truly event-driven microservices as a standalone application. However, it would be more interesting to connect the services together through a network event stream system.
 
 To do this, you can ask the platform to connect to the cloud.
-```
+
+```python
 platform.connect_to_cloud()
 ```
 

@@ -4,7 +4,7 @@ Post Office is a platform abstraction layer that routes events among functions. 
 
 ## Obtain an instance of the post office object
 
-```
+```python
 po = PostOffice()
 
 # the Post Office is a singleton class
@@ -25,7 +25,7 @@ The Mercury framework is 100% event-driven and all communications are asynchrono
 
 To make a RPC call, you can use the `request` method.
 
-```
+```python
 request(self, route: str, timeout_seconds: float,
                 headers: dict = None, body: any = None,
                 correlation_id: str = None) -> EventEnvelope
@@ -36,27 +36,27 @@ print(result.get_body())
 
 ```
 
-Note that Mercury supports Java primitive, Map and PoJo in the message body. If you put other object, it may throw serialization exception or the object may become empty.
+Note that Mercury supports Python primitive or dictionary in the message body. If you put other object, it may throw serialization exception or the object may become empty.
 
 ### Asynchronous / Drop-n-forget
 
 To make an asynchronous call, use the `send` method.
 
-```
+```python
 send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None
 ```
+
 You may put key-value pairs in the "headers" field for holding parameters. For message payload, put Python primitive or dictionary in the "body" field.
 
 ### Call-back
 
-You can register a call back function and uses its route name as the "reply-to" address in the send method.
+You can register a call back function and uses its route name as the "reply_to" address in the send method.
 
 ### Pipeline
 
-In a pipeline operation, there is stepwise event propagation. e.g. Function A sends to B and set the "reply-to" as C. Function B sends to C and set the "reply-to" as D, etc.
+In a pipeline operation, there is stepwise event propagation. e.g. Function A sends to B and set the "reply-to" as C. Function B sends to C and set the "reply_to" as D, etc.
 
 To pass a list of stepwise targets, you may send the list as a parameter. Each function of the pipeline should forward the pipeline list to the next function.
-
 
 ### Streaming
 
@@ -74,7 +74,7 @@ If you create the functions at run-time, please remember to release the function
 
 Broadcast is the easiest way to do "pub/sub". To broadcast an event to multiple application instances, use the `broadcast` method.
 
-```
+```python
 broadcast(self, route: str, headers: dict = None, body: any = None) -> None
 
 e.g.
@@ -84,9 +84,9 @@ po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.
 
 ### Join-n-fork
 
-You can perform join-n-fork RPC calls using a parallel version of the `parallel_request` method.
+You can perform join-n-fork RPC calls using a parallel version of the request, `parallel_request` method.
 
-```
+```python
 parallel_request(self, events: list, timeout_seconds: float) -> list
 
 e.g.
@@ -110,7 +110,7 @@ except TimeoutError as e:
 
 To check if a target service is available, you can use the `exists` method.
 
-```
+```python
 exists(self, route: str)
 
 e.g.
