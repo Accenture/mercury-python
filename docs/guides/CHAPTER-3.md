@@ -120,14 +120,14 @@ Mercury provides real-time inter-service event streaming and you do not need to 
 However, if you want to do store-n-forward pub/sub for certain use cases, you may use the `PubSub` class.
 Following are some useful pub/sub API:
 
-```
+```python
 def feature_enabled()
 def create_topic(topic: str)
 def delete_topic(topic: str)
 def publish(topic: str, headers: dict = None, body: any = None)
 def subscribe(self, topic: str, route: str, parameters: list = None)
 def unsubscribe(self, topic: str, route: str)
-def exists(topic: str) throws IOException;
+def exists(topic: str)
 def list_topics()
 
 ```
