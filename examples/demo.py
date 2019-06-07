@@ -17,17 +17,18 @@
 #
 
 import time
+
 from mercury.platform import Platform
 from mercury.system.models import EventEnvelope
 from mercury.system.po import PostOffice
 
 
 class Hi:
+    MY_NAME = 'Hi'
 
-    @staticmethod
-    def hello(headers: dict, body: any):
+    def hello(self, headers: dict, body: any):
         # singleton function signature (headers: dict, body: any)
-        Platform().log.info(str(headers) + ", " + str(body))
+        Platform().log.info(self.MY_NAME+" "+str(headers) + ", " + str(body))
         return body
 
 
@@ -82,7 +83,7 @@ def main():
     # connect to the network
     platform.connect_to_cloud()
     # wait until connected
-    while not platform.is_cloud_connected():
+    while not platform.cloud_ready():
         try:
             time.sleep(0.1)
         except KeyboardInterrupt:

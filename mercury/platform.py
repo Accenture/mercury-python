@@ -40,10 +40,10 @@ from mercury.system.throttle import Throttle
 class ServiceQueue:
 
     def __init__(self, loop, executor, queue, route, user_function, total_instances):
-        platform = Platform()
+        self.platform = Platform()
         self.util = Utility()
-        self.log = platform.log
-        queue_dir = self.util.normalize_path(platform.work_dir + "/queues/" + platform.get_origin())
+        self.log = self.platform.log
+        queue_dir = self.util.normalize_path(self.platform.work_dir + "/queues/" + self.platform.get_origin())
         self.disk_queue = ElasticQueue(queue_dir=queue_dir, queue_id=route)
         self._loop = loop
         self._executor = executor
@@ -102,11 +102,14 @@ class ServiceQueue:
             # populate the ready queue with an initial set of worker numbers
             await self.queue.put(instance_number)
 
+        route_type = 'PRIVATE' if self.platform.route_is_private(self.route) else 'PUBLIC'
         # minimize logging for temporary inbox that starts with the "r" prefix
         if self._interceptor and self.util.is_inbox(self.route):
-            self.log.debug(self.route + " with " + str(total) + " instance" + ('s' if total > 1 else '') + " started")
+            self.log.debug(route_type+' ' + self.route + " with " + str(total) + " instance" +
+                           ('s' if total > 1 else '') + " started")
         else:
-            self.log.info(self.route + " with "+str(total)+" instance"+('s' if total > 1 else '')+" started")
+            self.log.info(route_type+' ' + self.route + " with " + str(total) + " instance" +
+                          ('s' if total > 1 else '')+" started")
 
         # listen for incoming events
         while True:
@@ -285,26 +288,26 @@ class Inbox:
 class Platform:
 
     def __init__(self, work_dir: str = None, log_file: str = None, log_level: str = None, max_threads: int = None,
-                 network_connector: str = None, network_api_key: str = None):
+                 network_connector: str = None, api_key: str = None):
         if sys.version_info.major < 3:
             python_version = str(sys.version_info.major)+"."+str(sys.version_info.minor)
             raise RuntimeError("Requires python 3.6 and above. Actual: "+python_version)
 
         self.util = Utility()
-        self.origin = 'py-'+(''.join(str(uuid.uuid4()).split('-')))
+        self.origin = 'py'+(''.join(str(uuid.uuid4()).split('-')))
         app_config = AppConfig()
         _log_file = (app_config.LOG_FILE if hasattr(app_config, 'LOG_FILE') else None) if log_file is None else log_file
         _log_level = app_config.LOG_LEVEL if log_level is None else log_level
         self._max_threads = app_config.MAX_THREADS if max_threads is None else max_threads
         self.network_connector = app_config.NETWORK_CONNECTOR if network_connector is None else network_connector
-        api_key_label = app_config.NETWORK_API_KEY_LABEL
-        api_key = app_config.NETWORK_API_KEY if network_api_key is None else network_api_key
+
         self.work_dir = app_config.WORK_DIRECTORY if work_dir is None else work_dir
         self.log = LoggingService(log_dir=self.util.normalize_path(self.work_dir + "/log"),
                                   log_file=_log_file,
                                   log_level=_log_level).get_logger()
         self._loop = asyncio.new_event_loop()
-        self._cloud = NetworkConnector(self, self._loop, api_key_label, api_key, self.network_connector+"/"+self.origin)
+        my_api_key = app_config.API_KEY if api_key is None else api_key
+        self._cloud = NetworkConnector(self, self._loop, my_api_key, self.network_connector, self.origin)
         self._function_queues = dict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
         self.log.info("Concurrent thread pool size = "+str(self._max_threads))
@@ -317,7 +320,7 @@ class Platform:
         self._throttle = Throttle(self.util.normalize_path(test_dir + "/to_be_deleted"), log=self.log)
         self._seq = 0
         self.util.cleanup_dir(test_dir)
-        self.log.info("Estimated processing rate is "+format(self._throttle.get_tps(), ',d')
+        self.log.debug("Estimated processing rate is "+format(self._throttle.get_tps(), ',d')
                       + " events per second for this computer")
         self.running = True
 
@@ -374,11 +377,11 @@ class Platform:
             self._function_queues[route] = {'queue': queue, 'private': is_private, 'instances': 1}
             ServiceQueue(self._loop, self._executor, queue, route, user_function, -1)
         # advertise the new route to the network
-        if self._cloud.is_connected() and not is_private:
+        if self._cloud.is_ready() and not is_private:
             self._cloud.send_payload({'type': 'add', 'route': route})
 
-    def is_cloud_connected(self):
-        return self._cloud.is_connected()
+    def cloud_ready(self):
+        return self._cloud.is_ready()
 
     def release(self, route: str) -> None:
         # this will un-register a route
@@ -387,7 +390,7 @@ class Platform:
         if route not in self._function_queues:
             raise ValueError("route "+route+" not found")
         # advertise the deleted route to the network
-        if self._cloud.is_connected() and self.route_is_private(route):
+        if self._cloud.is_ready() and self.route_is_private(route):
             self._cloud.send_payload({'type': 'remove', 'route': route})
         self._remove_route(route)
 

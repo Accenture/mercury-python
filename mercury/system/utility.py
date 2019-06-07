@@ -107,9 +107,10 @@ class Utility:
             return False
 
     @staticmethod
-    def validate_service_name(route: str):
-        if not isinstance(route, str):
+    def validate_service_name(name: str, po: bool = False):
+        if not isinstance(name, str):
             raise ValueError("route must be str")
+        route = name[0:name.index('@')] if po and '@' in name else name
         if route.startswith('.'):
             raise ValueError("route name must not start with period")
         if route.startswith('_'):

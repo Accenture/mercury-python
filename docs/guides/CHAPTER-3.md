@@ -70,6 +70,10 @@ Note that you can programmatically `register` and `release` a function at run-ti
 
 If you create the functions at run-time, please remember to release the functions when processing is completed to avoid wasting system resources.
 
+Another approach is to use the `ObjectStreamIO` class to create a new stream, to write and to read from the stream.
+
+To signal that the stream is completed, you can send a `EOF` event to the stream. The reader is a generator and this EOF event will stop the iterator. Streams consume resources. Therefore, please remember to close the stream when finish using it.
+
 ### Broadcast
 
 Broadcast is the easiest way to do "pub/sub". To broadcast an event to multiple application instances, use the `broadcast` method.
@@ -105,6 +109,43 @@ try:
 except TimeoutError as e:
     print("Exception: ", str(e))
 ```
+
+
+### Pub/Sub for store-n-forward event streaming
+
+Native Pub/Sub will be automatically enabled if the underlying cloud connector supports it. e.g. Kafka.
+
+Mercury provides real-time inter-service event streaming and you do not need to deal with low-level messaging.
+
+However, if you want to do store-n-forward pub/sub for certain use cases, you may use the `PubSub` class.
+Following are some useful pub/sub API:
+
+```
+def feature_enabled()
+def create_topic(topic: str)
+def delete_topic(topic: str)
+def publish(topic: str, headers: dict = None, body: any = None)
+def subscribe(self, topic: str, route: str, parameters: list = None)
+def unsubscribe(self, topic: str, route: str)
+def exists(topic: str) throws IOException;
+def list_topics()
+
+```
+Some pub/sub engine would require additional parameters when subscribing a topic. For Kafka, you must provide the following parameters
+
+1. clientId
+2. groupId
+3. optional read offset pointer
+
+If the offset pointer is not given, Kafka will position the read pointer to the latest when the clientId and groupId are first seen.
+Thereafter, Kafka will remember the read pointer for the groupId and resume read from the last read pointer.
+
+As a result, for proper subscription, you must create the topic first and then provide a route to a function to subscribe to the topic before publishing anything to the topic.
+
+To read the event stream of a topic from the beginning, you can set offset to "0".
+
+The system encapsulates the headers and body (aka payload) in an event envelope so that you do not need to do serialization yourself.
+The payload can be a dict, bool, str, int or float.
 
 ### Check if a target service is available
 

@@ -47,7 +47,7 @@ class PostOffice:
         self.platform.send_event(event, True)
 
     def send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None:
-        self.util.validate_service_name(route)
+        self.util.validate_service_name(route, True)
         if headers is None and body is None:
             raise ValueError('Unable to send because both headers and body are missing')
         event = EventEnvelope().set_to(route)
@@ -68,7 +68,7 @@ class PostOffice:
     def request(self, route: str, timeout_seconds: float,
                 headers: dict = None, body: any = None,
                 correlation_id: str = None) -> EventEnvelope:
-        self.util.validate_service_name(route)
+        self.util.validate_service_name(route, True)
         if headers is None and body is None:
             raise ValueError('Unable to make RPC call because both headers and body are missing')
         timeout_value = self.util.get_float(timeout_seconds)
@@ -92,7 +92,7 @@ class PostOffice:
     def exists(self, route: str):
         if self.platform.has_route(route):
             return True
-        if self.platform.is_cloud_connected():
+        if self.platform.cloud_ready():
             result = self.request('system.service.query', 8.0, headers={'type': 'find', 'route': route})
             if isinstance(result, EventEnvelope):
                 if result.get_body() is not None:

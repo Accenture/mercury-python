@@ -23,11 +23,15 @@ from mercury.system.singleton import Singleton
 class AppConfig:
 
     #
-    # network gateway websocket address
+    # Normally, language connector should be a sidecar in the same memory space.
+    # Therefore the url is ws://127.0.0.1:8090/ws/lang
     #
-    NETWORK_CONNECTOR = "ws://127.0.0.1:8090/ws/lang"
-    NETWORK_API_KEY_LABEL = "lang_api_key"
-    NETWORK_API_KEY = "cb21eba8-3dcd-4553-8ef6-165256be5b4b"
+    # In case multiple python applications want to share the same set of
+    # language connectors, you may change the NETWORK_CONNECTOR to a list of
+    # comma separated URLs
+    #
+    NETWORK_CONNECTOR = 'ws://127.0.0.1:8090/ws/lang'
+    API_KEY = 'cb21eba8-3dcd-4553-8ef6-165256be5b4b'
     #
     # temporary work directory
     # (for cloud native apps, local file system must be considered transient)

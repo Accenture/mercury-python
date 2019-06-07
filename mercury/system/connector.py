@@ -37,22 +37,33 @@ class NetworkConnector:
     SERVER_CONFIG = "system.config"
     MAX_PAYLOAD = "max.payload"
 
-    def __init__(self, platform, loop, api_key_label, api_key, url):
-        self.url = url
-        self.api_key_label = api_key_label
-        self.api_key = api_key
+    def __init__(self, platform, loop, api_key, url_list, origin):
         self.platform = platform
         self._loop = loop
+        self.api_key = api_key
         self.log = platform.log
         self.normal = True
         self.started = False
+        self.ready = False
         self.ws = None
         self.close_code = 1000
         self.close_message = 'OK'
         self.last_active = time.time()
         self.max_ws_payload = 32768
         self.util = Utility()
+        self.urls = self.util.multi_split(url_list, ', ')
+        self.next_url = 1
+        self.origin = origin
         self.cache = SimpleCache(loop, self.log, timeout_seconds=30)
+
+    def _get_next_url(self):
+        # index starts from 1
+        return self.urls[self.next_url - 1]
+
+    def _skip_url(self):
+        self.next_url += 1
+        if self.next_url > len(self.urls):
+            self.next_url = 1
 
     def send_keep_alive(self):
         message = "Keep-Alive "+self.util.get_iso_8601(time.time(), show_ms=True)
@@ -92,11 +103,26 @@ class NetworkConnector:
             self.platform.send_event(envelope)
 
     def get_server_config(self, headers: dict, body: any):
-        if 'type' in headers and headers['type'] == 'system.config' and isinstance(body, dict):
-            # set max payload as per server instruction
-            if self.MAX_PAYLOAD in body:
-                self.max_ws_payload = body[self.MAX_PAYLOAD]
-                self.log.info('Automatic segmentation when event payload exceeds '+format(self.max_ws_payload, ',d'))
+        if 'type' in headers:
+            # at this point, login is successful
+            if headers['type'] == 'system.config' and isinstance(body, dict):
+                if self.MAX_PAYLOAD in body:
+                    self.max_ws_payload = body[self.MAX_PAYLOAD]
+                    self.log.info('Automatic segmentation when event payload exceeds '+format(self.max_ws_payload, ',d'))
+                # advertise public routes to language connector
+                for r in self.platform.get_routes('public'):
+                    self.send_payload({'type': 'add', 'route': r})
+                # tell server that I am ready
+                self.send_payload({'type': 'ready'})
+            # server acknowledges my ready signal
+            if headers['type'] == 'ready':
+                self.ready = True
+                self.log.info('Ready')
+                # redo subscription if any
+                if self.platform.has_route('pub.sub.sync'):
+                    event = EventEnvelope()
+                    event.set_to('pub.sub.sync').set_header('type', 'subscription_sync')
+                    self.platform.send_event(event)
 
     def alert(self, headers: dict, body: any):
         if 'status' in headers:
@@ -116,12 +142,11 @@ class NetworkConnector:
         """
         if self.ws and 'type' in headers:
             if headers['type'] == 'open':
-                self.log.info("Login with "+self.api_key_label)
-                self.send_payload({'type': 'login', self.api_key_label: self.api_key})
-                for r in self.platform.get_routes('public'):
-                    self.send_payload({'type': 'add', 'route': r})
-
+                self.ready = False
+                self.log.info("Login to language connector")
+                self.send_payload({'type': 'login', 'api_key': self.api_key})
             if headers['type'] == 'close':
+                self.ready = False
                 self.log.info("Closed")
             if headers['type'] == 'text':
                 self.log.debug(body)
@@ -196,10 +221,13 @@ class NetworkConnector:
     def is_connected(self):
         return self.started and self.ws
 
+    def is_ready(self):
+        return self.is_connected() and self.ready
+
     def start_connection(self):
         async def worker():
             while self.normal:
-                await self._loop.create_task(self.connection_handler())
+                await self._loop.create_task(self.connection_handler(self._get_next_url()))
                 # check again because the handler may have run for a while
                 if self.normal:
                     # retry connection in 5 seconds
@@ -233,14 +261,15 @@ class NetworkConnector:
             self.cache.stop()
         self._loop.call_soon_threadsafe(closing, code, reason)
 
-    async def connection_handler(self):
+    async def connection_handler(self, url):
         try:
             async with aiohttp.ClientSession(loop=self._loop, timeout=aiohttp.ClientTimeout(total=10)) as session:
-                self.ws = await session.ws_connect(self.url)
+                full_path = url + '/' + self.origin
+                self.ws = await session.ws_connect(full_path)
                 envelope = EventEnvelope()
                 envelope.set_to(self.INCOMING_WS_PATH).set_header('type', 'open')
                 self.platform.send_event(envelope)
-                self.log.info("Connected to "+self.url)
+                self.log.info("Connected to " + full_path)
                 closed = False
                 self.last_active = time.time()
 
@@ -308,4 +337,5 @@ class NetworkConnector:
                         self.platform.send_event(envelope)
 
         except aiohttp.ClientConnectorError:
-            self.log.warn("Unreachable "+self.url)
+            self._skip_url()
+            self.log.warn("Unreachable "+url)
