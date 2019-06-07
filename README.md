@@ -99,7 +99,7 @@ You may then register your microservices like this:
 
 `platform.register(route: str, user_function: any, total_instances: int, is_private: bool = False)`
 
-```
+```python
 from microservices.platform import Platform
 
 def hello(headers: dict, body: any, instance: int):
@@ -126,7 +126,7 @@ You may make a RPC service call like this. Note that everything is non-blocking 
 
 RPC uses a temporary inbox service to simulate a synchronous request-response.
 
-```
+```python
 #
 # The signature of the request method is:
 #    request(self, route: str, timeout_seconds: float,
@@ -150,7 +150,7 @@ except TimeoutError as e:
 
 You can make a "drop-n-forget" asynchronous request to a service like this:
 
-```
+```python
 #
 # The signature of the send method is:
 # send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None
