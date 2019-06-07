@@ -30,7 +30,7 @@ request(self, route: str, timeout_seconds: float,
                 headers: dict = None, body: any = None,
                 correlation_id: str = None) -> EventEnvelope
 
-e.g.
+# example
 result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
 print(result.get_body())
 
@@ -81,7 +81,7 @@ Broadcast is the easiest way to do "pub/sub". To broadcast an event to multiple 
 ```python
 broadcast(self, route: str, headers: dict = None, body: any = None) -> None
 
-e.g.
+# example
 po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
 
 ```
@@ -93,7 +93,6 @@ You can perform join-n-fork RPC calls using a parallel version of the request, `
 ```python
 parallel_request(self, events: list, timeout_seconds: float) -> list
 
-e.g.
 # illustrate parallel RPC requests
 event_list = list()
 event_list.append(EventEnvelope().set_to('hello.world.1').set_body("first request"))
@@ -154,7 +153,7 @@ To check if a target service is available, you can use the `exists` method.
 ```python
 exists(self, route: str)
 
-e.g.
+# example
 if po.exists("hello.world"):
     # do something
 
