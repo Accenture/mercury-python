@@ -91,9 +91,12 @@ def main():
             platform.stop()
             return
 
-    # Demonstrate broadcast feature:
+    # Demonstrate broadcast feature
     # the event will be broadcast to multiple application instances that serve the same route
     po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
+
+    # demonstrate deferred delivery
+    po.send_later('hello.world.1', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
 
     #
     # this will keep the main thread running in the background

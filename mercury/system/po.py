@@ -28,6 +28,8 @@ class PostOffice:
     Convenient class for making RPC, async and callback.
     """
 
+    DEFERRED_DELIVERY = 'system.deferred.delivery'
+
     def __init__(self):
         self.platform = Platform()
         self.util = Utility()
@@ -46,6 +48,23 @@ class PostOffice:
             event.set_body(body)
         self.platform.send_event(event, True)
 
+    def send_later(self, route: str, headers: dict = None, body: any = None, seconds: float = 1.0) -> None:
+        self.util.validate_service_name(route, True)
+        if isinstance(seconds, float) or isinstance(seconds, int):
+            relay = dict()
+            relay['route'] = route
+            if headers is not None:
+                relay_headers = dict()
+                for h in headers:
+                    relay_headers[str(h)] = str(headers[h])
+                relay['headers'] = relay_headers
+            if body is not None:
+                relay['body'] = body
+            relay['seconds'] = seconds
+            self.send(self.DEFERRED_DELIVERY, body=relay)
+        else:
+            raise ValueError('delay in seconds must be int or float')
+
     def send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None:
         self.util.validate_service_name(route, True)
         if headers is None and body is None:
@@ -55,7 +74,7 @@ class PostOffice:
             if not isinstance(headers, dict):
                 raise ValueError('headers must be dict')
             for h in headers:
-                event.set_header(h, str(headers[h]))
+                event.set_header(str(h), str(headers[h]))
         if body is not None:
             event.set_body(body)
         if reply_to is not None:

@@ -24,6 +24,8 @@ from mercury.system.utility import Utility
 
 class ObjectStreamIO:
 
+    STREAM_IO_MANAGER = 'object.streams.io'
+
     def __init__(self, route: str = None):
         self.platform = Platform()
         self.po = PostOffice()
@@ -43,7 +45,7 @@ class ObjectStreamIO:
             if self.route is None:
                 raise IOError('Invalid stream route')
         else:
-            result = self.po.request('system.streams.manager', 6.0, headers={'type': 'create'})
+            result = self.po.request(self.STREAM_IO_MANAGER, 6.0, headers={'type': 'create'})
             if isinstance(result, EventEnvelope) and isinstance(result.get_body(), str) \
                     and result.get_status() == 200:
                 name: str = result.get_body()
@@ -104,7 +106,7 @@ class ObjectStreamIO:
         return self.output_closed
 
     def get_local_streams(self):
-        result = self.po.request('system.streams.manager', 6.0, headers={'type': 'query'})
+        result = self.po.request(self.STREAM_IO_MANAGER, 6.0, headers={'type': 'query'})
         if isinstance(result, EventEnvelope) and isinstance(result.get_body(), dict) \
                 and result.get_status() == 200:
             return result.get_body()
