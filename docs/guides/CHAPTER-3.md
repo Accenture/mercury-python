@@ -48,6 +48,14 @@ send(self, route: str, headers: dict = None, body: any = None, reply_to: str = N
 
 You may put key-value pairs in the "headers" field for holding parameters. For message payload, put Python primitive or dictionary in the "body" field.
 
+### Deferred delivery
+
+```python
+send_later(self, route: str, headers: dict = None, body: any = None, seconds: float = 1.0) -> None
+```
+
+Minimum time is 0.1 seconds and maximum time is 24 hours. The deferred delivery service runs in the language connector. Without the language connector, this method will raise exception.
+
 ### Call-back
 
 You can register a call back function and uses its route name as the "reply_to" address in the send method.
