@@ -68,7 +68,9 @@ To pass a list of stepwise targets, you may send the list as a parameter. Each f
 
 ### Streaming
 
-You can use streams for functional programming. One approach is to use a singleton function.
+You can use streams for functional programming. There are two ways to do streaming.
+
+1. Singleton functions
 
 To create a singleton, you can set `instances` of the calling and called functions to 1. When you send events from the calling function to the called function, the platform guarantees that the event sequencing of the data stream.
 
@@ -78,9 +80,44 @@ Note that you can programmatically `register` and `release` a function at run-ti
 
 If you create the functions at run-time, please remember to release the functions when processing is completed to avoid wasting system resources.
 
-Another approach is to use the `ObjectStreamIO` class to create a new stream, to write and to read from the stream.
+2. Object stream
 
-To signal that the stream is completed, you can send a `EOF` event to the stream. The reader is a generator and this EOF event will stop the iterator. Streams consume resources. Therefore, please remember to close the stream when finish using it.
+To do object streaming, you can use the ObjectStreamIO to create a new stream or open an existing stream.
+Then, you can write to the stream using the `write` method and read from the stream using the `read` generator.
+
+For the producer, you can use the `send_eof` to signal that that there are no more events to the stream.
+
+For the consumer, When you detect the end of stream, you can close the input stream to release the stream and all resources associated with it.
+
+I/O stream consumes resources and thus you must close the input stream at the end of stream processing.
+The system will automatically close the stream upon an expiry timer that you provide when a new stream is created.
+
+The following sample code demonstrates this use case.
+
+```python
+from mercury.system.objstream import ObjectStreamIO
+# create a new stream with 60 seconds inactivity expiry
+out = ObjectStreamIO(expiry_seconds=60)
+out.write('hello world 1')
+out.write('hello world 2')
+# signal EOF so the input stream generator will finish
+out.send_eof()
+
+# the producer should obtain the stream_id and send it to the consumer
+stream_id = out.get_route()
+
+# the consumer will open the existing stream with the stream_id
+in = ObjectStreamIO(route=stream_id, expiry_seconds=60)
+try:
+    # set a 10 seconds read timeout for the input stream generator
+    for i in in.read(10):
+        print(i)
+except TimeoutError as te:
+    # you may retry reading from the generator again if you want to wait for more input
+
+# close and release the stream
+in.close()
+```
 
 ### Broadcast
 

@@ -26,7 +26,7 @@ class ObjectStreamIO:
 
     STREAM_IO_MANAGER = 'object.streams.io'
 
-    def __init__(self, route: str = None):
+    def __init__(self, route: str = None, expiry_seconds: int = 1800):
         self.platform = Platform()
         self.po = PostOffice()
         self.util = Utility()
@@ -38,14 +38,19 @@ class ObjectStreamIO:
         self.output_closed = False
 
         if route is not None:
+            # open an existing stream
             if isinstance(route, str):
                 name: str = route
                 if name.startswith('stream.') and '@' in name:
                     self.route = name
             if self.route is None:
-                raise IOError('Invalid stream route')
+                raise ValueError('Invalid stream route')
         else:
-            result = self.po.request(self.STREAM_IO_MANAGER, 6.0, headers={'type': 'create'})
+            # create a new stream
+            if not isinstance(expiry_seconds, int):
+                raise ValueError('expiry_seconds must be int')
+            result = self.po.request(self.STREAM_IO_MANAGER, 6.0,
+                                     headers={'type': 'create', 'expiry_seconds': expiry_seconds})
             if isinstance(result, EventEnvelope) and isinstance(result.get_body(), str) \
                     and result.get_status() == 200:
                 name: str = result.get_body()
@@ -64,12 +69,15 @@ class ObjectStreamIO:
         if self.input_stream:
             return self.input_stream()
 
+        if isinstance(timeout_seconds, int):
+            timeout_seconds = float(timeout_seconds)
+
         if isinstance(timeout_seconds, float):
             # minimum read timeout is one second
             if timeout_seconds < 1.0:
                 timeout_seconds = 1.0
         else:
-            raise ValueError('Read timeout must be float')
+            raise ValueError('Read timeout must be float or int')
 
         def reader():
             while not self.eof:

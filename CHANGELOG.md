@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## Version 1.12.3, 6/19/2019
+## Version 1.12.3, 6/21/2019
 
 ### Added
 
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 2. ObjectStreamIO, a convenient wrapper class, to provide event stream I/O API.
 3. Object stream feature is now a standard feature instead of optional.
 4. Deferred delivery example in demo.py
+5. Add inactivity expiry timer to ObjectStreamIO so that house-keeper can clean up resources that are idle
 
 ### Removed
 
