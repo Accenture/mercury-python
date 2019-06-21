@@ -97,26 +97,26 @@ The following sample code demonstrates this use case.
 ```python
 from mercury.system.objstream import ObjectStreamIO
 # create a new stream with 60 seconds inactivity expiry
-out = ObjectStreamIO(expiry_seconds=60)
-out.write('hello world 1')
-out.write('hello world 2')
+producer = ObjectStreamIO(expiry_seconds=60)
+producer.write('hello world 1')
+producer.write('hello world 2')
 # signal EOF so the input stream generator will finish
-out.send_eof()
+producer.send_eof()
 
 # the producer should obtain the stream_id and send it to the consumer
-stream_id = out.get_route()
+stream_id = producer.get_route()
 
 # the consumer will open the existing stream with the stream_id
-in = ObjectStreamIO(route=stream_id, expiry_seconds=60)
+consumer = ObjectStreamIO(route=stream_id, expiry_seconds=60)
 try:
     # set a 10 seconds read timeout for the input stream generator
-    for i in in.read(10):
+    for i in consumer.read(10):
         print(i)
 except TimeoutError as te:
     # you may retry reading from the generator again if you want to wait for more input
 
 # close and release the stream
-in.close()
+consumer.close()
 ```
 
 ### Broadcast
