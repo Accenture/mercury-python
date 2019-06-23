@@ -347,7 +347,7 @@ class Platform:
             self.log.info("To stop this application, press Control-C")
             while self.running:
                 time.sleep(0.1)
-            self.log.info("Bye")
+            # exit forever loop and ask platform to end event loop
             self.stop()
         else:
             raise ValueError('Unable to register Control-C and KILL signals because this is not the main thread')
@@ -562,29 +562,31 @@ class Platform:
         # to allow user application to invoke the "stop" method from a registered service,
         # the system must start a new thread so that the service can finish first.
         #
-        threading.Thread(target=self._bye).start()
-
-    def _bye(self):
         if not self.stopped:
+            self.log.info('Bye')
             # guarantee this stop function to execute only once
             self.stopped = True
             # exit the run_forever loop if any
             self.running = False
+            # in case the calling function has just send an event asynchronously
+            time.sleep(0.5)
+            threading.Thread(target=self._bye).start()
 
-            def stopping():
-                route_list = []
-                for route in self.get_routes():
-                    route_list.append(route)
-                for route in route_list:
-                    self._remove_route(route)
-                self._loop.create_task(full_stop())
+    def _bye(self):
+        def stopping():
+            route_list = []
+            for route in self.get_routes():
+                route_list.append(route)
+            for route in route_list:
+                self._remove_route(route)
+            self._loop.create_task(full_stop())
 
-            async def full_stop():
-                # give time for registered services to stop
-                await asyncio.sleep(1.0)
-                queue_dir = self.util.normalize_path(self.work_dir + "/queues/" + self.get_origin())
-                self.util.cleanup_dir(queue_dir)
-                self._loop.stop()
+        async def full_stop():
+            # give time for registered services to stop
+            await asyncio.sleep(1.0)
+            queue_dir = self.util.normalize_path(self.work_dir + "/queues/" + self.get_origin())
+            self.util.cleanup_dir(queue_dir)
+            self._loop.stop()
 
-            self._cloud.close_connection(1000, 'bye', stop_engine=True)
-            self._loop.call_soon_threadsafe(stopping)
+        self._cloud.close_connection(1000, 'bye', stop_engine=True)
+        self._loop.call_soon_threadsafe(stopping)
