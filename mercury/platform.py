@@ -558,6 +558,13 @@ class Platform:
         self._loop.run_in_executor(self._executor, self._cloud.start_connection)
 
     def stop(self):
+        #
+        # to allow user application to invoke the "stop" method from a registered service,
+        # the system must start a new thread so that the service can finish first.
+        #
+        threading.Thread(target=self._bye).start()
+
+    def _bye(self):
         if not self.stopped:
             # guarantee this stop function to execute only once
             self.stopped = True
