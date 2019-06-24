@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## Version 1.12.3, 6/21/2019
+## Version 1.12.4, 6/24/2019
 
 ### Added
 
@@ -23,7 +23,8 @@ N/A
 
 ### Changed
 
-N/A
+Bug fix - update EventEnvelope with missing field "extra" which is used as additional routing information for language packs.
+This allows correct RPC routing between python applications via the language connector.
 
 ---
 
