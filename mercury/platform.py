@@ -239,6 +239,8 @@ class WorkerQueue:
             response = EventEnvelope().set_to(reply_to)
             if not error_code:
                 response.set_exec_time((end - begin) * 1000)
+            if 'extra' in event:
+                response.set_extra(event['extra'])
             if 'cid' in event:
                 response.set_correlation_id(event['cid'])
             if isinstance(result, EventEnvelope):

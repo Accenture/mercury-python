@@ -44,6 +44,7 @@ class EventEnvelope:
         self.to = None
         self.sender = None
         self.reply_to = None
+        self.extra = None
         self.correlation_id = None
         self.broadcast = False
         self.exec_time = -1.0
@@ -92,6 +93,16 @@ class EventEnvelope:
 
     def get_reply_to(self):
         return self.reply_to
+
+    def set_extra(self, extra: str):
+        if isinstance(extra, str):
+            self.extra = extra
+        else:
+            raise ValueError('extra must be str')
+        return self
+
+    def get_extra(self):
+        return self.extra
 
     def set_correlation_id(self, correlation_id: str):
         self.correlation_id = correlation_id if isinstance(correlation_id, str) else str(correlation_id)
@@ -153,6 +164,8 @@ class EventEnvelope:
             result['body'] = self.body
         if self.reply_to:
             result['reply_to'] = self.reply_to
+        if self.extra:
+            result['extra'] = self.extra
         if self.correlation_id:
             result['cid'] = self.correlation_id
         if self.broadcast:
@@ -178,6 +191,8 @@ class EventEnvelope:
             self.body = data['body']
         if 'reply_to' in data and isinstance(data['reply_to'], str):
             self.reply_to = data['reply_to']
+        if 'extra' in data and isinstance(data['extra'], str):
+            self.extra = data['extra']
         if 'cid' in data:
             self.correlation_id = data['cid']
         if 'status' in data:
