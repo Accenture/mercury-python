@@ -206,7 +206,4 @@ This service discovery process is instantaneous using distributed routing table.
 
 ```
 
-
-| Chapter-4                                 | Home                                     |
-| :----------------------------------------:|:----------------------------------------:|
-| [Upcoming features](CHAPTER-4.md)         | [Table of Contents](TABLE-OF-CONTENTS.md)|
+[Table of Contents](TABLE-OF-CONTENTS.md)

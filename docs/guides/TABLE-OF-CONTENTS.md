@@ -10,5 +10,3 @@ Welcome to Mercury, the open sources project to make software easy to write, tes
 
 [Chapter 3 - Post Office API](CHAPTER-3.md)
 
-[Chapter 4 - Upcoming features](CHAPTER-4.md)
-
