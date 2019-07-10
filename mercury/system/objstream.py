@@ -97,11 +97,22 @@ class ObjectStreamIO:
         self.input_stream = reader
         return reader()
 
-    def write(self, payload: any):
+    def write(self, payload: any, timeout_seconds: float = 10.0):
+        if isinstance(timeout_seconds, int):
+            timeout_seconds = float(timeout_seconds)
+
+        if isinstance(timeout_seconds, float):
+            # minimum write timeout is five second
+            if timeout_seconds < 5.0:
+                timeout_seconds = 5.0
+        else:
+            raise ValueError('Write timeout must be float or int')
+
         if not self.output_closed:
             if isinstance(payload, dict) or isinstance(payload, str) or isinstance(payload, bool) \
                     or isinstance(payload, int) or isinstance(payload, float):
-                self.po.send(self.route, headers={'type': 'write'}, body=payload)
+                # for orderly write, use RPC request to guarantee that payload is written into the object stream
+                self.po.request(self.route, timeout_seconds, headers={'type': 'write'}, body=payload)
             else:
                 raise ValueError('payload must be dict, str, bool, int or float')
 
