@@ -1,4 +1,4 @@
-# Post Office API
+﻿# Post Office API
 
 Post Office is a platform abstraction layer that routes events among functions. It maintains a distributed routing table to ensure that service discovery is instantaneous,
 
@@ -110,7 +110,7 @@ stream_id = producer.get_route()
 consumer = ObjectStreamIO(route=stream_id, expiry_seconds=60)
 try:
     # set a 10 seconds read timeout for the input stream generator
-    for i in consumer.read(10):
+    for i in consumer.reaed(10):
         print(i)
 except TimeoutError as te:
     # you may retry reading from the generator again if you want to wait for more input
@@ -196,11 +196,17 @@ The payload can be a dict, bool, str, int or float.
 To check if a target service is available, you can use the `exists` method.
 
 ```python
-exists(self, route: str)
+exists(self, routes: any)
 
-# example
+# input can be a route name or a list of routes
+# it will return true only when all routes are available
+# examples
+
 if po.exists("hello.world"):
     # do something
+
+if po.exists(['hello.math', 'v1.diff.equation']):
+    # do other things
 
 ```
 This service discovery process is instantaneous using distributed routing table.

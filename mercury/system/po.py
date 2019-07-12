@@ -108,12 +108,29 @@ class PostOffice:
     def parallel_request(self, events: list, timeout_seconds: float) -> list:
         return self.platform.parallel_request(events, timeout_seconds)
 
-    def exists(self, route: str):
-        if self.platform.has_route(route):
-            return True
-        if self.platform.cloud_ready():
-            result = self.request('system.service.query', 8.0, headers={'type': 'find', 'route': route})
-            if isinstance(result, EventEnvelope):
-                if result.get_body() is not None:
-                    return result.get_body()
+    def exists(self, routes: any):
+        if isinstance(routes, str):
+            single_route = routes
+            if self.platform.has_route(single_route):
+                return True
+            if self.platform.cloud_ready():
+                result = self.request('system.service.query', 8.0, headers={'type': 'find', 'route': single_route})
+                if isinstance(result, EventEnvelope):
+                    if result.get_body() is not None:
+                        return result.get_body()
+        if isinstance(routes, list):
+            if len(routes) > 0:
+                remote_routes = list()
+                for r in routes:
+                    if not self.platform.has_route(r):
+                        remote_routes.append(r)
+                if len(remote_routes) == 0:
+                    return True
+                if self.platform.cloud_ready():
+                    # tell service query to use the route list in body
+                    result = self.request('system.service.query', 8.0,
+                                          headers={'type': 'find', 'route': '*'}, body=routes)
+                    if isinstance(result, EventEnvelope):
+                        if result.get_body() is not None:
+                            return result.get_body()
         return False
