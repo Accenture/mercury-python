@@ -328,7 +328,7 @@ class Platform:
             raise RuntimeError("Requires python 3.6 and above. Actual: "+python_version)
 
         self.util = Utility()
-        self.origin = 'p'+(''.join(str(uuid.uuid4()).split('-')))
+        self.origin = 'py'+(''.join(str(uuid.uuid4()).split('-')))
         config = AppConfig()
         my_log_file = (config.LOG_FILE if hasattr(config, 'LOG_FILE') else None) if log_file is None else log_file
         my_log_level = config.LOG_LEVEL if log_level is None else log_level
