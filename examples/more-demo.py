@@ -42,27 +42,12 @@ def hello(headers: dict, body: any, instance: int):
     return result
 
 
-def my_trace_processor(headers: dict, body: any):
-    #
-    # demonstrate user defined trace processor
-    # In this example, it just print onto the console.
-    # For production, you should save the trace and metrics into a database or search engine.
-    #
-    print("TRACE ", str(headers), str(body))
-    return body
-
-
 def main():
     platform = Platform()
     # you can register a method of a class
     platform.register('hello.world.1', Hi().hello, 5)
     # or register a function
     platform.register('hello.world.2', hello, 10)
-
-    # this shows that we can register another route name for the same function
-    platform.register('hello.world', hello, 5)
-    # optionally, we can register a user defined trace processor
-    platform.register('distributed.trace.processor', my_trace_processor, 1)
 
     po = PostOffice()
     # demonstrate sending asynchronously. Note that key-values in the headers will be encoded as strings
