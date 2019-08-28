@@ -19,68 +19,21 @@
 import time
 
 from mercury.platform import Platform
-from mercury.system.models import EventEnvelope
-from mercury.system.po import PostOffice
-
-
-class Hi:
-    MY_NAME = 'Hi'
-
-    def hello(self, headers: dict, body: any):
-        # singleton function signature (headers: dict, body: any)
-        Platform().log.info(self.MY_NAME+" "+str(headers) + ", " + str(body))
-        return body
 
 
 def hello(headers: dict, body: any, instance: int):
-    # regular function signature (headers: dict, body: any, instance: int)
-    Platform().log.info("#"+str(instance)+" "+str(headers)+" body="+str(body))
-    # to set status, headers and body, return them in an event envelope
-    result = EventEnvelope().set_header('hello', 'world').set_body(body)
-    for h in headers:
-        result.set_header(h, headers[h])
-    return result
+    # just print out the input onto the console
+    print("#"+str(instance), "GOT", "headers =", str(headers), "body =", str(body))
+    # return the result as a dict so it can be rendered as JSON, XML or HTML automatically by the REST endpoint
+    return {'instance': instance, 'headers': headers, 'body': body}
 
 
 def main():
     platform = Platform()
-    # you can register a method of a class
-    platform.register('hello.world.1', Hi().hello, 5)
-    # or register a function
-    platform.register('hello.world.2', hello, 10)
+    # this shows that we can register a route name for a function
+    platform.register('hello.world', hello, 10)
 
-    po = PostOffice()
-    # send asynchronously. Note that key-values in the headers will be encoded as str
-    po.send('hello.world.1', headers={'one': 1}, body='hello world one')
-    po.send('hello.world.2', headers={'two': 2}, body='hello world two')
-
-    # demonstrate a RPC request
-    try:
-        result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
-        if isinstance(result, EventEnvelope):
-            print('Received RPC response:')
-            print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-                  ", STATUS =",  result.get_status(),
-                  ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
-    except TimeoutError as e:
-        print("Exception: ", str(e))
-
-    # illustrate parallel RPC requests
-    event_list = list()
-    event_list.append(EventEnvelope().set_to('hello.world.1').set_body("first request"))
-    event_list.append(EventEnvelope().set_to('hello.world.2').set_body("second request"))
-    try:
-        result = po.parallel_request(event_list, 2.0)
-        if isinstance(result, list):
-            print('Received', len(result), 'RPC responses:')
-            for res in result:
-                print("HEADERS =", res.get_headers(), ", BODY =", res.get_body(),
-                      ", STATUS =",  res.get_status(),
-                      ", EXEC =", res.get_exec_time(), ", ROUND TRIP =", res.get_round_trip(), "ms")
-    except TimeoutError as e:
-        print("Exception: ", str(e))
-
-    # connect to the network
+    # Once it connects to the network, it is ready to serve requests
     platform.connect_to_cloud()
     # wait until connected
     while not platform.cloud_ready():
@@ -90,13 +43,6 @@ def main():
             # this allows us to stop the application while waiting for cloud connection
             platform.stop()
             return
-
-    # Demonstrate broadcast feature
-    # the event will be broadcast to multiple application instances that serve the same route
-    po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
-
-    # demonstrate deferred delivery
-    po.send_later('hello.world.1', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
 
     #
     # this will keep the main thread running in the background
