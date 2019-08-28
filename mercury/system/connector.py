@@ -22,7 +22,6 @@ import asyncio
 import aiohttp
 import msgpack
 
-from mercury.resources.constants import AppConfig
 from mercury.system.models import EventEnvelope
 from mercury.system.utility import Utility
 from mercury.system.cache import SimpleCache
@@ -39,8 +38,9 @@ class NetworkConnector:
     MAX_PAYLOAD = "max.payload"
     DISTRIBUTED_TRACING = "distributed.tracing"
 
-    def __init__(self, platform, loop, api_key, url_list, origin):
+    def __init__(self, platform, distributed_trace, loop, api_key, url_list, origin):
         self.platform = platform
+        self._distributed_trace = distributed_trace
         self._loop = loop
         self.api_key = api_key
         self.log = platform.log
@@ -57,10 +57,6 @@ class NetworkConnector:
         self.next_url = 1
         self.origin = origin
         self.cache = SimpleCache(loop, self.log, timeout_seconds=30)
-        app_config = AppConfig()
-        self._dt_processor = app_config.DISTRIBUTED_TRACE_PROCESSOR
-        self._dt_last_check = None
-        self._dt_found = False
 
     def _get_next_url(self):
         # index starts from 1
@@ -208,21 +204,6 @@ class NetworkConnector:
             if headers['type'] == 'bytes':
                 self._send_bytes(body)
 
-    def _distributed_trace(self, event: EventEnvelope):
-        if isinstance(event, EventEnvelope):
-            self.log.info('trace=' + str(event.get_headers()) + ', annotations=' + str(event.get_body()))
-            # forward to user provided distributed trace logger if any
-            current_time = time.time()
-            if self._dt_last_check is None or current_time - self._dt_last_check > 5.0:
-                self._dt_last_check = current_time
-                self._dt_found = self.platform.exists(self._dt_processor)
-            if self._dt_found:
-                te = EventEnvelope()
-                te.set_to(self._dt_processor).set_body(event.get_body())
-                for h in event.get_headers():
-                    te.set_header(h, event.get_header(h))
-                self.platform.send_event(te)
-
     def _send_text(self, body: str):
         def send(data: str):
             async def async_send(d: str):
@@ -260,7 +241,7 @@ class NetworkConnector:
                     break
         if not self.started:
             self.started = True
-            self.platform.register(self.DISTRIBUTED_TRACING, self._distributed_trace, 1, is_private=True)
+            self.platform.register(self.DISTRIBUTED_TRACING, self._distributed_trace.logger, 1, is_private=True)
             self.platform.register(self.INCOMING_WS_PATH, self._incoming, 1, is_private=True)
             self.platform.register(self.OUTGOING_WS_PATH, self._outgoing, 1, is_private=True)
             self.platform.register(self.SYSTEM_ALERT, self._alert, 1, is_private=True)

@@ -29,6 +29,7 @@ from queue import Queue, Empty
 
 from mercury.resources.constants import AppConfig
 from mercury.system.connector import NetworkConnector
+from mercury.system.distributed_trace import DistributedTrace
 from mercury.system.diskqueue import ElasticQueue
 from mercury.system.logger import LoggingService
 from mercury.system.models import EventEnvelope, AppException, TraceInfo
@@ -327,38 +328,36 @@ class Platform:
             raise RuntimeError("Requires python 3.6 and above. Actual: "+python_version)
 
         self.util = Utility()
-        self.origin = 'py'+(''.join(str(uuid.uuid4()).split('-')))
-        app_config = AppConfig()
-        _log_file = (app_config.LOG_FILE if hasattr(app_config, 'LOG_FILE') else None) if log_file is None else log_file
-        _log_level = app_config.LOG_LEVEL if log_level is None else log_level
-        self._max_threads = app_config.MAX_THREADS if max_threads is None else max_threads
-        self.network_connector = app_config.NETWORK_CONNECTOR if network_connector is None else network_connector
-
-        self.work_dir = app_config.WORK_DIRECTORY if work_dir is None else work_dir
+        self.origin = 'p'+(''.join(str(uuid.uuid4()).split('-')))
+        config = AppConfig()
+        my_log_file = (config.LOG_FILE if hasattr(config, 'LOG_FILE') else None) if log_file is None else log_file
+        my_log_level = config.LOG_LEVEL if log_level is None else log_level
+        self._max_threads = config.MAX_THREADS if max_threads is None else max_threads
+        self.work_dir = config.WORK_DIRECTORY if work_dir is None else work_dir
         self.log = LoggingService(log_dir=self.util.normalize_path(self.work_dir + "/log"),
-                                  log_file=_log_file,
-                                  log_level=_log_level).get_logger()
+                                  log_file=my_log_file, log_level=my_log_level).get_logger()
         self._loop = asyncio.new_event_loop()
-        my_api_key = app_config.API_KEY if api_key is None else api_key
-        self._cloud = NetworkConnector(self, self._loop, my_api_key, self.network_connector, self.origin)
+        my_api_key = config.API_KEY if api_key is None else api_key
+        my_distributed_trace = DistributedTrace(self, config.DISTRIBUTED_TRACE_PROCESSOR)
+        my_connector = config.NETWORK_CONNECTOR if network_connector is None else network_connector
+        self._cloud = NetworkConnector(self, my_distributed_trace, self._loop, my_api_key, my_connector, self.origin)
         self._function_queues = dict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
         self.log.info("Concurrent thread pool = "+str(self._max_threads))
         #
-        # Before we figure out how to solve blocking file I/O, we will regular event output rate.
+        # Before we figure out how to solve blocking file I/O, we will regulate event output rate.
         #
-        test_dir = self.util.normalize_path(self.work_dir + "/test")
-        if not os.path.exists(test_dir):
-            os.makedirs(test_dir)
-        self._throttle = Throttle(self.util.normalize_path(test_dir + "/to_be_deleted"), log=self.log)
+        my_test_dir = self.util.normalize_path(self.work_dir + "/test")
+        if not os.path.exists(my_test_dir):
+            os.makedirs(my_test_dir)
+        self._throttle = Throttle(self.util.normalize_path(my_test_dir + "/to_be_deleted"), log=self.log)
         self._seq = 0
-        self.util.cleanup_dir(test_dir)
+        self.util.cleanup_dir(my_test_dir)
         self.log.debug("Estimated processing rate is "+format(self._throttle.get_tps(), ',d')
                       + " events per second for this computer")
         self.running = True
         self.stopped = False
-        # distributed trace table
-        self._trace_started = False;
+        # distributed trace sessions
         self._traces = {}
 
         # start event loop in a new thread to avoid blocking the main thread
