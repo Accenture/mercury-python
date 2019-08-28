@@ -31,7 +31,7 @@ from mercury.resources.constants import AppConfig
 from mercury.system.connector import NetworkConnector
 from mercury.system.diskqueue import ElasticQueue
 from mercury.system.logger import LoggingService
-from mercury.system.models import EventEnvelope, AppException
+from mercury.system.models import EventEnvelope, AppException, TraceInfo
 from mercury.system.singleton import Singleton
 from mercury.system.utility import Utility, FunctionType
 from mercury.system.throttle import Throttle
@@ -162,6 +162,8 @@ class ServiceQueue:
 
 class WorkerQueue:
 
+    DISTRIBUTED_TRACING = "distributed.tracing"
+
     def __init__(self, loop, executor, manager_queue, worker_queue, route, user_function, instance,
                  singleton, interceptor):
         self.platform = Platform()
@@ -171,6 +173,8 @@ class WorkerQueue:
         self.manager_queue = manager_queue
         self.worker_queue = worker_queue
         self.route = route
+        # trace all routes except ws.outgoing
+        self.tracing = route != 'ws.outgoing'
         self.user_function = user_function
         self.instance = instance
         self.singleton = singleton
@@ -201,6 +205,10 @@ class WorkerQueue:
         result = None
         error_code = None
         error_msg = None
+        # start distributed tracing if the event contains trace_id and trace_path
+        if 'trace_id' in event and 'trace_path' in event:
+            self.platform.start_tracing(event['trace_id'], event['trace_path'])
+        # execute user function
         begin = end = time.time()
         try:
             if instance == 0:
@@ -223,6 +231,9 @@ class WorkerQueue:
             error_code = 500
             error_msg = str(e)
 
+        # execution time is rounded to 3 decimal points
+        exec_time = float(format((end - begin) * 1000, '.3f'))
+
         if error_code:
             if 'reply_to' in event:
                 # set exception as result
@@ -238,11 +249,13 @@ class WorkerQueue:
                 reply_to = reply_to[2:]
             response = EventEnvelope().set_to(reply_to)
             if not error_code:
-                response.set_exec_time((end - begin) * 1000)
+                response.set_exec_time(exec_time, False)
             if 'extra' in event:
                 response.set_extra(event['extra'])
             if 'cid' in event:
                 response.set_correlation_id(event['cid'])
+            if 'trace_id' in event and 'trace_path' in event:
+                response.set_trace(event['trace_id'], event['trace_path'])
             if isinstance(result, EventEnvelope):
                 for h in result.get_headers():
                     response.set_header(h, result.get_header(h))
@@ -255,6 +268,22 @@ class WorkerQueue:
                 self.platform.send_event(response.set_from(self.route))
             except Exception as e:
                 self.log.warn("Event dropped because "+str(e))
+
+        # send tracing info to distributed trace logger
+        trace_info = self.platform.stop_tracing()
+        if self.tracing and trace_info is not None and isinstance(trace_info, TraceInfo):
+            dt = EventEnvelope().set_to(self.DISTRIBUTED_TRACING).set_body(trace_info.get_annotations())
+            dt.set_header('origin', self.platform.get_origin())
+            dt.set_header('id', trace_info.get_id()).set_header('path', trace_info.get_path())
+            dt.set_header('service', self.route).set_header('start', trace_info.get_start_time())
+            if not error_code:
+                dt.set_header('success', 'true')
+                dt.set_header('exec_time', exec_time)
+            else:
+                dt.set_header('success', 'false')
+                dt.set_header('status', error_code)
+                dt.set_header('exception', error_msg)
+            self.platform.send_event(dt)
 
         self._loop.call_soon_threadsafe(self._ack)
 
@@ -289,6 +318,8 @@ class Inbox:
 @Singleton
 class Platform:
 
+    SERVICE_QUERY = 'system.service.query'
+
     def __init__(self, work_dir: str = None, log_file: str = None, log_level: str = None, max_threads: int = None,
                  network_connector: str = None, api_key: str = None):
         if sys.version_info.major < 3:
@@ -312,7 +343,7 @@ class Platform:
         self._cloud = NetworkConnector(self, self._loop, my_api_key, self.network_connector, self.origin)
         self._function_queues = dict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
-        self.log.info("Concurrent thread pool size = "+str(self._max_threads))
+        self.log.info("Concurrent thread pool = "+str(self._max_threads))
         #
         # Before we figure out how to solve blocking file I/O, we will regular event output rate.
         #
@@ -326,6 +357,9 @@ class Platform:
                       + " events per second for this computer")
         self.running = True
         self.stopped = False
+        # distributed trace table
+        self._trace_started = False;
+        self._traces = {}
 
         # start event loop in a new thread to avoid blocking the main thread
         def main_event_loop():
@@ -333,12 +367,69 @@ class Platform:
             self._loop.run_forever()
             self.log.info("Event system stopped")
             self._loop.close()
+
         threading.Thread(target=main_event_loop).start()
 
     def get_origin(self):
+        """
+        get the origin ID of this application instance
+        :return: origin ID
+        """
         return self.origin
 
+    def get_trace_id(self) -> str:
+        """
+        get trace ID for a transaction
+        :return: trace ID
+        """
+        trace_info = self.get_trace()
+        return trace_info.get_id() if trace_info is not None else None
+
+    def get_trace(self) -> TraceInfo:
+        """
+        get trace info for a transaction
+        :return:
+        """
+        thread_id = threading.get_ident()
+        return self._traces[thread_id] if thread_id in self._traces else None
+
+    def annotate_trace(self, key: str, value: str):
+        """
+        Annotate a trace at a point of a transaction
+        :param key: any key
+        :param value: any value
+        :return:
+        """
+        trace_info = self.get_trace()
+        if trace_info is not None and isinstance(trace_info, TraceInfo):
+            trace_info.annotate(key, value)
+
+    def start_tracing(self, trace_id: str, trace_path: str):
+        """
+        IMPORTANT: This method is reserved for system use. DO NOT call this from a user application.
+        :param trace_id: id
+        :param trace_path: path such as URI
+        :return: None
+        """
+        thread_id = threading.get_ident()
+        self._traces[thread_id] = TraceInfo(trace_id, trace_path)
+
+    def stop_tracing(self):
+        """
+        IMPORTANT: This method is reserved for system use. DO NOT call this from a user application.
+        :return: TraceInfo
+        """
+        thread_id = threading.get_ident()
+        if thread_id in self._traces:
+            trace_info = self.get_trace()
+            self._traces.pop(thread_id)
+            return trace_info
+
     def run_forever(self):
+        """
+        Tell the platform to run in the background until user presses CTL-C or the application is stopped by admin
+        :return: None
+        """
         def graceful_shutdown(signum, frame):
             self.log.warn("Control-C detected" if signal.SIGINT == signum else "KILL signal detected")
             self.running = False
@@ -355,6 +446,14 @@ class Platform:
             raise ValueError('Unable to register Control-C and KILL signals because this is not the main thread')
 
     def register(self, route: str, user_function: any, total_instances: int, is_private: bool = False) -> None:
+        """
+        Register a user function
+        :param route: ID of the function
+        :param user_function: the lambda function given by you
+        :param total_instances: 1 for singleton or more for concurrency
+        :param is_private: true if internal function within this application instance
+        :return:
+        """
         self.util.validate_service_name(route)
         if route in self._function_queues:
             raise ValueError("route "+route+" already registered")
@@ -449,17 +548,18 @@ class Platform:
         for evt in events:
             if not isinstance(evt, EventEnvelope):
                 raise ValueError("events must be a list of EventEnvelope")
-            if not isinstance(evt.get_to(), str):
-                raise ValueError("parameter 'to' in the event must be str")
-            if evt.get_headers() is not None and not isinstance(evt.get_headers(), dict):
-                raise ValueError("parameter 'headers' in the event must be dict")
 
+        # retrieve distributed tracing info if any
+        trace_info = self.get_trace()
         # emulate RPC
         inbox = Inbox(self)
         temp_route = inbox.get_route()
         inbox_queue = inbox.get_queue()
         try:
             for evt in events:
+                # restore distributed tracing info from current thread
+                if trace_info:
+                    evt.set_trace(trace_info.get_id(), trace_info.get_path())
                 route = evt.get_to()
                 evt.set_reply_to(temp_route, me=True)
                 if route in self._function_queues:
@@ -490,11 +590,10 @@ class Platform:
             raise ValueError("timeout value in seconds must be positive number")
         if not isinstance(event, EventEnvelope):
             raise ValueError("event object must be an EventEnvelope")
-        if not isinstance(event.get_to(), str):
-            raise ValueError("parameter 'to' in the event must be str")
-        if event.get_headers() is not None and not isinstance(event.get_headers(), dict):
-            raise ValueError("parameter 'headers' in the event must be dict")
-
+        # restore distributed tracing info from current thread
+        trace_info = self.get_trace()
+        if trace_info:
+            event.set_trace(trace_info.get_id(), trace_info.get_path())
         # emulate RPC
         inbox = Inbox(self)
         temp_route = inbox.get_route()
@@ -519,10 +618,10 @@ class Platform:
     def send_event(self, event: EventEnvelope, broadcast=False) -> None:
         if not isinstance(event, EventEnvelope):
             raise ValueError("event object must be an EventEnvelope class")
-        if not isinstance(event.get_to(), str):
-            raise ValueError("parameter 'to' must be str")
-        if event.get_headers() is not None and not isinstance(event.get_headers(), dict):
-            raise ValueError("parameter 'headers' must be dict")
+        # restore distributed tracing info from current thread
+        trace_info = self.get_trace()
+        if trace_info:
+            event.set_trace(trace_info.get_id(), trace_info.get_path())
         # regulate rate for best performance
         self._seq += 1
         self._throttle.regulate_rate(self._seq)
@@ -544,6 +643,36 @@ class Platform:
                 self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
             else:
                 raise ValueError("route "+route+" not found")
+
+    def exists(self, routes: any):
+        if isinstance(routes, str):
+            single_route = routes
+            if self.has_route(single_route):
+                return True
+            if self.cloud_ready():
+                event = EventEnvelope()
+                event.set_to(self.SERVICE_QUERY).set_header('type', 'find').set_header('route', single_route)
+                result = self.request(event, 8.0)
+                if isinstance(result, EventEnvelope):
+                    if result.get_body() is not None:
+                        return result.get_body()
+        if isinstance(routes, list):
+            if len(routes) > 0:
+                remote_routes = list()
+                for r in routes:
+                    if not self.platform.has_route(r):
+                        remote_routes.append(r)
+                if len(remote_routes) == 0:
+                    return True
+                if self.platform.cloud_ready():
+                    # tell service query to use the route list in body
+                    event = EventEnvelope()
+                    event.set_to(self.SERVICE_QUERY).set_header('type', 'find')
+                    event.set_header('route', '*').set_body(routes)
+                    result = self.request(event, 8.0)
+                    if isinstance(result, EventEnvelope) and result.get_body() is not None:
+                        return result.get_body()
+        return False
 
     def _remove_route(self, route):
         if route in self._function_queues:

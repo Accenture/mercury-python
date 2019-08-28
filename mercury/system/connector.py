@@ -22,6 +22,7 @@ import asyncio
 import aiohttp
 import msgpack
 
+from mercury.resources.constants import AppConfig
 from mercury.system.models import EventEnvelope
 from mercury.system.utility import Utility
 from mercury.system.cache import SimpleCache
@@ -36,6 +37,7 @@ class NetworkConnector:
     SYSTEM_ALERT = "system.alerts"
     SERVER_CONFIG = "system.config"
     MAX_PAYLOAD = "max.payload"
+    DISTRIBUTED_TRACING = "distributed.tracing"
 
     def __init__(self, platform, loop, api_key, url_list, origin):
         self.platform = platform
@@ -55,6 +57,10 @@ class NetworkConnector:
         self.next_url = 1
         self.origin = origin
         self.cache = SimpleCache(loop, self.log, timeout_seconds=30)
+        app_config = AppConfig()
+        self._dt_processor = app_config.DISTRIBUTED_TRACE_PROCESSOR
+        self._dt_last_check = None
+        self._dt_found = False
 
     def _get_next_url(self):
         # index starts from 1
@@ -102,7 +108,7 @@ class NetworkConnector:
             envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(payload)
             self.platform.send_event(envelope)
 
-    def get_server_config(self, headers: dict, body: any):
+    def _get_server_config(self, headers: dict, body: any):
         if 'type' in headers:
             # at this point, login is successful
             if headers['type'] == 'system.config' and isinstance(body, dict):
@@ -124,14 +130,14 @@ class NetworkConnector:
                     event.set_to('pub.sub.sync').set_header('type', 'subscription_sync')
                     self.platform.send_event(event)
 
-    def alert(self, headers: dict, body: any):
+    def _alert(self, headers: dict, body: any):
         if 'status' in headers:
             if headers['status'] == '200':
                 self.log.info(str(body))
             else:
                 self.log.warn(str(body)+", status="+headers['status'])
 
-    def incoming(self, headers: dict, body: any):
+    def _incoming(self, headers: dict, body: any):
         """
         This function handles incoming messages from the websocket connection with the Mercury language connector.
         It must be invoked using events. It should not be called directly to guarantee proper event sequencing.
@@ -183,7 +189,7 @@ class NetworkConnector:
                         else:
                             self.log.warn('Incoming event dropped because '+str(inner_event.get_to())+' not found')
 
-    def outgoing(self, headers: dict, body: any):
+    def _outgoing(self, headers: dict, body: any):
         """
         This function handles sending outgoing messages to the websocket connection with the Mercury language connector.
         It must be invoked using events. It should not be called directly to guarantee proper event sequencing.
@@ -201,6 +207,21 @@ class NetworkConnector:
                 self._send_text(body)
             if headers['type'] == 'bytes':
                 self._send_bytes(body)
+
+    def _distributed_trace(self, event: EventEnvelope):
+        if isinstance(event, EventEnvelope):
+            self.log.info('trace=' + str(event.get_headers()) + ', annotations=' + str(event.get_body()))
+            # forward to user provided distributed trace logger if any
+            current_time = time.time()
+            if self._dt_last_check is None or current_time - self._dt_last_check > 5.0:
+                self._dt_last_check = current_time
+                self._dt_found = self.platform.exists(self._dt_processor)
+            if self._dt_found:
+                te = EventEnvelope()
+                te.set_to(self._dt_processor).set_body(event.get_body())
+                for h in event.get_headers():
+                    te.set_header(h, event.get_header(h))
+                self.platform.send_event(te)
 
     def _send_text(self, body: str):
         def send(data: str):
@@ -239,10 +260,11 @@ class NetworkConnector:
                     break
         if not self.started:
             self.started = True
-            self.platform.register(self.INCOMING_WS_PATH, self.incoming, 1, is_private=True)
-            self.platform.register(self.OUTGOING_WS_PATH, self.outgoing, 1, is_private=True)
-            self.platform.register(self.SYSTEM_ALERT, self.alert, 1, is_private=True)
-            self.platform.register(self.SERVER_CONFIG, self.get_server_config, 1, is_private=True)
+            self.platform.register(self.DISTRIBUTED_TRACING, self._distributed_trace, 1, is_private=True)
+            self.platform.register(self.INCOMING_WS_PATH, self._incoming, 1, is_private=True)
+            self.platform.register(self.OUTGOING_WS_PATH, self._outgoing, 1, is_private=True)
+            self.platform.register(self.SYSTEM_ALERT, self._alert, 1, is_private=True)
+            self.platform.register(self.SERVER_CONFIG, self._get_server_config, 1, is_private=True)
             self._loop.create_task(worker())
 
     def close_connection(self, code, reason, stop_engine=False):

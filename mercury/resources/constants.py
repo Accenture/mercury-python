@@ -51,4 +51,15 @@ class AppConfig:
     #
     # Max number of threads for ThreadPoolExecutor
     #
-    MAX_THREADS = 200
+    MAX_THREADS = 250
+
+    #
+    # Optional user defined "distributed trace processor"
+    #
+    # If this named service is available anywhere in the system, we will forward
+    # all distributed tracing information to it so that you may save it to a database
+    # or search engine for visualization in a UI. Alternatively, you may also reformat
+    # the tracing information and forward them to an external distributed tracing server
+    # for centralized processing.
+    #
+    DISTRIBUTED_TRACE_PROCESSOR = 'distributed.trace.processor'

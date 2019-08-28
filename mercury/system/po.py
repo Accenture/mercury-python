@@ -16,9 +16,9 @@
 # limitations under the License.
 #
 
-from mercury.system.singleton import Singleton
 from mercury.platform import Platform
 from mercury.system.models import EventEnvelope
+from mercury.system.singleton import Singleton
 from mercury.system.utility import Utility
 
 
@@ -33,6 +33,15 @@ class PostOffice:
     def __init__(self):
         self.platform = Platform()
         self.util = Utility()
+
+    def get_trace_id(self):
+        return self.platform.get_trace_id()
+
+    def get_trace(self):
+        return self.platform.get_trace()
+
+    def annotate_trace(self, key: str, value: str):
+        self.platform.annotate_trace(key, value)
 
     def broadcast(self, route: str, headers: dict = None, body: any = None) -> None:
         self.util.validate_service_name(route)
@@ -109,28 +118,4 @@ class PostOffice:
         return self.platform.parallel_request(events, timeout_seconds)
 
     def exists(self, routes: any):
-        if isinstance(routes, str):
-            single_route = routes
-            if self.platform.has_route(single_route):
-                return True
-            if self.platform.cloud_ready():
-                result = self.request('system.service.query', 8.0, headers={'type': 'find', 'route': single_route})
-                if isinstance(result, EventEnvelope):
-                    if result.get_body() is not None:
-                        return result.get_body()
-        if isinstance(routes, list):
-            if len(routes) > 0:
-                remote_routes = list()
-                for r in routes:
-                    if not self.platform.has_route(r):
-                        remote_routes.append(r)
-                if len(remote_routes) == 0:
-                    return True
-                if self.platform.cloud_ready():
-                    # tell service query to use the route list in body
-                    result = self.request('system.service.query', 8.0,
-                                          headers={'type': 'find', 'route': '*'}, body=routes)
-                    if isinstance(result, EventEnvelope):
-                        if result.get_body() is not None:
-                            return result.get_body()
-        return False
+        return self.platform.exists(routes)

@@ -32,6 +32,7 @@ class ElasticQueue:
     MAX_FILE_SIZE = 10 * 1024 * 1024
 
     def __init__(self, queue_dir: str = None, queue_id: str = None):
+        # print('-----------', queue_dir, queue_id)
         # automatically create queue directory
         if queue_dir is None or queue_id is None:
             raise ValueError('Missing queue_dir or queue_id')

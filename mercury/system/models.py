@@ -18,11 +18,12 @@
 
 import uuid
 import msgpack
+import time
 
 
 class AppException(Exception):
 
-    def __init__(self, status, message):
+    def __init__(self, status: int, message: str):
         Exception.__init__(self, {'status': status, 'message': message})
         self.status = status if isinstance(status, int) else 500
         self.message = str(message)
@@ -32,6 +33,39 @@ class AppException(Exception):
 
     def get_message(self):
         return self.message
+
+
+class TraceInfo:
+
+    def __init__(self, trace_id: str, path: str):
+        if trace_id is None:
+            raise ValueError('trace id must not be None')
+        self._id = str(trace_id)
+        self._path = "?" if path is None else str(path)
+        self._start_time = self._get_timestamp()
+        self._annotations = {}
+
+    def get_id(self):
+        return self._id
+
+    def get_path(self):
+        return self._path
+
+    def get_start_time(self):
+        return self._start_time
+
+    def get_annotations(self):
+        return self._annotations
+
+    def annotate(self, key: str, value: str):
+        self._annotations[str(key)] = str(value)
+
+    @staticmethod
+    def _get_timestamp():
+        seconds = time.time()
+        utc = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(seconds))
+        ms = format(seconds - int(seconds), '.3f')
+        return utc+ms[1:]+'Z'
 
 
 class EventEnvelope:
@@ -46,6 +80,8 @@ class EventEnvelope:
         self.reply_to = None
         self.extra = None
         self.correlation_id = None
+        self.trace_id = None
+        self.trace_path = None
         self.broadcast = False
         self.exec_time = -1.0
         self.round_trip = -1.0
@@ -61,11 +97,11 @@ class EventEnvelope:
         return self.event_id
 
     def set_to(self, to: str):
-        self.to = to
+        self.to = str(to)
         return self
 
     def set_from(self, sender: str):
-        self.sender = sender
+        self.sender = str(sender)
         return self
 
     def get_to(self):
@@ -111,6 +147,17 @@ class EventEnvelope:
     def get_correlation_id(self):
         return self.correlation_id
 
+    def set_trace(self, trace_id: str, trace_path: str):
+        self.trace_id = trace_id
+        self.trace_path = trace_path
+        return self
+
+    def get_trace_id(self):
+        return self.trace_id
+
+    def get_trace_path(self):
+        return self.trace_path
+
     def set_header(self, key: str, value: any):
         self.headers[key] = value if isinstance(value, str) else str(value)
         return self
@@ -141,8 +188,11 @@ class EventEnvelope:
     def get_exec_time(self):
         return self.exec_time
 
-    def set_exec_time(self, exec_time):
-        self.exec_time = float(format(exec_time, '.3f'))
+    def set_exec_time(self, exec_time, rounding=True):
+        if rounding:
+            self.exec_time = float(format(exec_time, '.3f'))
+        else:
+            self.exec_time = exec_time
         return self
 
     def get_round_trip(self):
@@ -168,6 +218,9 @@ class EventEnvelope:
             result['extra'] = self.extra
         if self.correlation_id:
             result['cid'] = self.correlation_id
+        if self.trace_id and self.trace_path:
+            result['trace_id'] = self.trace_id
+            result['trace_path'] = self.trace_path
         if self.broadcast:
             result['broadcast'] = True
         if self.status:
@@ -195,6 +248,9 @@ class EventEnvelope:
             self.extra = data['extra']
         if 'cid' in data:
             self.correlation_id = data['cid']
+        if 'trace_id' in data and 'trace_path' in data:
+            self.trace_id = data['trace_id']
+            self.trace_path = data['trace_path']
         if 'status' in data:
             self.status = data['status']
         if 'broadcast' in data:

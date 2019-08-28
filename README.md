@@ -207,6 +207,18 @@ pip install --ignore-installed git+https://github.com/Accenture/mercury-python.g
 
 Mercury requires python 3.6.7 or above
 
+## Distributed tracing
+
+Microservices are likely to be deployed in a multi-tier environment. 
+As a result, a single transaction would pass through multiple layers of services.
+
+Distributed tracing allows us to visualize the complete service path for each transaction.
+This enables easy trouble shooting for large scale applications.
+
+With the Mercury framework, distributed tracing does not require coding at application level.
+To enable this feature, you can simply set "tracing=true" in the rest.yaml configuration in
+the rest-automation helper application.
+
 ## Developer guide
 
 For more details, please refer to the [Developer Guide](docs/guides/TABLE-OF-CONTENTS.md)
