@@ -72,11 +72,11 @@ class NetworkConnector:
             os.makedirs(temp_dir)
         api_key_file = temp_dir+"/lang-api-key.txt"
         if os.path.exists(api_key_file):
-            with open('/tmp/config/lang-api-key.txt') as f:
+            with open(api_key_file) as f:
                 self.log.info('Reading API key from '+api_key_file)
                 return f.read().strip()
         else:
-            with open('/tmp/config/lang-api-key.txt', 'w') as f:
+            with open(api_key_file, 'w') as f:
                 self.log.info('Generating new API key in '+api_key_file +
                               ' because it is not found in environment variable ' + config.API_KEY_LOCATION)
                 value = ''.join(str(uuid.uuid4()).split('-'))
