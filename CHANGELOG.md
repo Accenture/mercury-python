@@ -20,7 +20,7 @@ N/A
 
 ### Changed
 
-N/A
+language pack API key obtained from environment variable
 
 ---
 ## Version 1.12.8, 8/15/2019

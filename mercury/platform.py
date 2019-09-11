@@ -322,7 +322,7 @@ class Platform:
     SERVICE_QUERY = 'system.service.query'
 
     def __init__(self, work_dir: str = None, log_file: str = None, log_level: str = None, max_threads: int = None,
-                 network_connector: str = None, api_key: str = None):
+                 network_connector: str = None):
         if sys.version_info.major < 3:
             python_version = str(sys.version_info.major)+"."+str(sys.version_info.minor)
             raise RuntimeError("Requires python 3.6 and above. Actual: "+python_version)
@@ -337,10 +337,9 @@ class Platform:
         self.log = LoggingService(log_dir=self.util.normalize_path(self.work_dir + "/log"),
                                   log_file=my_log_file, log_level=my_log_level).get_logger()
         self._loop = asyncio.new_event_loop()
-        my_api_key = config.API_KEY if api_key is None else api_key
         my_distributed_trace = DistributedTrace(self, config.DISTRIBUTED_TRACE_PROCESSOR)
         my_connector = config.NETWORK_CONNECTOR if network_connector is None else network_connector
-        self._cloud = NetworkConnector(self, my_distributed_trace, self._loop, my_api_key, my_connector, self.origin)
+        self._cloud = NetworkConnector(self, my_distributed_trace, self._loop, my_connector, self.origin)
         self._function_queues = dict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
         self.log.info("Concurrent thread pool = "+str(self._max_threads))
@@ -368,6 +367,7 @@ class Platform:
             self._loop.close()
 
         threading.Thread(target=main_event_loop).start()
+
 
     def get_origin(self):
         """

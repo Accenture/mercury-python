@@ -17,11 +17,14 @@
 #
 
 import io
+import uuid
+import os
 import time
 import asyncio
 import aiohttp
 import msgpack
 
+from mercury.resources.constants import AppConfig
 from mercury.system.models import EventEnvelope
 from mercury.system.utility import Utility
 from mercury.system.cache import SimpleCache
@@ -38,11 +41,10 @@ class NetworkConnector:
     MAX_PAYLOAD = "max.payload"
     DISTRIBUTED_TRACING = "distributed.tracing"
 
-    def __init__(self, platform, distributed_trace, loop, api_key, url_list, origin):
+    def __init__(self, platform, distributed_trace, loop, url_list, origin):
         self.platform = platform
         self._distributed_trace = distributed_trace
         self._loop = loop
-        self.api_key = api_key
         self.log = platform.log
         self.normal = True
         self.started = False
@@ -57,6 +59,29 @@ class NetworkConnector:
         self.next_url = 1
         self.origin = origin
         self.cache = SimpleCache(loop, self.log, timeout_seconds=30)
+        self.api_key = self._get_api_key()
+
+    def _get_api_key(self):
+        config = AppConfig()
+        if config.API_KEY_LOCATION in os.environ:
+            self.log.info('Found API key in environment variable ' + config.API_KEY_LOCATION)
+            return os.environ[config.API_KEY_LOCATION]
+        # check temp file system because API key not in environment
+        temp_dir = '/tmp/config'
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        api_key_file = temp_dir+"/lang-api-key.txt"
+        if os.path.exists(api_key_file):
+            with open('/tmp/config/lang-api-key.txt') as f:
+                self.log.info('Reading API key from '+api_key_file)
+                return f.read().strip()
+        else:
+            with open('/tmp/config/lang-api-key.txt', 'w') as f:
+                self.log.info('Generating new API key in '+api_key_file +
+                              ' because it is not found in environment variable ' + config.API_KEY_LOCATION)
+                value = ''.join(str(uuid.uuid4()).split('-'))
+                f.write(value + '\n')
+                return value
 
     def _get_next_url(self):
         # index starts from 1
