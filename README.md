@@ -97,7 +97,7 @@ You may then register your microservices like this:
 `platform.register(route: str, user_function: any, total_instances: int, is_private: bool = False)`
 
 ```python
-from microservices.platform import Platform
+from mercury.platform import Platform
 
 def hello(headers: dict, body: any, instance: int):
     # business logic here
@@ -124,6 +124,9 @@ You may make a RPC service call like this. Note that everything is non-blocking 
 RPC uses a temporary inbox service to simulate a synchronous request-response.
 
 ```python
+from mercury.platform import Platform
+from mercury.system.po import PostOffice
+
 #
 # The signature of the request method is:
 #    request(self, route: str, timeout_seconds: float,
