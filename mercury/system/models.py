@@ -37,13 +37,19 @@ class AppException(Exception):
 
 class TraceInfo:
 
-    def __init__(self, trace_id: str, path: str):
-        if trace_id is None:
-            raise ValueError('trace id must not be None')
-        self._id = str(trace_id)
-        self._path = "?" if path is None else str(path)
+    def __init__(self, route: str, trace_id: str, path: str):
+        self._route = str(route)
         self._start_time = self._get_timestamp()
         self._annotations = {}
+        if trace_id is None:
+            self._id = None
+            self._path = None
+        else:
+            self._id = str(trace_id)
+            self._path = "?" if path is None else str(path)
+
+    def get_route(self):
+        return self._route
 
     def get_id(self):
         return self._id

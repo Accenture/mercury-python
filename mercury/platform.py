@@ -208,7 +208,9 @@ class WorkerQueue:
         error_msg = None
         # start distributed tracing if the event contains trace_id and trace_path
         if 'trace_id' in event and 'trace_path' in event:
-            self.platform.start_tracing(event['trace_id'], event['trace_path'])
+            self.platform.start_tracing(self.route, trace_id=event['trace_id'], trace_path=event['trace_path'])
+        else:
+            self.platform.start_tracing(self.route)
         # execute user function
         begin = end = time.time()
         try:
@@ -272,7 +274,8 @@ class WorkerQueue:
 
         # send tracing info to distributed trace logger
         trace_info = self.platform.stop_tracing()
-        if self.tracing and trace_info is not None and isinstance(trace_info, TraceInfo):
+        if self.tracing and trace_info is not None and isinstance(trace_info, TraceInfo) \
+                and trace_info.get_id() is not None and trace_info.get_path() is not None:
             dt = EventEnvelope().set_to(self.DISTRIBUTED_TRACING).set_body(trace_info.get_annotations())
             dt.set_header('origin', self.platform.get_origin())
             dt.set_header('id', trace_info.get_id()).set_header('path', trace_info.get_path())
@@ -368,7 +371,6 @@ class Platform:
 
         threading.Thread(target=main_event_loop).start()
 
-
     def get_origin(self):
         """
         get the origin ID of this application instance
@@ -403,15 +405,16 @@ class Platform:
         if trace_info is not None and isinstance(trace_info, TraceInfo):
             trace_info.annotate(key, value)
 
-    def start_tracing(self, trace_id: str, trace_path: str):
+    def start_tracing(self, route: str, trace_id: str = None, trace_path: str = None):
         """
         IMPORTANT: This method is reserved for system use. DO NOT call this from a user application.
+        :param route: route name
         :param trace_id: id
         :param trace_path: path such as URI
         :return: None
         """
         thread_id = threading.get_ident()
-        self._traces[thread_id] = TraceInfo(trace_id, trace_path)
+        self._traces[thread_id] = TraceInfo(route, trace_id, trace_path)
 
     def stop_tracing(self):
         """
@@ -558,7 +561,11 @@ class Platform:
             for evt in events:
                 # restore distributed tracing info from current thread
                 if trace_info:
-                    evt.set_trace(trace_info.get_id(), trace_info.get_path())
+                    if trace_info.get_route() is not None and evt.get_from() is None:
+                        evt.set_from(trace_info.get_route())
+                    if trace_info.get_id() is not None and trace_info.get_path() is not None:
+                        evt.set_trace(trace_info.get_id(), trace_info.get_path())
+
                 route = evt.get_to()
                 evt.set_reply_to(temp_route, me=True)
                 if route in self._function_queues:
@@ -592,7 +599,10 @@ class Platform:
         # restore distributed tracing info from current thread
         trace_info = self.get_trace()
         if trace_info:
-            event.set_trace(trace_info.get_id(), trace_info.get_path())
+            if trace_info.get_route() is not None and event.get_from() is None:
+                event.set_from(trace_info.get_route())
+            if trace_info.get_id() is not None and trace_info.get_path() is not None:
+                event.set_trace(trace_info.get_id(), trace_info.get_path())
         # emulate RPC
         inbox = Inbox(self)
         temp_route = inbox.get_route()
@@ -620,7 +630,10 @@ class Platform:
         # restore distributed tracing info from current thread
         trace_info = self.get_trace()
         if trace_info:
-            event.set_trace(trace_info.get_id(), trace_info.get_path())
+            if trace_info.get_route() is not None and event.get_from() is None:
+                event.set_from(trace_info.get_route())
+            if trace_info.get_id() is not None and trace_info.get_path() is not None:
+                event.set_trace(trace_info.get_id(), trace_info.get_path())
         # regulate rate for best performance
         self._seq += 1
         self._throttle.regulate_rate(self._seq)

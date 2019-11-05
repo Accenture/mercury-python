@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## Version 1.12.13, 11/5/2019
+
+### Added
+
+1. get_route() method is added to PostOffice so that current service can retrieve its own route name
+2. The route name of the current service is added to an outgoing event when the "from" field is not present
+
+### Removed
+
+N/A
+
+### Changed
+
+N/A
+
+---
 ## Version 1.12.12, 10/26/2019
 
 Sync up version number with main mercury project to support multi-tenancy for event streams.

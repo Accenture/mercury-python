@@ -34,6 +34,17 @@ class PostOffice:
         self.platform = Platform()
         self.util = Utility()
 
+    def get_route(self):
+        """
+        Obtain my route name for the currently running service.
+        This is useful for Role Based Access Control (RBAC) to restrict certain user roles for a service.
+        Note that RBAC is the responsibility of the user application.
+
+        :return: route name
+        """
+        trace_info = self.get_trace()
+        return "?" if trace_info is None else trace_info.get_route()
+
     def get_trace_id(self):
         return self.platform.get_trace_id()
 
