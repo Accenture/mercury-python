@@ -35,6 +35,281 @@ class AppException(Exception):
         return self.message
 
 
+class AsyncHttpRequest:
+    """
+    Convenient wrapper for HTTP event from rest-automation.
+    May also be used to create HTTP events for unit tests.
+    """
+
+    def __init__(self):
+        self.method = None
+        self.query_string = None
+        self.url = None
+        self.ip = None
+        self.upload = None
+        self.headers = dict()
+        self.query = None
+        self.query_params = dict()
+        self.path_params = dict()
+        self.cookies = dict()
+        self.session = dict()
+        self.body = None
+        self.stream_route = None
+        self.file_name = None
+        self.relay = None
+        self.trust_all_cert = False
+        self.https = False
+        self.content_length = -1
+        self.timeout_seconds = -1
+
+    def get_method(self):
+        return self.method
+
+    def set_method(self, method):
+        self.method = method
+        return self
+
+    def get_query_string(self):
+        return self.query_string
+
+    def set_query_string(self, query_string):
+        self.query_string = query_string
+        return self
+
+    def get_url(self):
+        return self.url
+
+    def set_url(self, url):
+        self.url = url
+        return self
+
+    def get_ip(self):
+        return self.ip
+
+    def set_ip(self, ip):
+        self.ip = ip
+        return self
+
+    def get_upload_tag(self):
+        return self.upload
+
+    def set_upload_tag(self, value: str):
+        self.upload = value
+        return self
+
+    def set_header(self, key: str, value: any):
+        self.headers[key] = value if isinstance(value, str) else str(value)
+        return self
+
+    def get_header(self, key: str):
+        if key in self.headers:
+            return self.headers[key]
+        else:
+            return None
+
+    def get_headers(self):
+        return self.headers
+
+    def set_query_param(self, key: str, value: str):
+        self.query_params[key] = value
+        return self
+
+    def get_query_param(self, key: str):
+        if key in self.query_params:
+            return self.query_params[key]
+        else:
+            return None
+
+    def get_query_params(self):
+        return self.query_params
+
+    def set_path_param(self, key: str, value: str):
+        self.path_params[key.lower()] = value
+        return self
+
+    def get_path_param(self, key: str):
+        if key in self.path_params:
+            return self.path_params[key]
+        else:
+            return None
+
+    def get_path_params(self):
+        return self.path_params
+
+    def set_cookie(self, key: str, value: str):
+        self.cookies[key] = value
+        return self
+
+    def get_cookie(self, key: str):
+        if key in self.cookies:
+            return self.cookies[key]
+        else:
+            return None
+
+    def get_cookies(self):
+        return self.cookies
+
+    def set_session_info(self, key: str, value: str):
+        self.session[key.lower()] = value
+        return self
+
+    def get_session_info(self, key: str):
+        if key in self.session:
+            return self.session[key]
+        else:
+            return None
+
+    def get_session(self):
+        return self.session
+
+    def set_body(self, body: any):
+        self.body = body
+        return self
+
+    def get_body(self):
+        return self.body
+
+    def get_stream_route(self):
+        return self.stream_route
+
+    def set_stream_route(self, value: str):
+        self.stream_route = value
+        return self
+
+    def get_file_name(self):
+        return self.file_name
+
+    def set_file_name(self, value: str):
+        self.file_name = value
+        return self
+
+    def get_relay(self):
+        return self.relay
+
+    def set_relay(self, value: str):
+        self.relay = value
+        return self
+
+    def set_trust_all_cert(self, trust_all_cert: bool):
+        self.trust_all_cert = trust_all_cert
+        return self
+
+    def is_trust_all_cert(self):
+        return self.trust_all_cert
+
+    def set_https(self, https: bool):
+        self.https = https
+        return self
+
+    def is_https(self):
+        return self.https
+
+    def get_content_length(self):
+        return self.content_length
+
+    def set_content_length(self, value: int):
+        if isinstance(value, int):
+            self.content_length = value
+            return self
+        else:
+            raise ValueError('content_length must be int')
+
+    def get_timeout_seconds(self):
+        return self.timeout_seconds
+
+    def set_timeout_seconds(self, value: int):
+        if isinstance(value, int):
+            self.timeout_seconds = value
+            return self
+        else:
+            raise ValueError('timeout_seconds must be int')
+
+    def to_map(self):
+        result = dict()
+        result['headers'] = dict() if not self.headers else self.headers
+        result['cookies'] = dict() if not self.cookies else self.cookies
+        result['session'] = dict() if not self.session else self.session
+        result['https'] = self.https
+        if self.method:
+            result['method'] = self.to
+        if self.ip:
+            result['ip'] = self.ip
+        if self.url:
+            result['url'] = self.url
+        if self.timeout_seconds:
+            result['timeout'] = self.timeout_seconds
+        if self.file_name:
+            result['filename'] = self.file_name
+        # python uses snake case for labels - Hyphen is used for content-length as a special case for HTTP
+        if self.content_length:
+            result['content_length'] = self.content_length
+        if self.stream_route:
+            result['stream'] = self.stream_route
+        if self.body:
+            result['body'] = self.body
+        if self.query_string:
+            result['query'] = self.query_string
+        if self.upload:
+            result['upload'] = self.upload
+        if len(self.path_params) > 0 or len(self.query_params):
+            parameters = dict()
+            if len(self.path_params) > 0:
+                parameters['path'] = self.path_params
+            if len(self.query_params) > 0:
+                parameters['query'] = self.query_params
+            result['parameters'] = parameters
+        #
+        # Optional HTTP host name in the "relay" field
+        #
+        # This is used by the rest-automation "async.http.request" service
+        # when forwarding HTTP request to a target HTTP endpoint.
+        #
+        if self.relay:
+            result['relay'] = self.relay
+            result['trust_all_cert'] = self.trust_all_cert
+        return result
+
+    def from_map(self, data: dict):
+        if 'headers' in data and isinstance(data['headers'], dict):
+            self.headers = data['headers']
+        if 'cookies' in data and isinstance(data['cookies'], dict):
+            self.cookies = data['cookies']
+        if 'session' in data and isinstance(data['session'], dict):
+            self.session = data['session']
+        if 'method' in data:
+            self.method = data['method']
+        if 'ip' in data:
+            self.ip = data['ip']
+        if 'url' in data:
+            self.url = data['url']
+        if 'timeout' in data and isinstance(data['timeout'], int):
+            self.timeout_seconds = data['timeout']
+        if 'filename' in data:
+            self.file_name = data['filename']
+        if 'content_length' in data:
+            self.content_length = data['content_length']
+        if 'stream' in data:
+            self.stream_route = data['stream']
+        if 'body' in data:
+            self.body = data['body']
+        if 'query' in data:
+            self.query = data['query']
+        if 'https' in data:
+            self.https = data['https']
+        if 'relay' in data:
+            self.relay = data['relay']
+            self.trust_all_cert = data['trust_all_cert'] if 'trust_all_cert' in data else False
+        if 'upload' in data:
+            self.upload = data['upload']
+        if 'parameters' in data:
+            parameters = data['parameters']
+            if 'query' in parameters:
+                self.query_params = parameters['query']
+            if 'path' in parameters:
+                self.path_params = parameters['path']
+        return self
+
+
 class TraceInfo:
 
     def __init__(self, route: str, trace_id: str, path: str):
