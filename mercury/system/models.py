@@ -110,8 +110,9 @@ class AsyncHttpRequest:
     def get_headers(self):
         return self.headers
 
-    def set_query_param(self, key: str, value: str):
-        self.query_params[key] = value
+    def set_query_param(self, key: str, value: any):
+        # query parameter can be a str or list of str
+        self.query_params[key] = value if isinstance(value, str) or isinstance(value, list) else str(value)
         return self
 
     def get_query_param(self, key: str):
@@ -197,11 +198,11 @@ class AsyncHttpRequest:
     def is_trust_all_cert(self):
         return self.trust_all_cert
 
-    def set_https(self, https: bool):
+    def set_secure(self, https: bool):
         self.https = https
         return self
 
-    def is_https(self):
+    def is_secure(self):
         return self.https
 
     def get_size(self):
