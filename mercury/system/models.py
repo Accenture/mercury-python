@@ -59,7 +59,7 @@ class AsyncHttpRequest:
         self.relay = None
         self.trust_all_cert = False
         self.https = False
-        self.content_length = -1
+        self.size = -1
         self.timeout_seconds = -1
 
     def get_method(self):
@@ -204,15 +204,15 @@ class AsyncHttpRequest:
     def is_https(self):
         return self.https
 
-    def get_content_length(self):
-        return self.content_length
+    def get_size(self):
+        return self.size
 
-    def set_content_length(self, value: int):
+    def set_size(self, value: int):
         if isinstance(value, int):
-            self.content_length = value
+            self.size = value
             return self
         else:
-            raise ValueError('content_length must be int')
+            raise ValueError('size must be int')
 
     def get_timeout_seconds(self):
         return self.timeout_seconds
@@ -240,9 +240,8 @@ class AsyncHttpRequest:
             result['timeout'] = self.timeout_seconds
         if self.file_name:
             result['filename'] = self.file_name
-        # python uses snake case for labels - Hyphen is used for content-length as a special case for HTTP
-        if self.content_length:
-            result['content_length'] = self.content_length
+        if self.size:
+            result['size'] = self.size
         if self.stream_route:
             result['stream'] = self.stream_route
         if self.body:
@@ -286,8 +285,8 @@ class AsyncHttpRequest:
             self.timeout_seconds = data['timeout']
         if 'filename' in data:
             self.file_name = data['filename']
-        if 'content_length' in data:
-            self.content_length = data['content_length']
+        if 'size' in data:
+            self.size = data['size']
         if 'stream' in data:
             self.stream_route = data['stream']
         if 'body' in data:
