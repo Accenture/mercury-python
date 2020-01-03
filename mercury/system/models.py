@@ -98,12 +98,13 @@ class AsyncHttpRequest:
         return self
 
     def set_header(self, key: str, value: any):
-        self.headers[key] = value if isinstance(value, str) else str(value)
+        self.headers[key.lower()] = value if isinstance(value, str) else str(value)
         return self
 
     def get_header(self, key: str):
-        if key in self.headers:
-            return self.headers[key]
+        lk = key.lower()
+        if lk in self.headers:
+            return self.headers[lk]
         else:
             return None
 
@@ -112,12 +113,13 @@ class AsyncHttpRequest:
 
     def set_query_param(self, key: str, value: any):
         # query parameter can be a str or list of str
-        self.query_params[key] = value if isinstance(value, str) or isinstance(value, list) else str(value)
+        self.query_params[key.lower()] = value if isinstance(value, str) or isinstance(value, list) else str(value)
         return self
 
     def get_query_param(self, key: str):
-        if key in self.query_params:
-            return self.query_params[key]
+        lk = key.lower()
+        if lk in self.query_params:
+            return self.query_params[lk]
         else:
             return None
 
@@ -129,8 +131,9 @@ class AsyncHttpRequest:
         return self
 
     def get_path_param(self, key: str):
-        if key in self.path_params:
-            return self.path_params[key]
+        lk = key.lower()
+        if lk in self.path_params:
+            return self.path_params[lk]
         else:
             return None
 
@@ -138,12 +141,13 @@ class AsyncHttpRequest:
         return self.path_params
 
     def set_cookie(self, key: str, value: str):
-        self.cookies[key] = value
+        self.cookies[key.lower()] = value
         return self
 
     def get_cookie(self, key: str):
-        if key in self.cookies:
-            return self.cookies[key]
+        lk = key.lower()
+        if lk in self.cookies:
+            return self.cookies[lk]
         else:
             return None
 
@@ -155,8 +159,9 @@ class AsyncHttpRequest:
         return self
 
     def get_session_info(self, key: str):
-        if key in self.session:
-            return self.session[key]
+        lk = key.lower()
+        if lk in self.session:
+            return self.session[lk]
         else:
             return None
 

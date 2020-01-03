@@ -33,7 +33,7 @@ Hope you enjoy this journey to improve the world.
 
 Best regards, the Mercury team, Accenture
 
-August 2019
+January 2020
 
 ## Rationale
 
