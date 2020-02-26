@@ -244,8 +244,12 @@ class WorkerQueue:
             else:
                 self.log.warn(
                     "Unhandled exception for " + self.route + " - code=" + str(error_code) + ", message=" + error_msg)
-
-        if not self.interceptor and 'reply_to' in event:
+        #
+        # interceptor should not send regular response because it will forward the request to another function.
+        # However, if error_code exists, the system will send the exception response.
+        # This allows interceptor to simply throw exception to indicate an error case.
+        #
+        if 'reply_to' in event and (error_code or not self.interceptor):
             reply_to = event['reply_to']
             # in case this is a RPC call from within
             if reply_to.startswith('->'):
