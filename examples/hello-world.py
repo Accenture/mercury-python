@@ -43,7 +43,6 @@ def main():
             # this allows us to stop the application while waiting for cloud connection
             platform.stop()
             return
-
     #
     # this will keep the main thread running in the background
     # so we can use Control-C or KILL signal to stop the application
