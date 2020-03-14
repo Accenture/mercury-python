@@ -20,7 +20,6 @@ import time
 
 from mercury.platform import Platform
 from mercury.system.pubsub import PubSub
-from mercury.system.utility import Utility
 
 
 def hello(headers: dict, body: any, instance: int):
@@ -46,27 +45,21 @@ def main():
             platform.stop()
             return
 
-    util = Utility()
     pubsub = PubSub()
     if pubsub.feature_enabled():
         #
         # the pub/sub topic name must be different from the subscriber function name
+        #
         # Note:
         # For kafka, the parameter list includes the following:
         # client_id, group_id and optional offset number (as a string)
         # e.g. ["client1", "group1"] or ["client1", "group1", "0"]
         #
-        # To demonstrate that you can reset the READ offset, start/stop this application without the offset parameter
-        # for a few times and then restart the application with offset "0"
+        # In this example, it is reading from the beginning of the topic.
+        # For a real application, it should read without the offset so that it can fetch the latest events.
         #
-        pubsub.subscribe("hello.topic", "hello.world", ["client1", "group1"])
-        # this is just a demo:
-        # Publish an event
-        # - this will send the event to the pub/sub system that the subscriber "hello.world" will receive it.
-        # headers = optional parameters for the event
-        # body = event payload
-        pubsub.publish("hello.topic", headers={"some_parameter": "some_value"},
-                       body="hello world "+util.get_iso_8601(time.time()))
+        pubsub.subscribe("hello.topic", "hello.world", ["client1", "group1", "0"])
+
     else:
         print("Pub/Sub feature not available from the underlying event stream")
         print("Did you start the language connector with Kafka?")
