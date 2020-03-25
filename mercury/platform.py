@@ -676,11 +676,11 @@ class Platform:
             if len(routes) > 0:
                 remote_routes = list()
                 for r in routes:
-                    if not self.platform.has_route(r):
+                    if not self.has_route(r):
                         remote_routes.append(r)
                 if len(remote_routes) == 0:
                     return True
-                if self.platform.cloud_ready():
+                if self.cloud_ready():
                     # tell service query to use the route list in body
                     event = EventEnvelope()
                     event.set_to(self.SERVICE_QUERY).set_header('type', 'find')
