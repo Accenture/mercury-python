@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='mercury',
-      version='1.12.33',
+      version='1.12.34',
       description='Python Language pack for Mercury',
       author='Eric Law',
       author_email='eric.law@accenture.com',
