@@ -6,19 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
-## Version 1.12.34, 3/28/2020
+## Version 1.12.35, 4/12/2020
 
 ### Added
 
-N/A
+1. Application configuration is now stored in the resources folder as "application.yml".
+2. ConfigReader to parse YAML and JSON config files
+3. A convenient MultiLevelDict class for reading key-values using the dot-bracket notation (e.g. "my.config.key[0]")
 
 ### Removed
 
-N/A
+constants.py
 
 ### Changed
 
-Sync up with parent project version number
+Updated platform.py and connector.py to use ConfigReader
 
 ---
 ## Version 1.12.32, 3/14/2020

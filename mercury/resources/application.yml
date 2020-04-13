@@ -1,0 +1,23 @@
+# application configuration
+
+# the websocket endpoint for a language connector sidecar
+network.connector: 'ws://127.0.0.1:8090/ws/lang'
+
+# the environment variable name for the API key to connect to a language connector.
+api.key.location: 'LANG_API_KEY'
+
+work:
+  directory: '/tmp/python'
+
+log:
+  level: INFO
+  # for cloud native, do not configure log.filename
+  # comment it out or leave it blank
+  #
+  # If given, the file path will be constructed as follows:
+  # {work.directory}/{log.filename}.log
+  #
+  filename:
+
+# max number of threads in a python 'futures' thread pool
+max.threads: 250

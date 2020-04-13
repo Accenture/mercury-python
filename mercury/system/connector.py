@@ -24,7 +24,6 @@ import asyncio
 import aiohttp
 import msgpack
 
-from mercury.resources.constants import AppConfig
 from mercury.system.models import EventEnvelope
 from mercury.system.utility import Utility
 from mercury.system.cache import SimpleCache
@@ -46,6 +45,7 @@ class NetworkConnector:
         self._distributed_trace = distributed_trace
         self._loop = loop
         self.log = platform.log
+        self.config = platform.config
         self.normal = True
         self.started = False
         self.ready = False
@@ -62,10 +62,10 @@ class NetworkConnector:
         self.api_key = self._get_api_key()
 
     def _get_api_key(self):
-        config = AppConfig()
-        if config.API_KEY_LOCATION in os.environ:
-            self.log.info('Found API key in environment variable ' + config.API_KEY_LOCATION)
-            return os.environ[config.API_KEY_LOCATION]
+        api_key_location = self.config.get_property('api.key.location', default_value='LANG_API_KEY')
+        if api_key_location in os.environ:
+            self.log.info('Found API key in environment variable ' + api_key_location)
+            return os.environ[api_key_location]
         # check temp file system because API key not in environment
         temp_dir = '/tmp/config'
         if not os.path.exists(temp_dir):
@@ -78,7 +78,7 @@ class NetworkConnector:
         else:
             with open(api_key_file, 'w') as f:
                 self.log.info('Generating new API key in '+api_key_file +
-                              ' because it is not found in environment variable ' + config.API_KEY_LOCATION)
+                              ' because it is not found in environment variable ' + api_key_location)
                 value = ''.join(str(uuid.uuid4()).split('-'))
                 f.write(value + '\n')
                 return value

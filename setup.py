@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='mercury',
-      version='1.12.34',
+      version='1.12.35',
       description='Python Language pack for Mercury',
       author='Eric Law',
       author_email='eric.law@accenture.com',
@@ -15,7 +15,7 @@ setup(name='mercury',
       packages=['mercury', 'mercury.system', 'mercury.resources'],
       license='Apache 2.0',
       python_requires='>=3.6.7',
-      install_requires=['aiohttp', 'msgpack-python'],
+      install_requires=['aiohttp', 'msgpack-python', 'PyYAML'],
       classifiers=[
           'Programming Language :: Python :: 3',
           'Programming Language :: Python :: 3.5',

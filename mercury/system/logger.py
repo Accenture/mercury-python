@@ -26,7 +26,7 @@ from mercury.system.singleton import Singleton
 @Singleton
 class LoggingService:
 
-    def __init__(self, log_dir='/tmp/log', log_file=None, log_level='INFO'):
+    def __init__(self, log_dir='/tmp/log', log_file:str=None, log_level='INFO'):
         # automatically create log directory
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
@@ -50,7 +50,7 @@ class LoggingService:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-        if log_file is not None:
+        if log_file is not None and not log_file.lower() == 'none':
             filename = Utility().normalize_path(log_dir + '/' + log_file) + '.log'
             fh = RotatingFileHandler(filename, maxBytes=1024 * 1024, backupCount=10)
             fh.setLevel(level)

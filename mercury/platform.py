@@ -27,7 +27,7 @@ import uuid
 from asyncio import QueueEmpty
 from queue import Queue, Empty
 
-from mercury.resources.constants import AppConfig
+from mercury.system.config_util import ConfigReader
 from mercury.system.connector import NetworkConnector
 from mercury.system.distributed_trace import DistributedTrace
 from mercury.system.diskqueue import ElasticQueue
@@ -336,17 +336,18 @@ class Platform:
 
         self.util = Utility()
         self.origin = 'py'+(''.join(str(uuid.uuid4()).split('-')))
-        config = AppConfig()
-        my_log_file = (config.LOG_FILE if hasattr(config, 'LOG_FILE') else None) if log_file is None else log_file
-        my_log_level = config.LOG_LEVEL if log_level is None else log_level
-        self._max_threads = config.MAX_THREADS if max_threads is None else max_threads
-        self.work_dir = config.WORK_DIRECTORY if work_dir is None else work_dir
+        self.config = ConfigReader()
+        my_log_file = log_file if log_file is not None else self.config.get_property('log.filename')
+        my_log_level = log_level if log_level is not None else self.config.get_property('log.level')
+        self._max_threads = max_threads if max_threads is not None else self.config.get('max.threads')
+        self.work_dir = work_dir if work_dir is not None else self.config.get_property('work.directory')
         self.log = LoggingService(log_dir=self.util.normalize_path(self.work_dir + "/log"),
                                   log_file=my_log_file, log_level=my_log_level).get_logger()
         self._loop = asyncio.new_event_loop()
-        my_distributed_trace = DistributedTrace(self, config.DISTRIBUTED_TRACE_PROCESSOR)
-        my_connector = config.NETWORK_CONNECTOR if network_connector is None else network_connector
-        self._cloud = NetworkConnector(self, my_distributed_trace, self._loop, my_connector, self.origin)
+        # DO NOT CHANGE 'distributed.trace.processor' which is an optional user defined trace aggregator
+        my_tracer = DistributedTrace(self, 'distributed.trace.processor')
+        my_nc = network_connector if network_connector is not None else self.config.get_property('network.connector')
+        self._cloud = NetworkConnector(self, my_tracer, self._loop, my_nc, self.origin)
         self._function_queues = dict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
         self.log.info("Concurrent thread pool = "+str(self._max_threads))
@@ -359,8 +360,8 @@ class Platform:
         self._throttle = Throttle(self.util.normalize_path(my_test_dir + "/to_be_deleted"), log=self.log)
         self._seq = 0
         self.util.cleanup_dir(my_test_dir)
-        self.log.debug("Estimated processing rate is "+format(self._throttle.get_tps(), ',d')
-                      + " events per second for this computer")
+        self.log.debug("Estimated processing rate is "+format(self._throttle.get_tps(), ',d') +
+                       " events per second for this computer")
         self.running = True
         self.stopped = False
         # distributed trace sessions
