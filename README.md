@@ -33,7 +33,7 @@ Hope you enjoy this journey to improve the world.
 
 Best regards, the Mercury team, Accenture
 
-January 2020
+April 2020
 
 ## Rationale
 
@@ -187,6 +187,12 @@ You may enable Control-C and Kill signal detection by calling the "run_forever()
 platform.run_forever()
 ```
 
+## Pre-requisites
+
+Please do `pip install wheel` if python wheel is not installed.
+
+Mercury requires python 3.6.7 or above.
+
 ## Installing mercury
 
 You may install mercury using pip as follows:
@@ -194,18 +200,18 @@ You may install mercury using pip as follows:
 pip install git+https://github.com/Accenture/mercury-python.git
 ```
 
-If you have accidentally installed mercury using "python setup.py install", you will see the following error when trying to upgrade or uninstall.
+You should always use `pip` to install. If you accidentally installed mercury using "python setup.py install", 
+you will see the following error when trying to upgrade or uninstall.
 ```
-Cannot uninstall 'mercury'. It is a distutils installed project and thus we cannot accurately determine which files belong to it which would lead to only a partial uninstall.
+Cannot uninstall 'mercury'. 
+It is a distutils installed project and thus we cannot accurately determine
+which files belong to it which would lead to only a partial uninstall.
 ```
-You can resolve this issue by reinstalling mercury with the option "--ignore-installed". This will restore the metadata information for pip.
+You can resolve this issue by reinstalling mercury with the option "--ignore-installed". 
+This will restore the metadata information for pip.
 ```
 pip install --ignore-installed git+https://github.com/Accenture/mercury-python.git
 ```
-
-## python3 version
-
-Mercury requires python 3.6.7 or above
 
 ## Distributed tracing
 
