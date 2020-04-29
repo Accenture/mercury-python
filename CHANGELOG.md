@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
-## Version 1.12.36, 4/16/2020
+## Version 1.12.39, 4/29/2020
 
 ### Added
 
@@ -20,7 +20,8 @@ constants.py
 
 ### Changed
 
-Updated platform.py and connector.py to use ConfigReader
+1. Updated platform.py and connector.py to use ConfigReader
+2. Added package_data in setup.py
 
 ---
 ## Version 1.12.32, 3/14/2020
