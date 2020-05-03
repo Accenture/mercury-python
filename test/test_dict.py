@@ -32,7 +32,55 @@ class TestDict(unittest.TestCase):
         value = 'hello world'
         mm.set_element(composite_path, value)
         self.assertEqual(value, mm.get_element(composite_path))
+        # test flatten map
+        flat_map = mm.get_flat_map(mm.get_dict())
+        m2 = MultiLevelDict()
+        for k in flat_map:
+            m2.set_element(k, flat_map.get(k))
+        # the original and the reconstructed dictionaries must match
+        self.assertEqual(mm.get_dict(), m2.get_dict())
+        # the individual values must match using two different retrieval methods
+        for k in flat_map:
+            self.assertEqual(flat_map.get(k), m2.get_element(k))
+        has_error = False
         try:
-            mm.set_element('invalid[x]', value)
+            mm.set_element('this.is.invalid[0', value)
         except ValueError as e:
+            has_error = True
+            self.assertTrue('missing end bracket' in str(e))
+        self.assertTrue(has_error)
+        has_error = False
+        try:
+            mm.set_element('this.is.invalid[0][', value)
+        except ValueError as e:
+            has_error = True
+            self.assertTrue('missing end bracket' in str(e))
+        self.assertTrue(has_error)
+        has_error = False
+        try:
+            mm.set_element('this.is.invalid[0][x', value)
+        except ValueError as e:
+            has_error = True
+            self.assertTrue('missing end bracket' in str(e))
+        self.assertTrue(has_error)
+        has_error = False
+        try:
+            mm.set_element('this.is.invalid[0][1', value)
+        except ValueError as e:
+            has_error = True
+            self.assertTrue('missing end bracket' in str(e))
+        self.assertTrue(has_error)
+        has_error = False
+        try:
+            mm.set_element('this.is.invalid[0][1][x]', value)
+        except ValueError as e:
+            has_error = True
             self.assertTrue('indexes must be digits' in str(e))
+        self.assertTrue(has_error)
+        has_error = False
+        try:
+            mm.set_element('this.is.invalid 0][1][x]', value)
+        except ValueError as e:
+            has_error = True
+            self.assertTrue('missing start bracket' in str(e))
+        self.assertTrue(has_error)

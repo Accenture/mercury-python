@@ -259,7 +259,9 @@ class MultiLevelDict:
         if len(segments) == 0:
             raise ValueError('Missing composite path')
         for s in segments:
-            if '[' in s or ']' in segments:
+            if '[' in s or ']' in s:
+                if '[' not in s:
+                    raise ValueError('Invalid composite path - missing start bracket')
                 if not s.endswith(']'):
                     raise ValueError('Invalid composite path - missing end bracket')
                 sep1 = s.index('[')
