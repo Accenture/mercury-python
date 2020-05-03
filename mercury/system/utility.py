@@ -144,6 +144,8 @@ class Utility:
         :param chars: string containing one or more separator characters
         :return: array of strings
         """
+        if not isinstance(string, str) or not isinstance(chars, str):
+            return list()
         separator = None
         n = 0
         for c in chars:
@@ -154,9 +156,8 @@ class Utility:
             n += 1
         if separator is None:
             raise ValueError("Empty separator characters")
-
-        rv = []
         parts = string.split(separator)
+        rv = list()
         for p in parts:
             if len(p) > 0:
                 rv.append(p)

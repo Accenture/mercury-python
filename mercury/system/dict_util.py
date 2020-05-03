@@ -16,10 +16,13 @@
 # limitations under the License.
 #
 
+from mercury.system.utility import Utility
+
 
 class MultiLevelDict:
 
     def __init__(self, data=None):
+        self.util = Utility()
         self.normalized = False
         self.dataset = dict() if data is None else data
         if not isinstance(self.dataset, dict):
@@ -27,10 +30,6 @@ class MultiLevelDict:
 
     def get_dict(self):
         return self.dataset
-
-    @staticmethod
-    def get_parent_path(path):
-        return path[0: path.rindex('.')] if '.' in path else None
 
     @staticmethod
     def is_digits(n: str):
@@ -43,92 +42,127 @@ class MultiLevelDict:
     def is_list_element(item: str):
         return '[' in item and item.endswith(']') and (not item.startswith('['))
 
-    @staticmethod
-    def _get_index(item: str):
-        bracket_start = item.index('[')
-        bracket_end = item.rindex(']')
-        return int(item[bracket_start+1: bracket_end])
-
     def set_element(self, composite_path: str, value: any, source_data: dict = None):
         if composite_path is None:
             raise ValueError('Missing composite_path')
+        self.validate_composite_path_syntax(composite_path)
         data = self.dataset if source_data is None else source_data
         if not isinstance(data, dict):
             raise ValueError('Invalid input - Expect: dict, Actual: '+str(type(data)))
-        parts = composite_path.split('.')
-        size = len(parts)
-        element = parts[size - 1]
-        parent_path = self.get_parent_path(composite_path)
-        current = self.get_element(composite_path, data)
-        if current is not None:
-            if self.is_list_element(element):
-                parent = composite_path[0: composite_path.rindex('[')]
-                n = self._get_index(element)
-                cp = self.get_element(parent, data)
-                if isinstance(cp, list):
-                    cp_list = list(cp)
-                    cp_list[n] = value
-            else:
-                if parent_path is None:
-                    data[element] = value
-                else:
-                    o = self.get_element(parent_path, data)
-                    if isinstance(o, dict):
-                        o[element] = value
-        else:
-            if size == 1:
-                if self.is_list_element(element):
-                    list_element = element[0: element.rindex('[')]
-                    parent = composite_path[0: composite_path.rindex('[')]
-                    n = self._get_index(element)
-                    cp = self.get_element(parent, data)
-                    if cp is None:
-                        n_list = list()
-                        for ii in range(n):
-                            n_list[ii] = None
-                        n_list.append(value)
-                        data[list_element] = n_list
-                    elif isinstance(cp, list):
-                        o_list = cp
-                        if len(o_list) > 0:
-                            o_list[n] = value
-                        else:
-                            for ii in range(n):
-                                cp[ii] = None
-                            cp.append(value)
-                else:
-                    data[element] = value
-            else:
-                if self.is_list_element(element):
-                    list_element = element[0: element.rindex('[')]
-                    parent = composite_path[0: composite_path.rindex('[')]
-                    n = self._get_index(element)
-                    cp = self.get_element(parent, data)
-                    if cp is None:
-                        n_list = list()
-                        for _ in range(n):
-                            n_list.append(None)
-                        n_list.append(value)
-                        o = self.get_element(parent_path, data)
-                        if isinstance(o, dict):
-                            o[list_element] = n_list
-                        else:
-                            c = dict()
-                            c[list_element] = n_list
-                            self.set_element(parent_path, c, data)
-                    elif isinstance(cp, list):
-                        if len(cp) == 0:
-                            for _ in range(n):
-                                cp.append(None)
-                        cp.append(value)
-                else:
-                    o = self.get_element(parent_path, data)
-                    if isinstance(o, dict):
-                        o[element] = value
+        segments = self.util.multi_split(composite_path, './')
+        if len(segments) == 0:
+            return
+        current = data
+        size = len(segments)
+        n = 0
+        composite = ''
+        for p in segments:
+            n += 1
+            if self.is_list_element(p):
+                sep = p.index('[')
+                indexes = self._get_indexes(p[sep:])
+                element = p[0:sep]
+                parent = self.get_element(composite+element, source_data)
+                if n == size:
+                    if isinstance(parent, list):
+                        self._set_list_element(indexes, parent, value)
                     else:
-                        c = dict()
-                        c[element] = value
-                        self.set_element(parent_path, c, data)
+                        new_list = list()
+                        self._set_list_element(indexes, new_list, value)
+                        current[element] = new_list
+                    break
+                else:
+                    if isinstance(parent, list):
+                        next_dict = self.get_element(composite+p, source_data)
+                        if isinstance(next_dict, dict):
+                            current = next_dict
+                        else:
+                            m = dict()
+                            self._set_list_element(indexes, parent, m)
+                            current = m
+            else:
+                if n == size:
+                    current[p] = value
+                    break
+                else:
+                    if p in current and isinstance(current[p], dict):
+                        current = current[p]
+                    else:
+                        next_map = dict()
+                        current[p] = next_map
+                        current = next_map
+            composite = composite + p + '.'
+
+    def _set_list_element(self, indexes: list, source_data: list, value: any):
+        current = self._expand_list(indexes, source_data)
+        size = len(indexes)
+        for i in range(0, size):
+            idx = indexes[i]
+            if i == size - 1:
+                current[idx] = value
+            else:
+                o = current[idx]
+                if isinstance(o, list):
+                    current = o
+
+    @staticmethod
+    def _expand_list(indexes: list, source_data: list):
+        current = source_data
+        size = len(indexes)
+        for i in range(0, size):
+            idx = indexes[i]
+            if idx >= len(current):
+                diff = idx - len(current)
+                while diff >= 0:
+                    current.append(None)
+                    diff -= 1
+            if i == size - 1:
+                break
+            o = current[idx]
+            if isinstance(o, list):
+                current = o
+            else:
+                new_list = list()
+                current[idx] = new_list
+                current = new_list
+        return source_data
+
+    @staticmethod
+    def _is_composite(path: str):
+        return True if '.' in path or '/' in path or '[' in path or ']' in path else False
+
+    def _get_indexes(self, index_segment: str):
+        result = list()
+        indexes = self.util.multi_split(index_segment, '[]')
+        for i in indexes:
+            if self.is_digits(i):
+                result.append(int(i))
+            else:
+                result.append(-1)
+        return result
+
+    @staticmethod
+    def _get_list_element(indexes: list, source_data: list):
+        if (not isinstance(indexes, list)) or (not isinstance(source_data, list)) \
+                or len(indexes) == 0 or len(source_data) == 0:
+            return None
+        current = source_data
+        n = 0
+        size = len(indexes)
+        for i in indexes:
+            n += 1
+            if not isinstance(i, int):
+                return None
+            if i < 0 or i >= len(current):
+                break
+            o = current[i]
+            if n == size:
+                return o
+            if isinstance(o, list):
+                current = o
+            else:
+                break
+        return None
 
     def get_element(self, composite_path: str, source_data: dict = None):
         if composite_path is None:
@@ -136,50 +170,45 @@ class MultiLevelDict:
         data = self.dataset if source_data is None else source_data
         if not isinstance(data, dict):
             raise ValueError('Invalid input - Expect: dict, Actual: '+str(type(data)))
+        if len(data) == 0:
+            return None
         # special case for top level element that is using composite itself
         if composite_path in data:
             return data[composite_path]
-        if ('.' not in composite_path) and ('[' not in composite_path):
+        if not self._is_composite(composite_path):
             return data[composite_path] if composite_path in data else None
-        parts = composite_path.split('.')
-        o = dict(data)
+        parts = self.util.multi_split(composite_path, './')
+        current = dict(data)
         size = len(parts)
         n = 0
         for p in parts:
             n += 1
             if self.is_list_element(p):
-                bracket_start = p.index('[')
-                bracket_end = p.rindex(']')
-                if bracket_start > bracket_end:
+                start = p.index('[')
+                end = p.index(']', start)
+                if end == -1:
                     break
-
-                key = p[0: bracket_start]
-                index = p[bracket_start+1: bracket_end].strip()
-
-                if len(index) == 0:
+                key = p[0: start]
+                index = p[start+1: end].strip()
+                if len(index) == 0 or not self.is_digits(index):
                     break
-                if not self.is_digits(index):
-                    break
-                i = int(index)
-                if key in o:
-                    x = o[key]
-                    if isinstance(x, list):
-                        y = list(x)
-                        if i >= len(y):
-                            break
-                        else:
-                            if n == size:
-                                return y[i]
-                            elif isinstance(y[i], dict):
-                                o = y[i]
-                                continue
+                if key in current:
+                    next_list = current[key]
+                    if isinstance(next_list, list):
+                        indexes = self._get_indexes(p[start:])
+                        next_result = self._get_list_element(indexes, next_list)
+                        if n == size:
+                            return next_result
+                        if isinstance(next_result, dict):
+                            current = next_result
+                            continue
             else:
-                if p in o:
-                    x = o[p]
+                if p in current:
+                    next_dict = current[p]
                     if n == size:
-                        return x
-                    elif isinstance(x, dict):
-                        o = x
+                        return next_dict
+                    elif isinstance(next_dict, dict):
+                        current = next_dict
                         continue
             # item not found
             break
@@ -224,3 +253,34 @@ class MultiLevelDict:
                 self._get_flat_list(key, v, target)
             else:
                 target[key] = v
+
+    def validate_composite_path_syntax(self, path: str):
+        segments = self.util.multi_split(path, './')
+        if len(segments) == 0:
+            raise ValueError('Missing composite path')
+        for s in segments:
+            if '[' in s or ']' in segments:
+                if not s.endswith(']'):
+                    raise ValueError('Invalid composite path - missing end bracket')
+                sep1 = s.index('[')
+                sep2 = s.index(']')
+                if sep2 < sep1:
+                    raise ValueError('Invalid composite path - missing start bracket')
+                start = False
+                for c in s[sep1:]:
+                    if c == '[':
+                        if start:
+                            raise ValueError('Invalid composite path - missing end bracket')
+                        else:
+                            start = True
+                    elif c == ']':
+                        if not start:
+                            raise ValueError('Invalid composite path - duplicated end bracket')
+                        else:
+                            start = False
+                    else:
+                        if start:
+                            if c < '0' or c > '9':
+                                raise ValueError('Invalid composite path - indexes must be digits')
+                        else:
+                            raise ValueError('Invalid composite path - invalid indexes')

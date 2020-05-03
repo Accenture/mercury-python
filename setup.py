@@ -17,7 +17,7 @@ setup(name='mercury',
       package_data={'mercury': ['resources/application.yml']},
       license='Apache 2.0',
       python_requires='>=3.6.7',
-      install_requires=['aiohttp', 'msgpack-python', 'PyYAML'],
+      install_requires=['aiohttp', 'msgpack-python', 'PyYAML', 'pytest'],
       classifiers=[
           'Programming Language :: Python :: 3',
           'Programming Language :: Python :: 3.5',
