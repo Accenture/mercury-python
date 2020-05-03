@@ -24,12 +24,20 @@ from mercury.system.dict_util import MultiLevelDict
 class TestDict(unittest.TestCase):
 
     def test_multi_level_map(self):
+        # mixed dict and list
+        mix_path = 'hello.world[0].headers[0]'
+        value = 'hello world'
+        m1 = MultiLevelDict()
+        m1.set_element(mix_path, value)
+        m1_flatmap = m1.get_flat_map(m1.get_dict())
+        self.assertEqual(value, m1_flatmap.get(mix_path))
+        self.assertEqual(m1_flatmap.get(mix_path), m1.get_element(mix_path))
+        # nested arrays
         data = {'a': {'b': [1, 2, 3, [4]]}}
         mm = MultiLevelDict(data)
         self.assertEqual(4, mm.get_element('a.b[3][0]'))
         # verify set_element method
         composite_path = 'a.b[3][4][1]'
-        value = 'hello world'
         mm.set_element(composite_path, value)
         self.assertEqual(value, mm.get_element(composite_path))
         # test flatten map

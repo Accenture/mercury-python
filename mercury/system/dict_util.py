@@ -80,6 +80,12 @@ class MultiLevelDict:
                             m = dict()
                             self._set_list_element(indexes, parent, m)
                             current = m
+                    else:
+                        next_map = dict()
+                        new_list = list()
+                        self._set_list_element(indexes, new_list, next_map)
+                        current[element] = new_list
+                        current = next_map
             else:
                 if n == size:
                     current[p] = value
