@@ -109,8 +109,9 @@ class ObjectStreamIO:
             raise ValueError('Write timeout must be float or int')
 
         if not self.output_closed:
-            if isinstance(payload, dict) or isinstance(payload, str) or isinstance(payload, bool) \
-                    or isinstance(payload, int) or isinstance(payload, float):
+            if isinstance(payload, dict) or isinstance(payload, str) \
+                    or isinstance(payload, bytes) \
+                    or isinstance(payload, int) or isinstance(payload, float) or isinstance(payload, bool):
                 # for orderly write, use RPC request to guarantee that payload is written into the object stream
                 self.po.request(self.route, timeout_seconds, headers={'type': 'write'}, body=payload)
             else:

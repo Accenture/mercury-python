@@ -92,6 +92,11 @@ For the consumer, When you detect the end of stream, you can close the input str
 I/O stream consumes resources and thus you must close the input stream at the end of stream processing.
 The system will automatically close the stream upon an expiry timer that you provide when a new stream is created.
 
+Note that the object stream feature requires a live connection to an available Mercury language connector helper app.
+If the service is not connected using the "platform.connect_to_cloud()" method, it will throw "Route not found" exception.
+
+Object stream supports transport of dict, str, bytes, bool, int or float.
+
 The following sample code demonstrates this use case.
 
 ```python
@@ -110,7 +115,7 @@ stream_id = producer.get_route()
 consumer = ObjectStreamIO(route=stream_id, expiry_seconds=60)
 try:
     # set a 10 seconds read timeout for the input stream generator
-    for i in consumer.reaed(10):
+    for i in consumer.read(10):
         print(i)
 except TimeoutError as te:
     # you may retry reading from the generator again if you want to wait for more input
