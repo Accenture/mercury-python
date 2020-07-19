@@ -284,6 +284,8 @@ class WorkerQueue:
             dt.set_header('origin', self.platform.get_origin())
             dt.set_header('id', trace_info.get_id()).set_header('path', trace_info.get_path())
             dt.set_header('service', self.route).set_header('start', trace_info.get_start_time())
+            if 'from' in event:
+                dt.set_header('from', event['from'])
             if not error_code:
                 dt.set_header('success', 'true')
                 dt.set_header('exec_time', exec_time)
