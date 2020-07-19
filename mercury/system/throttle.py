@@ -68,7 +68,7 @@ class Throttle:
                 timer = self.interval - diff
                 if timer > 0:
                     if self.log:
-                        self.log.debug("Reduce rate for "+format(timer * 1000, '.3f')+" ms at seq-"+str(seq))
+                        self.log.debug("Reduce rate for "+str(round(timer, 3))+" seconds at seq-"+str(seq))
                     time.sleep(timer)
                 else:
                     if self.log:

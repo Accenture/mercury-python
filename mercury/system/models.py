@@ -350,8 +350,8 @@ class TraceInfo:
     def _get_timestamp():
         seconds = time.time()
         utc = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(seconds))
-        ms = format(seconds - int(seconds), '.3f')
-        return utc+ms[1:]+'Z'
+        ms = (str(round(seconds - int(seconds), 3)) + '000')[1:5]
+        return utc + ms + 'Z'
 
 
 class EventEnvelope:
@@ -474,18 +474,15 @@ class EventEnvelope:
     def get_exec_time(self):
         return self.exec_time
 
-    def set_exec_time(self, exec_time, rounding=True):
-        if rounding:
-            self.exec_time = float(format(exec_time, '.3f'))
-        else:
-            self.exec_time = exec_time
+    def set_exec_time(self, exec_time):
+        self.exec_time = round(exec_time, 3)
         return self
 
     def get_round_trip(self):
         return self.round_trip
 
     def set_round_trip(self, round_trip):
-        self.round_trip = float(format(round_trip, '.3f'))
+        self.round_trip = round(round_trip, 3)
         return self
 
     def to_map(self):

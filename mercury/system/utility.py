@@ -213,8 +213,8 @@ class Utility:
     def get_iso_8601(seconds: float, show_ms=False):
         if show_ms:
             utc = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(seconds))
-            ms = format(seconds - int(seconds), '.3f')
-            return utc+ms[1:]+'Z'
+            ms = (str(round(seconds - int(seconds), 3)) + '000')[1:5]
+            return utc + ms + 'Z'
         else:
             return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(seconds))
 

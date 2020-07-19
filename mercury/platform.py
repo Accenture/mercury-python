@@ -235,7 +235,7 @@ class WorkerQueue:
             error_msg = str(e)
 
         # execution time is rounded to 3 decimal points
-        exec_time = float(format((end - begin) * 1000, '.3f'))
+        exec_time = round((end - begin) * 1000, 3)
 
         if error_code:
             if 'reply_to' in event:
@@ -256,7 +256,7 @@ class WorkerQueue:
                 reply_to = reply_to[2:]
             response = EventEnvelope().set_to(reply_to)
             if not error_code:
-                response.set_exec_time(exec_time, False)
+                response.set_exec_time(exec_time)
             if 'extra' in event:
                 response.set_extra(event['extra'])
             if 'cid' in event:
@@ -592,7 +592,7 @@ class Platform:
                     if len(result_list) == len(events):
                         return result_list
                 except Empty:
-                    raise TimeoutError('Requests timeout for '+format(timeout_value, '.3f')+" seconds. Expect: " +
+                    raise TimeoutError('Requests timeout for '+str(round(timeout_value, 3))+" seconds. Expect: " +
                                        str(total_requests) + " responses, actual: " + str(len(result_list)))
         finally:
             inbox.close()
@@ -627,7 +627,7 @@ class Platform:
             # wait until response event is delivered to the inbox
             return inbox_queue.get(True, timeout_value)
         except Empty:
-            raise TimeoutError('Route '+event.get_to()+' timeout for '+format(timeout_value, '.3f')+" seconds")
+            raise TimeoutError('Route '+event.get_to()+' timeout for '+str(round(timeout_value, 3))+" seconds")
         finally:
             inbox.close()
 
