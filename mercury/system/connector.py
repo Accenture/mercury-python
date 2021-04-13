@@ -39,6 +39,10 @@ class NetworkConnector:
     SERVER_CONFIG = "system.config"
     MAX_PAYLOAD = "max.payload"
     DISTRIBUTED_TRACING = "distributed.tracing"
+    # payload segmentation reserved tags (from v1.13.0 onwards)
+    ID = '_id_'
+    COUNT = '_blk_'
+    TOTAL = '_max_'
 
     def __init__(self, platform, distributed_trace, loop, url_list, origin):
         self.platform = platform
@@ -113,9 +117,9 @@ class NetworkConnector:
                 for i in range(total):
                     count += 1
                     block = EventEnvelope()
-                    block.set_header('id', msg_id)
-                    block.set_header('count', count)
-                    block.set_header('total', total)
+                    block.set_header(self.ID, msg_id)
+                    block.set_header(self.COUNT, count)
+                    block.set_header(self.TOTAL, total)
                     block.set_body(buffer.read(self.max_ws_payload))
                     block_map = dict()
                     block_map['type'] = 'block'
@@ -185,10 +189,10 @@ class NetworkConnector:
                         envelope = EventEnvelope()
                         inner_event = envelope.from_map(event['block'])
                         inner_headers = inner_event.get_headers()
-                        if 'id' in inner_headers and 'count' in inner_headers and 'total' in inner_headers:
-                            msg_id = inner_headers['id']
-                            msg_count = inner_headers['count']
-                            msg_total = inner_headers['total']
+                        if self.ID in inner_headers and self.COUNT in inner_headers and self.TOTAL in inner_headers:
+                            msg_id = inner_headers[self.ID]
+                            msg_count = inner_headers[self.COUNT]
+                            msg_total = inner_headers[self.TOTAL]
                             data = inner_event.get_body()
                             if isinstance(data, bytes):
                                 buffer = self.cache.get(msg_id)

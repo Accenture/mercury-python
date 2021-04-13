@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## Version 1.13.0, 4/12/2021
+
+### Added
+
+N/A
+
+### Removed
+
+N/A
+
+### Changed
+
+Update reserved tags for automatic payload segmentation protocol
+
+---
 ## Version 1.12.66, 1/20/2021
 
 ### Added

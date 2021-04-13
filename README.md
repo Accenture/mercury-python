@@ -5,35 +5,40 @@ The main Mercury project is available at https://github.com/Accenture/mercury
 
 Please clone the main project and follow the README file to build the mercury core libraries and the language-connector application.
 
+## Installing mercury
+
+You may install mercury using pip as follows:
+```
+pip install git+https://github.com/Accenture/mercury-python.git
+```
+
 ## Welcome to the Mercury project
 
 The Mercury project is created with one primary objective - `to make software easy to write, read, test, deploy, scale and manage`.
 
-To this end, it introduces the concept of platform abstraction and takes event driven programming to the next level of simplicity.
+It introduces the concept of platform abstraction and takes event driven programming to the next level of simplicity and sophistication.
 
-Everything can be expressed as anonymous functions and they communicate with each other using events. However, event driven and reactive programming can be challenging. The Mercury framework hides all the complexity of event driven and reactive patterns and the magic of inter-service communication.
+Everything can be expressed as anonymous functions and they communicate with each other using events. This includes turning synchronous HTTP requests and responses into async events using the REST automation system. However, event driven and reactive programming can be challenging. The Mercury framework hides all the complexity of event driven and reactive patterns and the magic of inter-service communication.
 
-If you want digital decoupling, this is the technology that you should invest 30 minutes of your time to try it out.
+If you want digital decoupling, this is the technology that you should invest 30 minutes of your time to get familiar with.
 
-The pre-requisites are very minimal. The foundation technology requires only Java 1.8 JDK or above (Oracle or OpenJDK) and the Maven build system ("mvn"). Docker/Kubernetes are optional. The application modules that you create using the Mercury framework will run in bare metal, VM and any cloud environments.
+The pre-requisites are minimal. The foundation technology requires only Java (OpenJDK 8 to 14) and the Maven build system ("mvn"). Docker/Kubernetes are optional. The application modules that you create using the Mercury framework will run in bare metal, VM and any cloud environments.
 
 This project is created by architects and computer scientists who have spent years to perfect software decoupling, scalability and resilience, high performance and massively parallel processing,
 
 With a very high level of decoupling, you can focus in writing business logic without distraction.
 
-Since everything can be expressed as anonymous function, the framework itself is written using this approach. All the cloud connectors and language packs are microservices that are written as anonymous functions. In this way, you can add new connectors, plugins and language packs as you like. The framework is extensible.
+Since everything can be expressed as anonymous functions, the framework itself is written using this approach, including the cloud connectors and language pack in the project. In this way, you can add new connectors, plugins and language packs as you like. The framework is extensible.
 
-The concept is simple. You write your business logic as anonymous functions and packaged them in one or more executables. These executables may be composed as Docker images or alike. You can then deploy them. The containers communicate with each other through an event stream system like Hazelcast or Kafka.
+The concept is simple. You write your business logic as anonymous functions and packaged them in one or more executables. These executables may be composed as Docker images or alike for deployment. The services in the containers communicate with each other using "service route names".
 
-We make the event stream system works as a service mesh. Functions will talk to each other magically without configuration.
+Mercury supports unlimited service route names on top of event stream and messaging systems such as Kafka and Hazelcast. While we make the event stream system works as a service mesh, Mercury can be used in standalone mode for applications that use pub/sub directly.
 
-If you have your own preference of a different event stream system, you can follow the Hazelcast connector as an example to build your own connector.
-
-Hope you enjoy this journey to improve the world.
+In fact, you can encapsulate other event stream or even enterprise service bus (ESB) with Mercury. Just use the Kafka and Hazelcast connectors as examples. It would make your ESB runs like an event stream system for RPC, async, callback, streaming, pipeline and pub/sub use cases.
 
 Best regards, the Mercury team, Accenture
 
-January 2021
+April 2021
 
 ## Rationale
 
@@ -193,7 +198,7 @@ Please do `pip install wheel` if python wheel is not installed.
 
 Mercury requires python 3.6.7 or above.
 
-## Installing mercury
+## Typical installation issue
 
 You may install mercury using pip as follows:
 ```
