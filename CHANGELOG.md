@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
-## Version 2.0.0, 4/29/2021
+## Version 2.0.0, 5/5/2021
 
 ### Added
 
@@ -18,7 +18,9 @@ N/A
 
 ### Changed
 
-Sync up version with parent Mercury project
+Change default environment variable for language API key to 'LANGUAGE_PACK_KEY'
+
+If secret key is not available, it will read the secret from /tmp/config/lang-api-key.txt
 
 ---
 ## Version 1.13.0, 4/12/2021

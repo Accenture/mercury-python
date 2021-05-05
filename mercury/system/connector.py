@@ -66,10 +66,10 @@ class NetworkConnector:
         self.api_key = self._get_api_key()
 
     def _get_api_key(self):
-        api_key_location = self.config.get_property('api.key.location', default_value='LANG_API_KEY')
-        if api_key_location in os.environ:
-            self.log.info('Found API key in environment variable ' + api_key_location)
-            return os.environ[api_key_location]
+        api_key_env_var = self.config.get_property('language.pack.key', default_value='LANGUAGE_PACK_KEY')
+        if api_key_env_var in os.environ:
+            self.log.info('Found API key in environment variable ' + api_key_env_var)
+            return os.environ[api_key_env_var]
         # check temp file system because API key not in environment
         temp_dir = '/tmp/config'
         if not os.path.exists(temp_dir):
@@ -77,12 +77,11 @@ class NetworkConnector:
         api_key_file = temp_dir+"/lang-api-key.txt"
         if os.path.exists(api_key_file):
             with open(api_key_file) as f:
-                self.log.info('Reading API key from '+api_key_file)
+                self.log.info('Reading language API key from '+api_key_file)
                 return f.read().strip()
         else:
             with open(api_key_file, 'w') as f:
-                self.log.info('Generating new API key in '+api_key_file +
-                              ' because it is not found in environment variable ' + api_key_location)
+                self.log.info('Generating new language API key in '+api_key_file)
                 value = ''.join(str(uuid.uuid4()).split('-'))
                 f.write(value + '\n')
                 return value

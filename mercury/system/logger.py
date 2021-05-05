@@ -26,7 +26,7 @@ from mercury.system.singleton import Singleton
 @Singleton
 class LoggingService:
 
-    def __init__(self, log_dir='/tmp/log', log_file:str=None, log_level='INFO'):
+    def __init__(self, log_dir='/tmp/log', log_file: str = None, log_level='INFO'):
         # automatically create log directory
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)

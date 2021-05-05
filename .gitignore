@@ -9,6 +9,7 @@
 *.pyc
 /target
 /venv
+/build
 
 # Packages #
 ############
