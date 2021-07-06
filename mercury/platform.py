@@ -464,8 +464,6 @@ class Platform:
         :return:
         """
         self.util.validate_service_name(route)
-        if route in self._function_queues:
-            raise ValueError("route "+route+" already registered")
         if not isinstance(total_instances, int):
             raise ValueError("Expect total_instances to be int, actual: "+str(type(total_instances)))
         if total_instances < 1:
@@ -476,7 +474,9 @@ class Platform:
         if function_type == FunctionType.NOT_SUPPORTED:
             raise ValueError("Function signature should be (headers: dict, body: any, instance: int) or " +
                              "(headers: dict, body: any) or (event: EventEnvelope)")
-
+        if route in self._function_queues:
+            self.log.warn(route+" will be reloaded")
+            self.release(route)
         queue = asyncio.Queue(loop=self._loop)
         if function_type == FunctionType.INTERCEPTOR:
             self._function_queues[route] = {'queue': queue, 'private': is_private, 'instances': 1}
