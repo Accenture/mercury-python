@@ -9,13 +9,20 @@ Mercury has a small set of API for declaring microservices functions and sending
 
 ## EventEnvelope
 
-EventEnvelope is a vehicle for storing and transporting an event that contains headers and body. `headers` can be used to carry parameters and `body` is the message payload. Each event should have either or both of headers and body. You can set Python primitive or dictionary (aka Map) into the body.
+EventEnvelope is a vehicle for storing and transporting an event that contains headers and body. `headers` can be used 
+to carry parameters and `body` is the message payload. Each event should have either or both of headers and body. 
+You can set Python primitive or dictionary (aka Map) into the body.
 
-Mercury automatically performs serialization and deserialization using the EventEnvelope's `to_bytes()` and `from_bytes(bytes)` methods. For performance and network efficiency, it is using [MsgPack](https://msgpack.org/) for serialization.
+Mercury automatically performs serialization and deserialization using the EventEnvelope's `to_bytes()` and 
+`from_bytes(bytes)` methods. For performance and network efficiency, it is using [MsgPack](https://msgpack.org/) 
+for serialization.
 
-EventEnvelope is used for both input and output. For simple use cases in asynchronous operation, you do not need to use the EventEnvelope. For RPC call, the response object is an EventEnvelope. The service response is usually stored in the "body" in the envelope. A service may also return key-values in the "headers" field.
+EventEnvelope is used for both input and output. For simple use cases in asynchronous operation, you do not need to 
+use the EventEnvelope. For RPC call, the response object is an EventEnvelope. The service response is usually stored 
+in the "body" in the envelope. A service may also return key-values in the "headers" field.
 
-Mercury is truly schemaless. It does not care if you are sending a primitive or dictionary. The calling function and the called function must understand each other's API interface contract to communicate properly.
+Mercury is truly schemaless. It does not care if you are sending a primitive or dictionary. The calling function and 
+the called function must understand each other's API interface contract to communicate properly.
 
 ## Platform API
 
@@ -29,7 +36,9 @@ platform = Platform();
 
 ### Register a public function
 
-To register a function, you can assign a route name to a function instance. You can also set the maximum number of concurrent workers in an application instance. This provides vertical scalability in addition to horizontal scaling by Docker/Kubernetes.
+To register a function, you can assign a route name to a function instance. You can also set the maximum number of 
+concurrent workers in an application instance. This provides vertical scalability in addition to horizontal scaling 
+by Docker/Kubernetes.
 
 To create a singleton function, set instances to 1.
 
@@ -52,24 +61,32 @@ def regular_service(headers: dict, body: any, instance: int):
 def singleton_service(headers: dict, body: any):
 def interceptor(event: EventEnvelope):
 
-# You can use any function names but the argument names and types must be exactly the same as one of the signatures above.
+# You can use any function names but the argument names and types must be exactly the same as the signatures above.
 ```
 
-A regular function would accept input parameters as "headers", message payload as "body". The worker instance number is provided as "instance". You may define more than one worker in the instances during the "registration" phase described in the last section.
+A regular function would accept input parameters as "headers", message payload as "body". The worker instance number 
+is provided as "instance". You may define more than one worker in the instances during the "registration" phase 
+described in the last section.
 
-A singleton function guarantees singleton within one application instance. Since your application unit is independently deployed and scalable, you may have more than one instance running horizontally in a parallel fashion. You would need other techniques to guarantee "single consumer" pattern in a distributed environment.
+A singleton function guarantees singleton within one application instance. Since your application unit is 
+independently deployed and scalable, you may have more than one instance running horizontally in a parallel fashion. 
+You would need other techniques to guarantee "single consumer" pattern in a distributed environment.
 
-An interceptor is used for advanced orchestration. Instead of passing headers and body, the raw EventEnvelope is provided as input so that the interceptor can inspect its routing information and metadata.
+An interceptor is used for advanced orchestration. Instead of passing headers and body, the raw EventEnvelope is 
+provided as input so that the interceptor can inspect its routing information and metadata.
 
 ### Register a private function
 
-Public functions are advertised to the whole system while private functions are encapsulated within an application instance.
+Public functions are advertised to the whole system while private functions are encapsulated within an application
+instance.
 
-You may define your function as `private` if it is used internally by other functions in the same application instance. Use the `is_private` parameter in the register method.
+You may define your function as `private` if it is used internally by other functions in the same application instance. 
+Use the `is_private` parameter in the register method.
 
 ### Release a function
 
-A function can be long term or transient. When a function is no longer required, you can cancel the function using the "release" method.
+A function can be long term or transient. When a function is no longer required, you can cancel the function using 
+the "release" method.
 
 ```python
 release(self, route: str) -> None
@@ -77,7 +94,8 @@ release(self, route: str) -> None
 
 ### Connect to the cloud
 
-You can write truly event-driven microservices as a standalone application. However, it would be more interesting to connect the services together through a network event stream system.
+You can write truly event-driven microservices as a standalone application. However, it would be more interesting to 
+connect the services together through a network event stream system.
 
 To do this, you can ask the platform to connect to the cloud.
 
