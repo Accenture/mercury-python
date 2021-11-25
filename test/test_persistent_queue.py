@@ -24,8 +24,8 @@ from mercury.system.diskqueue import ElasticQueue
 class TestDiskQueue(unittest.TestCase):
 
     def test_read_write(self):
-        byte_value = b'0x01'
-        total = 10
+        byte_value = bytes('test message', 'utf-8')
+        total = 100
         queue = ElasticQueue(queue_dir='/tmp', queue_id='test')
 
         async def test_write():

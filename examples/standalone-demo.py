@@ -23,7 +23,7 @@ from mercury.system.po import PostOffice
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    Platform().log.info("#"+str(instance)+" got ---> "+str(headers)+" body="+str(body))
+    Platform().get_logger().info("#"+str(instance)+" got ---> "+str(headers)+" body="+str(body))
     # as a demo, just echo the original payload
     return body
 
@@ -49,8 +49,9 @@ def main():
     except TimeoutError as e:
         print("Exception: ", str(e))
 
-    for n in range(10):
-        po.send('hello.world', body='test message '+str(n))
+    # demonstrate drop-n-forget
+    for n in range(20):
+        po.send('hello.world', body='just a drop-n-forget message '+str(n))
 
     #
     # this will keep the main thread running in the background

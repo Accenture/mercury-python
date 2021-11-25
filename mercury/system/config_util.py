@@ -62,4 +62,3 @@ class ConfigReader:
     def get_property(self, key, default_value: any = None):
         result = self.get(key, default_value)
         return result if isinstance(result, str) else str(result)
-

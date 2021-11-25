@@ -28,7 +28,7 @@ class Hi:
 
     def hello(self, headers: dict, body: any):
         # singleton function signature (headers: dict, body: any)
-        Platform().log.info(self.MY_NAME+" "+str(headers) + ", " + str(body))
+        Platform().get_logger().info(self.MY_NAME+" "+str(headers) + ", " + str(body))
         return body
 
 

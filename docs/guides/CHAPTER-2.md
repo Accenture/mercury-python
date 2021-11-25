@@ -30,8 +30,18 @@ the called function must understand each other's API interface contract to commu
 
 ```python
 platform = Platform();
+```
+platform is a singleton object. Therefore, it is safe to invoke this class multiple times
 
-# platform is a singleton object so it is safe to invoke this class multiple times
+
+### application.yml
+
+The default application configuration file is in the embedded resources folder.
+
+If you want to specify your own configuration file, you may override it when you start the platform.
+
+```python
+platform = Platform(your_config_yaml_file_path);
 ```
 
 ### Register a public function

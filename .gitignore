@@ -44,4 +44,5 @@ Thumbs.db
 .idea
 .project
 .classpath
+.pytest_cache
 /bin

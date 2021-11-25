@@ -24,7 +24,7 @@ from mercury.system.object_stream import ObjectStreamIO, ObjectStreamWriter, Obj
 
 def main():
     platform = Platform()
-    log = platform.log
+    log = platform.get_logger()
     # connect to the network
     platform.connect_to_cloud()
     # wait until connected
@@ -39,8 +39,6 @@ def main():
     #
     # You can create a new I/O stream using ObjectStreamIO.
     # This requires a live connection to the language connector.
-    #
-    # If other application creates the I/O stream, it can send your app the input_stream_id.
     #
     stream = ObjectStreamIO(10)
 
