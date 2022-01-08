@@ -38,7 +38,7 @@ In fact, you can encapsulate other event stream or even enterprise service bus (
 
 Best regards, the Mercury team, Accenture
 
-April 2021
+January 2022
 
 ## Rationale
 

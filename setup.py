@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='mercury',
-      version='2.2.2',
+      version='2.3.0',
       description='Python Language pack for Mercury',
       author='Eric Law',
       author_email='eric.law@accenture.com',
@@ -23,6 +23,9 @@ setup(name='mercury',
           'Programming Language :: Python :: 3.5',
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8',
+          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.10',
           'Intended Audience :: Developers',
           'License :: OSI Approved :: Apache Software License'
       ])
