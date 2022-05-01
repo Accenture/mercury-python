@@ -218,6 +218,27 @@ This will restore the metadata information for pip.
 pip install --ignore-installed git+https://github.com/Accenture/mercury-python.git
 ```
 
+## Application configuration file
+
+The default application config file is located in resources/application.yml.
+
+To use your own config file, please specify "config_file=your_config_file_path" when creating the platform instance.
+Please use application.yml as a template and update the parameters.
+e.g.
+```
+platform = Platform(config_file='/tmp/config/application.yml')
+```
+
+## language connector's shared secret key
+
+language.pack.key should point to an environment variable containing a secret key for connection to
+a language connector. If the environment variable does not exist, the system will get the secret key
+from the temporary local file system at /tmp/config/lang-api-key.txt
+
+If /tmp/config/lang-api-key.txt does not exist, the system will create a random secret key automatically.
+If the language connector and the python application are running in the same container, they will find each other
+without any configuration.
+
 ## Distributed tracing
 
 Microservices are likely to be deployed in a multi-tier environment. 

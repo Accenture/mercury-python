@@ -3,7 +3,11 @@
 # the websocket endpoint for a language connector sidecar
 network.connector: 'ws://127.0.0.1:8090/ws/lang'
 
-# the environment variable name for the API key to connect to a language connector
+#
+# language.pack.key should point to an environment variable containing a secret key for connection to
+# a language connector. If the environment variable does not exist, the system will get the secret key
+# from the temporary local file system at /tmp/config/lang-api-key.txt
+#
 language:
   pack:
     key: 'LANGUAGE_PACK_KEY'
