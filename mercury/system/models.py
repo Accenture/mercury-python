@@ -41,7 +41,7 @@ class AsyncHttpRequest:
     May also be used to create HTTP events for unit tests.
     """
 
-    def __init__(self):
+    def __init__(self, data: dict = None):
         self.method = None
         self.query_string = None
         self.url = None
@@ -61,6 +61,11 @@ class AsyncHttpRequest:
         self.https = False
         self.size = -1
         self.timeout_seconds = -1
+        if data is not None:
+            if isinstance(data, dict):
+                self.from_map(data)
+            else:
+                raise ValueError('Input should be a dictionary containing a HTTP request')
 
     def get_method(self):
         return self.method

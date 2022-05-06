@@ -19,9 +19,15 @@
 import time
 
 from mercury.platform import Platform
+from mercury.system.models import AsyncHttpRequest
 
 
 def hello(headers: dict, body: any, instance: int):
+    # is this an HTTP request from REST automation?
+    if isinstance(body, dict):
+        request = AsyncHttpRequest(body)
+        if request.get_method() is not None:
+            print("#"+str(instance), 'HTTP request:', request.get_method(), request.get_url())
     # just print out the input onto the console
     print("#"+str(instance), "GOT", "headers =", str(headers), "body =", str(body))
     # return the result as a dict so it can be rendered as JSON, XML or HTML automatically by the REST endpoint

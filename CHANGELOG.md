@@ -18,7 +18,8 @@ N/A
 
 ### Changed
 
-Updated README and application.yml files
+1. Updated README and application.yml files
+2. Enhanced AsyncHttpRequest
 
 ---
 ## Version 2.3.0, 1/8/2022
