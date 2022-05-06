@@ -232,7 +232,7 @@ class WorkerQueue:
             error_msg = str(e)
         except Exception as e:
             error_code = 500
-            error_msg = str(e)
+            error_msg = type(e).__name__ + ' ' + str(e)
 
         # execution time is rounded to 3 decimal points
         exec_time = round((end - begin) * 1000, 3)

@@ -6,11 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
-## Version 2.3.3, 5/1/2022
+## Version 2.3.3, 5/6/2022
 
 ### Added
 
-N/A
+for unhandled exception, return exception class name and error message.
 
 ### Removed
 
