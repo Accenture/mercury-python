@@ -53,6 +53,8 @@ def main():
     for n in range(20):
         po.send('hello.world', body='just a drop-n-forget message '+str(n))
 
+    # demonstrate deferred delivery
+    po.send_later('hello.world', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
     #
     # this will keep the main thread running in the background
     # so we can use Control-C or KILL signal to stop the application

@@ -668,6 +668,9 @@ class Platform:
             else:
                 raise ValueError("route " + route + " not found")
 
+    def send_event_later(self, delay_in_seconds: float, event: EventEnvelope) -> None:
+        self._loop.call_later(delay_in_seconds, self.send_event, event)
+
     def exists(self, routes: any):
         if isinstance(routes, str):
             single_route = routes

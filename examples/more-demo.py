@@ -80,6 +80,9 @@ def main():
     except TimeoutError as e:
         print("Exception: ", str(e))
 
+    # demonstrate deferred delivery
+    po.send_later('hello.world.1', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
+
     # connect to the network
     platform.connect_to_cloud()
     # wait until connected
@@ -91,12 +94,9 @@ def main():
             platform.stop()
             return
 
-    # Demonstrate broadcast feature
-    # the event will be broadcast to multiple application instances that serve the same route
+    # Demonstrate broadcast feature:
+    # To test this feature, please run multiple instances of this demo
     po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
-
-    # demonstrate deferred delivery
-    po.send_later('hello.world.1', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
 
     #
     # this will keep the main thread running in the background
