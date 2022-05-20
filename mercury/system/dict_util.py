@@ -182,7 +182,7 @@ class MultiLevelDict:
         if composite_path in data:
             return data[composite_path]
         if not self._is_composite(composite_path):
-            return data[composite_path] if composite_path in data else None
+            return None
         parts = self.util.multi_split(composite_path, './')
         current = dict(data)
         size = len(parts)
