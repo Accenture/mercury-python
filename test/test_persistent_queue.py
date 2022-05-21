@@ -32,7 +32,7 @@ class TestDiskQueue(unittest.TestCase):
             for n in range(total):
                 await queue.write({'v': 'hello world', 'n': n, 'b': byte_value})
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.new_event_loop()
         loop.run_until_complete(test_write())
 
         for i in range(total):
