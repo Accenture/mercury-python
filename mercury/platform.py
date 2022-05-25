@@ -333,7 +333,7 @@ class Platform:
         if sys.version_info.major < 3:
             python_version = str(sys.version_info.major) + "." + str(sys.version_info.minor)
             raise RuntimeError("Requires python 3.6 and above. Actual: " + python_version)
-        self.origin = 'py' + (''.join(str(uuid.uuid4()).split('-')))
+        self.origin = 'py-' + (''.join(str(uuid.uuid4()).split('-')))
         self.config = ConfigReader(config_file)
         self.util = Utility()
         log_dir = self.config.get_property('log.directory')
