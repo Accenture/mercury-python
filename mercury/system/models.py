@@ -413,7 +413,7 @@ class EventEnvelope:
 
     def set_reply_to(self, reply_to: str, me=False):
         if isinstance(reply_to, str):
-            self.reply_to = ('->' if me else '') + reply_to
+            self.reply_to = '->' + reply_to if me else reply_to
         else:
             raise ValueError('reply_to must be str')
         return self
