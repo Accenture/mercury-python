@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## Version 2.3.5, 5/30/2022
+
+### Added
+
+1. Add tagging feature in EventEnvelope for compatibility with Node.js language pack.
+2. Improved exception handling for non-exist target service route when making RPC call.
+
+### Removed
+
+N/A
+
+### Changed
+
+N/A
+
+---
 ## Version 2.3.4, 5/18/2022
 
 ### Added

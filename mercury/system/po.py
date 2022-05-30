@@ -17,7 +17,7 @@
 #
 
 from mercury.platform import Platform
-from mercury.system.models import EventEnvelope
+from mercury.system.models import EventEnvelope, AppException
 from mercury.system.singleton import Singleton
 from mercury.system.utility import Utility
 
@@ -130,7 +130,13 @@ class PostOffice:
             event.set_body(body)
         if correlation_id is not None:
             event.set_correlation_id(str(correlation_id))
-        return self.platform.request(event, timeout_seconds)
+        response = self.platform.request(event, timeout_seconds)
+        if isinstance(response, EventEnvelope):
+            if response.get_tag('exception') is None:
+                return response
+            else:
+                raise AppException(response.get_status(), response.get_body())
+        raise ValueError('Expect response is EventEnvelope, actual: ('+str(response)+')')
 
     def parallel_request(self, events: list, timeout_seconds: float) -> list:
         return self.platform.parallel_request(events, timeout_seconds)

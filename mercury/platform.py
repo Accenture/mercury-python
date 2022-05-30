@@ -213,6 +213,7 @@ class WorkerQueue:
             self.platform.start_tracing(self.route)
         # execute user function
         begin = end = time.time()
+        has_error = False
         try:
             if instance == 0:
                 # service is an interceptor. e.g. inbox for RPC call
@@ -225,12 +226,15 @@ class WorkerQueue:
                 result = self.user_function(headers, body, instance)
             end = time.time()
         except AppException as e:
+            has_error = True
             error_code = e.get_status()
             error_msg = e.get_message()
         except ValueError as e:
+            has_error = True
             error_code = 400
             error_msg = str(e)
         except Exception as e:
+            has_error = True
             error_code = 500
             error_msg = type(e).__name__ + ' ' + str(e)
 
@@ -251,7 +255,7 @@ class WorkerQueue:
         #
         if 'reply_to' in event and (error_code or not self.interceptor):
             reply_to = event['reply_to']
-            # in case this is a RPC call from within
+            # in case this is an RPC call from within
             if reply_to.startswith('->'):
                 reply_to = reply_to[2:]
             response = EventEnvelope().set_to(reply_to)
@@ -259,6 +263,9 @@ class WorkerQueue:
                 response.set_exec_time(exec_time)
             if 'extra' in event:
                 response.set_extra(event['extra'])
+            if has_error:
+                # adding the 'exception' tag would throw exception to the caller
+                response.add_tag('exception')
             if 'cid' in event:
                 response.set_correlation_id(event['cid'])
             if 'trace_id' in event and 'trace_path' in event:

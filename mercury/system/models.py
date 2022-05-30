@@ -428,6 +428,28 @@ class EventEnvelope:
             raise ValueError('extra must be str')
         return self
 
+    def add_tag(self, key: str, value: str = ''):
+        if key and isinstance(key, str) and len(key) > 0:
+            m = extra_to_key_values(self.extra)
+            m[key] = value if isinstance(value, str) else ''
+            self.extra = map_to_string(m)
+        return self
+
+    def remove_tag(self, key: str):
+        if key and isinstance(key, str) and len(key) > 0:
+            m = extra_to_key_values(self.extra)
+            if key in m:
+                del m[key]
+            self.extra = map_to_string(m)
+        return self
+
+    def get_tag(self, key: str):
+        if key and isinstance(key, str) and len(key) > 0:
+            m = extra_to_key_values(self.extra)
+            return m[key] if key in m else None
+        else:
+            return None
+
     def get_extra(self):
         return self.extra
 
@@ -554,3 +576,31 @@ class EventEnvelope:
 
     def from_bytes(self, data):
         return self.from_map(msgpack.unpackb(data, raw=False))
+
+
+def extra_to_key_values(extra: str) -> dict:
+    result = dict()
+    if extra and isinstance(extra, str) and len(extra) > 0:
+        elements = [x for x in extra.split('|') if x]
+        for kv in elements:
+            if '=' in kv:
+                sep = kv.index('=')
+                k = kv[0:sep]
+                v = kv[sep+1:]
+                result[k] = v
+            else:
+                result[kv] = ''
+    return result
+
+
+def map_to_string(m: dict) -> str:
+    result = ''
+    if len(m) > 0:
+        for k in m:
+            result = result + k
+            v = m[k]
+            if v and len(v) > 0:
+                result = result + '=' + v
+            result = result + '|'
+        result = result[0: len(result)-1]
+    return result
