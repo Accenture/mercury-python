@@ -1,6 +1,5 @@
 <img align="right" height="40" src="https://www.accenture.com/t20180820T081710Z__w__/us-en/_acnmedia/Accenture/Dev/Redesign/Acc_Logo_Black_Purple_RGB.png">  
-<br />
-<br />
+<br /><br />
 
 # <font size="12">**TECHNOLOGY INCLUSIVE <br />LANGUAGE GUIDEBOOK**</font>
 
