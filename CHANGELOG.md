@@ -19,7 +19,7 @@ N/A
 
 ### Changed
 
-N/A
+Streamlined language connector transport protocol for compatibility with both Python and Node.js
 
 ---
 ## Version 2.3.4, 5/18/2022
