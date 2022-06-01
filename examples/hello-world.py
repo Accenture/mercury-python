@@ -30,7 +30,7 @@ def hello(headers: dict, body: any, instance: int):
             print("#"+str(instance), 'HTTP request:', request.get_method(), request.get_url())
     # just print out the input onto the console
     print("#"+str(instance), "GOT", "headers =", str(headers), "body =", str(body))
-    # return the result as a dict so it can be rendered as JSON, XML or HTML automatically by the REST endpoint
+    # return the result as a dict so that it can be rendered as JSON, XML or HTML automatically by the REST endpoint
     return {'instance': instance, 'headers': headers, 'body': body}
 
 

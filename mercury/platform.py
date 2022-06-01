@@ -24,6 +24,7 @@ import signal
 import time
 import threading
 import uuid
+import msgpack
 from asyncio import QueueEmpty
 from queue import Queue, Empty
 
@@ -212,7 +213,7 @@ class WorkerQueue:
         else:
             self.platform.start_tracing(self.route)
         # execute user function
-        begin = end = time.time()
+        begin = end = time.perf_counter()
         has_error = False
         try:
             if instance == 0:
@@ -224,7 +225,7 @@ class WorkerQueue:
             else:
                 # service with multiple instances
                 result = self.user_function(headers, body, instance)
-            end = time.time()
+            end = time.perf_counter()
         except AppException as e:
             has_error = True
             error_code = e.get_status()
@@ -311,7 +312,7 @@ class WorkerQueue:
 class Inbox:
 
     def __init__(self, platform):
-        self.begin = time.time()
+        self.start_time = time.perf_counter()
         self.temp_route = 'r.' + (''.join(str(uuid.uuid4()).split('-')))
         self.inbox_queue = Queue()
         self.platform = platform
@@ -319,7 +320,8 @@ class Inbox:
 
     # inbox is an interceptor service which must be defined with the parameter "envelope" as below
     def listener(self, event: EventEnvelope):
-        event.set_round_trip((time.time() - self.begin) * 1000)
+        diff = time.perf_counter() - self.start_time
+        event.set_round_trip(diff * 1000)
         self.inbox_queue.put(event)
 
     def get_route(self):

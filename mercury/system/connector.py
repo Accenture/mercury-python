@@ -40,7 +40,7 @@ class NetworkConnector:
     MAX_PAYLOAD = "max.payload"
     DISTRIBUTED_TRACING = "distributed.tracing"
     # payload segmentation reserved tags (from v1.13.0 onwards)
-    ID = '_id_'
+    MSG_ID = '_id_'
     COUNT = '_blk_'
     TOTAL = '_max_'
 
@@ -102,11 +102,11 @@ class NetworkConnector:
         self.platform.send_event(envelope)
 
     def send_payload(self, data: dict):
-        payload = msgpack.packb(data, use_bin_type=True)
-        payload_len = len(payload)
-        if 'type' in data and data['type'] == 'event' and 'event' in data and payload_len > self.max_ws_payload:
+        if 'type' in data and data['type'] == 'event' and 'event' in data:
             evt = data['event']
-            if 'id' in evt:
+            payload = msgpack.packb(evt, use_bin_type=True)
+            payload_len = len(payload)
+            if payload_len > self.max_ws_payload:
                 msg_id = evt['id']
                 total = int(payload_len / self.max_ws_payload)
                 if payload_len > total:
@@ -116,7 +116,7 @@ class NetworkConnector:
                 for i in range(total):
                     count += 1
                     block = EventEnvelope()
-                    block.set_header(self.ID, msg_id)
+                    block.set_header(self.MSG_ID, msg_id)
                     block.set_header(self.COUNT, count)
                     block.set_header(self.TOTAL, total)
                     block.set_body(buffer.read(self.max_ws_payload))
@@ -127,9 +127,18 @@ class NetworkConnector:
                     envelope = EventEnvelope()
                     envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(block_payload)
                     self.platform.send_event(envelope)
+            else:
+                relay_map = dict()
+                relay_map['type'] = 'event'
+                relay_map['event'] = payload
+                envelope = EventEnvelope()
+                envelope_payload = msgpack.packb(relay_map, use_bin_type=True)
+                envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(envelope_payload)
+                self.platform.send_event(envelope)
         else:
             envelope = EventEnvelope()
-            envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(payload)
+            envelope_payload = msgpack.packb(data, use_bin_type=True)
+            envelope.set_to(self.OUTGOING_WS_PATH).set_header('type', 'bytes').set_body(envelope_payload)
             self.platform.send_event(envelope)
 
     def _get_server_config(self, headers: dict, body: any):
@@ -188,8 +197,8 @@ class NetworkConnector:
                         envelope = EventEnvelope()
                         inner_event = envelope.from_map(event['block'])
                         inner_headers = inner_event.get_headers()
-                        if self.ID in inner_headers and self.COUNT in inner_headers and self.TOTAL in inner_headers:
-                            msg_id = inner_headers[self.ID]
+                        if self.MSG_ID in inner_headers and self.COUNT in inner_headers and self.TOTAL in inner_headers:
+                            msg_id = inner_headers[self.MSG_ID]
                             msg_count = inner_headers[self.COUNT]
                             msg_total = inner_headers[self.TOTAL]
                             data = inner_event.get_body()
@@ -198,16 +207,24 @@ class NetworkConnector:
                                 if buffer is None:
                                     buffer = io.BytesIO()
                                 buffer.write(data)
-                                self.cache.put(msg_id, buffer)
                                 if msg_count == msg_total:
-                                    buffer.seek(0)
-                                    # reconstruct event for processing
-                                    event = msgpack.unpackb(buffer.read(), raw=False)
-                                    event_type = 'event'
                                     self.cache.remove(msg_id)
+                                    # reconstruct event for processing
+                                    buffer.seek(0)
+                                    envelope = EventEnvelope()
+                                    unpacked = msgpack.unpackb(buffer.read(), raw=False)
+                                    restored = envelope.from_map(unpacked)
+                                    target = restored.get_to()
+                                    if self.platform.has_route(target):
+                                        self.platform.send_event(restored)
+                                    else:
+                                        self.log.warn('Incoming event dropped because ' + str(target) + ' not found')
+                                else:
+                                    self.cache.put(msg_id, buffer)
                     if event_type == 'event' and 'event' in event:
+                        unpacked = msgpack.unpackb(event['event'], raw=False)
                         envelope = EventEnvelope()
-                        inner_event = envelope.from_map(event['event'])
+                        inner_event = envelope.from_map(unpacked)
                         if self.platform.has_route(inner_event.get_to()):
                             self.platform.send_event(inner_event)
                         else:

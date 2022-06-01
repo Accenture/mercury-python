@@ -362,7 +362,7 @@ class TraceInfo:
 class EventEnvelope:
 
     def __init__(self):
-        self.event_id = str(uuid.uuid4())
+        self.event_id = 'py'+str(uuid.uuid4()).replace('-', '')
         self.headers = dict()
         self.body = None
         self.status = None
