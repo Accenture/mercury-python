@@ -37,7 +37,7 @@ def hello(headers: dict, body: any, instance: int):
 def main():
     platform = Platform()
     # this shows that we can register a route name for a function
-    platform.register('test.route', hello, 10)
+    platform.register('hello.world', hello, 10)
 
     # Once it connects to the network, it is ready to serve requests
     platform.connect_to_cloud()
