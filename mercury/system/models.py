@@ -471,6 +471,11 @@ class EventEnvelope:
     def get_trace_path(self):
         return self.trace_path
 
+    def set_headers(self, headers: dict):
+        if isinstance(headers, dict):
+            self.headers = headers
+        return self
+
     def set_header(self, key: str, value: any):
         self.headers[key] = value if isinstance(value, str) else str(value)
         return self

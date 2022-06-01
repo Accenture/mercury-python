@@ -23,13 +23,13 @@ from mercury.system.models import AsyncHttpRequest
 
 
 def hello(headers: dict, body: any, instance: int):
-    # is this an HTTP request from REST automation?
     if isinstance(body, dict):
         request = AsyncHttpRequest(body)
+        # is this an HTTP request from REST automation?
         if request.get_method() is not None:
             print("#"+str(instance), 'HTTP request:', request.get_method(), request.get_url())
     # just print out the input onto the console
-    print("#"+str(instance), "GOT", "headers =", str(headers), "body =", str(body))
+    print("#"+str(instance), "GOT", "headers =", str(headers))
     # return the result as a dict so that it can be rendered as JSON, XML or HTML automatically by the REST endpoint
     return {'instance': instance, 'headers': headers, 'body': body}
 
@@ -37,7 +37,7 @@ def hello(headers: dict, body: any, instance: int):
 def main():
     platform = Platform()
     # this shows that we can register a route name for a function
-    platform.register('hello.world', hello, 10)
+    platform.register('test.route', hello, 10)
 
     # Once it connects to the network, it is ready to serve requests
     platform.connect_to_cloud()
