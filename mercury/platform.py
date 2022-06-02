@@ -459,9 +459,10 @@ class Platform:
         :return: None
         """
 
-        def graceful_shutdown(signum):
-            self.log.warn("Control-C detected" if signal.SIGINT == signum else "KILL signal detected")
+        def graceful_shutdown(signum, frame):
             self.running = False
+            if frame is not None:
+                self.log.warn("Control-C detected" if signal.SIGINT == signum else "KILL signal detected")
 
         if threading.current_thread() is threading.main_thread():
             signal.signal(signal.SIGTERM, graceful_shutdown)
