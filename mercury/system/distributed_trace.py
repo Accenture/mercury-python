@@ -33,14 +33,15 @@ class DistributedTrace:
     def logger(self, event: EventEnvelope):
         if isinstance(event, EventEnvelope):
             self.log.info('trace=' + str(event.get_headers()) + ', annotations=' + str(event.get_body()))
-            # forward to user provided distributed trace logger if any
-            current_time = time.time()
-            if self._dt_last_check is None or current_time - self._dt_last_check > 5.0:
-                self._dt_last_check = current_time
-                self._dt_found = self.platform.exists(self._dt_processor)
-            if self._dt_found:
-                te = EventEnvelope()
-                te.set_to(self._dt_processor).set_body(event.get_body())
-                for h in event.get_headers():
-                    te.set_header(h, event.get_header(h))
-                self.platform.send_event(te)
+            if self.platform.is_trace_supported():
+                # forward to user provided distributed trace logger if any
+                current_time = time.time()
+                if self._dt_last_check is None or current_time - self._dt_last_check > 5.0:
+                    self._dt_last_check = current_time
+                    self._dt_found = self.platform.exists(self._dt_processor)
+                if self._dt_found:
+                    trace_event = EventEnvelope()
+                    trace_event.set_to(self._dt_processor).set_body(event.get_body())
+                    for h in event.get_headers():
+                        trace_event.set_header(h, event.get_header(h))
+                    self.platform.send_event(trace_event)

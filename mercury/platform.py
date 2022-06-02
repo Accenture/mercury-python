@@ -373,6 +373,7 @@ class Platform:
         self.stopped = False
         # distributed trace sessions
         self._traces = {}
+        self.trace_aggregation = True
 
         # start event loop in a new thread to avoid blocking the main thread
         def main_event_loop():
@@ -396,6 +397,12 @@ class Platform:
         :return: logger instance
         """
         return self.log
+
+    def is_trace_supported(self):
+        return self.trace_aggregation
+
+    def set_trace_support(self, enable: bool = True):
+        self.trace_aggregation = enable
 
     def get_trace_id(self) -> str:
         """
