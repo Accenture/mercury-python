@@ -41,7 +41,7 @@ class DistributedTrace:
                     self._dt_found = self.platform.exists(self._dt_processor)
                 if self._dt_found:
                     trace_event = EventEnvelope()
-                    trace_event.set_to(self._dt_processor).set_body(event.get_body())
+                    trace_event.set_to(self._dt_processor).set_body({'annotations': event.get_body()})
                     for h in event.get_headers():
                         trace_event.set_header(h, event.get_header(h))
                     self.platform.send_event(trace_event)
