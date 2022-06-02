@@ -148,10 +148,11 @@ class NetworkConnector:
             if headers['type'] == 'system.config' and isinstance(body, dict):
                 if self.MAX_PAYLOAD in body:
                     self.max_ws_payload = body[self.MAX_PAYLOAD]
-                    self.log.info('Automatic payload segmentation at '+format(self.max_ws_payload, ',d'))
+                    self.log.info('Authenticated')
+                    self.log.info('Automatic payload segmentation at '
+                                  + format(self.max_ws_payload, ',d') + ' bytes')
                 if self.TRACE_AGGREGATION in body:
                     self.platform.set_trace_support(body[self.TRACE_AGGREGATION])
-                    self.log.info("Trace aggregation = "+str(body[self.TRACE_AGGREGATION]))
                 # advertise public routes to language connector
                 for r in self.platform.get_routes('public'):
                     self.send_payload({'type': 'add', 'route': r})

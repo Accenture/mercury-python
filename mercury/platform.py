@@ -24,7 +24,6 @@ import signal
 import time
 import threading
 import uuid
-import msgpack
 from asyncio import QueueEmpty
 from queue import Queue, Empty
 
@@ -401,8 +400,9 @@ class Platform:
     def is_trace_supported(self):
         return self.trace_aggregation
 
-    def set_trace_support(self, enable: bool = True):
-        self.trace_aggregation = enable
+    def set_trace_support(self, enabled: bool = True):
+        self.trace_aggregation = enabled
+        self.log.info('Trace aggregation is ' + ('ON' if enabled else 'OFF'))
 
     def get_trace_id(self) -> str:
         """
@@ -459,7 +459,7 @@ class Platform:
         :return: None
         """
 
-        def graceful_shutdown(signum, frame):
+        def graceful_shutdown(signum):
             self.log.warn("Control-C detected" if signal.SIGINT == signum else "KILL signal detected")
             self.running = False
 
