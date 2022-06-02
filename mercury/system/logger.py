@@ -45,7 +45,7 @@ class LoggingService:
         self.logger.setLevel(level)
         ch = logging.StreamHandler()
         ch.setLevel(level)
-        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s %(filename)s:%(lineno)s %(message)s')
+        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s %(message)s [%(filename)s:%(lineno)s]')
         formatter.default_msec_format = '%s.%03d'
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)

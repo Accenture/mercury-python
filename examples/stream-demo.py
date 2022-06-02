@@ -52,7 +52,7 @@ def main():
         output_stream.write('hello world '+str(i))
 
     #
-    # if output stream is not closed, input will timeout
+    # if output stream is not closed, input will expire
     # Therefore, please use try-except for TimeoutError in the iterator for-loop below.
     #
     output_stream.close()

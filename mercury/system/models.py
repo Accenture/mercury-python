@@ -48,7 +48,6 @@ class AsyncHttpRequest:
         self.ip = None
         self.upload = None
         self.headers = dict()
-        self.query = None
         self.query_params = dict()
         self.path_params = dict()
         self.cookies = dict()
@@ -56,7 +55,7 @@ class AsyncHttpRequest:
         self.body = None
         self.stream_route = None
         self.file_name = None
-        self.relay = None
+        self.target_host = None
         self.trust_all_cert = False
         self.https = False
         self.size = -1
@@ -194,11 +193,14 @@ class AsyncHttpRequest:
         self.file_name = value
         return self
 
-    def get_relay(self):
-        return self.relay
+    def get_target_host(self):
+        return self.target_host
 
-    def set_relay(self, value: str):
-        self.relay = value
+    def set_target_host(self, value: str):
+        if value is not None and (value.startswith('http://') or value.startswith('https://')):
+            self.target_host = value
+        else:
+            raise ValueError('Invalid host - must starts with http:// or https://')
         return self
 
     def set_trust_all_cert(self, trust_all_cert: bool):
@@ -242,7 +244,7 @@ class AsyncHttpRequest:
         result['session'] = dict() if not self.session else self.session
         result['https'] = self.https
         if self.method:
-            result['method'] = self.to
+            result['method'] = self.method
         if self.ip:
             result['ip'] = self.ip
         if self.url:
@@ -274,8 +276,8 @@ class AsyncHttpRequest:
         # This is used by the rest-automation "async.http.request" service
         # when forwarding HTTP request to a target HTTP endpoint.
         #
-        if self.relay:
-            result['relay'] = self.relay
+        if self.target_host:
+            result['host'] = self.target_host
             result['trust_all_cert'] = self.trust_all_cert
         return result
 
@@ -303,11 +305,11 @@ class AsyncHttpRequest:
         if 'body' in data:
             self.body = data['body']
         if 'query' in data:
-            self.query = data['query']
+            self.query_string = data['query']
         if 'https' in data:
             self.https = data['https']
-        if 'relay' in data:
-            self.relay = data['relay']
+        if 'host' in data:
+            self.target_host = data['host']
             self.trust_all_cert = data['trust_all_cert'] if 'trust_all_cert' in data else False
         if 'upload' in data:
             self.upload = data['upload']

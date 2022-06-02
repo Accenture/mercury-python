@@ -41,16 +41,17 @@ def main():
         # Publish an event
         # headers = optional parameters for the event
         # body = event payload
-        for x in range(10):
+        for x in range(100):
             print("publishing event#", x)
             pubsub.publish("hello.topic", headers={"some_parameter": "some_value", "n": x},
-                       body="hello world "+util.get_iso_8601(time.time()))
-        # quit application
-        platform.stop()
+                           body="hello world " + util.get_iso_8601(time.time()))
     else:
-        print("Pub/Sub feature not available from the underlying event stream")
-        print("Did you start the language connector with Kafka?")
-        print("e.g. java -Dcloud.connector=kafka -Dcloud.services=kafka.reporter -jar language-connector-1.12.31.jar")
+        print("Pub/Sub feature is not available from the underlying event stream")
+        print("Did you start the language connector with cloud.connector=Kafka or cloud.services=kafka.pubsub?")
+        print("e.g. java -Dcloud.connector=kafka -Dcloud.services=kafka.reporter -jar language-connector.jar")
+
+    # quit application
+    platform.stop()
 
 
 if __name__ == '__main__':

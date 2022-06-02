@@ -55,20 +55,19 @@ def main():
         # client_id, group_id and optional offset number (as a string)
         # e.g. ["client1", "group1"] or ["client1", "group1", "0"]
         #
-        # In this example, it is reading from the beginning of the topic.
-        # For a real application, it should read without the offset so that it can fetch the latest events.
+        # In this example, it is reading from the latest without the offset number.
         #
-        pubsub.subscribe("hello.topic", "hello.world", ["client1", "group1", "0"])
+        pubsub.subscribe("hello.topic", "hello.world", ["client1", "group1"])
+        #
+        # this will keep the main thread running in the background
+        # so that we can use Control-C or KILL signal to stop the application
+        platform.run_forever()
 
     else:
-        print("Pub/Sub feature not available from the underlying event stream")
-        print("Did you start the language connector with Kafka?")
-        print("e.g. java -Dcloud.connector=kafka -Dcloud.services=kafka.reporter -jar language-connector-1.12.31.jar")
-
-    #
-    # this will keep the main thread running in the background
-    # so we can use Control-C or KILL signal to stop the application
-    platform.run_forever()
+        print("Pub/Sub feature is not available from the underlying event stream")
+        print("Did you start the language connector with cloud.connector=Kafka or cloud.services=kafka.pubsub?")
+        print("e.g. java -Dcloud.connector=kafka -Dcloud.services=kafka.reporter -jar language-connector.jar")
+        platform.stop()
 
 
 if __name__ == '__main__':
