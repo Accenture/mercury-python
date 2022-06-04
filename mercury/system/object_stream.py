@@ -119,5 +119,6 @@ class ObjectStreamWriter:
                 raise ValueError('payload must be dict, str, bool, int or float')
 
     def close(self):
-        self.closed = True
-        self.po.send(self.output_stream, headers={'type': 'eof'})
+        if not self.closed:
+            self.closed = True
+            self.po.send(self.output_stream, headers={'type': 'eof'})

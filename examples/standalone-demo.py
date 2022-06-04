@@ -20,20 +20,22 @@ from mercury.platform import Platform
 from mercury.system.models import EventEnvelope
 from mercury.system.po import PostOffice
 
+platform = Platform()
+log = platform.get_logger()
+po = PostOffice()
+
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    Platform().get_logger().info("#"+str(instance)+" got ---> "+str(headers)+" body="+str(body))
+    log.info("#" + str(instance) + " got ---> " + str(headers) + " body=" + str(body))
     # as a demo, just echo the original payload
     return body
 
 
 def main():
-    platform = Platform()
     # register a function
     platform.register('hello.world', hello, 10)
 
-    po = PostOffice()
     # demonstrate sending asynchronously. Note that key-values in the headers will be encoded as strings
     po.send('hello.world', headers={'one': 1}, body='hello world one')
     po.send('hello.world', headers={'two': 2}, body='hello world two')
@@ -42,22 +44,23 @@ def main():
     try:
         result = po.request('hello.world', 2.0, headers={'some_key': 'some_value'}, body='hello world')
         if isinstance(result, EventEnvelope):
-            print('Received RPC response:')
-            print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-                  ", STATUS =",  result.get_status(),
-                  ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
+            log.info('Received RPC response:')
+            log.info("HEADERS = " + str(result.get_headers()) + ", BODY = " + str(result.get_body()) +
+                     ", STATUS = " + str(result.get_status()) +
+                     ", EXEC = " + str(result.get_exec_time()) +
+                     ", ROUND TRIP = " + str(result.get_round_trip()) + "ms")
     except TimeoutError as e:
-        print("Exception: ", str(e))
+        log.info("Exception: " + str(e))
 
     # demonstrate drop-n-forget
     for n in range(20):
-        po.send('hello.world', body='just a drop-n-forget message '+str(n))
+        po.send('hello.world', body='just a drop-n-forget message ' + str(n))
 
     # demonstrate deferred delivery
     po.send_later('hello.world', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
     #
-    # this will keep the main thread running in the background
-    # so we can use Control-C or KILL signal to stop the application
+    # This will keep the main thread running in the background.
+    # We can use Control-C or KILL signal to stop the application.
     platform.run_forever()
 
 

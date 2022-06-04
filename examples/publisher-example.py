@@ -41,7 +41,7 @@ def main():
         # Publish an event
         # headers = optional parameters for the event
         # body = event payload
-        for x in range(100):
+        for x in range(10):
             print("publishing event#", x)
             pubsub.publish("hello.topic", headers={"some_parameter": "some_value", "n": x},
                            body="hello world " + util.get_iso_8601(time.time()))

@@ -58,6 +58,6 @@ class Singleton:
         self._decorated = decorated
 
     def __call__(self, *args, **kwargs):
-        if self._instance is None: self._instance = self._decorated(*args, **kwargs)
+        if self._instance is None:
+            self._instance = self._decorated(*args, **kwargs)
         return self._instance
-

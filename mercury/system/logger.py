@@ -17,20 +17,13 @@
 #
 
 import logging
-import os
-from logging.handlers import RotatingFileHandler
-from mercury.system.utility import Utility
 from mercury.system.singleton import Singleton
 
 
 @Singleton
 class LoggingService:
 
-    def __init__(self, log_dir='/tmp/log', log_file: str = None, log_level='INFO'):
-        # automatically create log directory
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-
+    def __init__(self, log_level='INFO'):
         # DEBUG | INFO | WARN | ERROR | FATAL
         level = logging.INFO
         if log_level.upper() == 'DEBUG':
@@ -41,7 +34,7 @@ class LoggingService:
             level = logging.WARNING
         elif log_level.upper() == 'FATAL':
             level = logging.CRITICAL
-        self.logger = logging.getLogger(log_file)
+        self.logger = logging.getLogger()
         self.logger.setLevel(level)
         ch = logging.StreamHandler()
         ch.setLevel(level)
@@ -49,13 +42,6 @@ class LoggingService:
         formatter.default_msec_format = '%s.%03d'
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
-
-        if log_file is not None and not log_file.lower() == 'none':
-            filename = Utility().normalize_path(log_dir + '/' + log_file) + '.log'
-            fh = RotatingFileHandler(filename, maxBytes=1024 * 1024, backupCount=10)
-            fh.setLevel(level)
-            fh.setFormatter(formatter)
-            self.logger.addHandler(fh)
 
     def get_logger(self):
         return self.logger

@@ -16,15 +16,7 @@ work:
   directory: '/tmp/python'
 
 log:
-  directory: '/tmp/log'
   level: INFO
-  # for cloud native, do not configure log.filename
-  # comment it out, leave it blank or set it to "none"
-  #
-  # If given, the file path will be constructed as follows:
-  # {log.directory}/{log.filename}.log
-  #
-  filename: none
 
 # max number of threads in a python 'futures' thread pool
 max.threads: 250

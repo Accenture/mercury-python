@@ -22,19 +22,23 @@ from mercury.platform import Platform
 from mercury.system.models import EventEnvelope
 from mercury.system.po import PostOffice
 
+platform = Platform()
+log = platform.get_logger()
+po = PostOffice()
+
 
 class Hi:
     MY_NAME = 'Hi'
 
     def hello(self, headers: dict, body: any):
         # singleton function signature (headers: dict, body: any)
-        Platform().get_logger().info(self.MY_NAME+" "+str(headers) + ", " + str(body))
+        log.info(self.MY_NAME+" "+str(headers) + ", " + str(body))
         return body
 
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    Platform().log.info("#"+str(instance)+" "+str(headers)+" body="+str(body))
+    log.info("#"+str(instance)+" "+str(headers)+" body="+str(body))
     # to set status, headers and body, return them in an event envelope
     result = EventEnvelope().set_header('hello', 'world').set_body(body)
     for h in headers:
@@ -43,13 +47,13 @@ def hello(headers: dict, body: any, instance: int):
 
 
 def main():
-    platform = Platform()
     # you can register a method of a class
     platform.register('hello.world.1', Hi().hello, 5)
     # or register a function
     platform.register('hello.world.2', hello, 10)
+    # you can also create an alias for the same service
+    platform.register('hello.world', Hi().hello, 5)
 
-    po = PostOffice()
     # demonstrate sending asynchronously. Note that key-values in the headers will be encoded as strings
     po.send('hello.world.1', headers={'one': 1}, body='hello world one')
     po.send('hello.world.2', headers={'two': 2}, body='hello world two')
@@ -72,7 +76,7 @@ def main():
     try:
         result = po.parallel_request(event_list, 2.0)
         if isinstance(result, list):
-            print('Received', len(result), 'RPC responses:')
+            print('Received', len(result), 'parallel RPC responses:')
             for res in result:
                 print("HEADERS =", res.get_headers(), ", BODY =", res.get_body(),
                       ", STATUS =",  res.get_status(),
@@ -99,8 +103,8 @@ def main():
     po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
 
     #
-    # this will keep the main thread running in the background
-    # so we can use Control-C or KILL signal to stop the application
+    # This will keep the main thread running in the background.
+    # We can use Control-C or KILL signal to stop the application.
     platform.run_forever()
 
 

@@ -17,7 +17,6 @@
 #
 
 import time
-
 from mercury.platform import Platform
 from mercury.system.pubsub import PubSub
 
@@ -47,8 +46,11 @@ def main():
 
     pubsub = PubSub()
     if pubsub.feature_enabled():
+
+        pubsub.create_topic('hello.topic', 5)
+
         #
-        # the pub/sub topic name must be different from the subscriber function name
+        # The pub/sub topic name must be different from the subscriber function route name
         #
         # Note:
         # For kafka, the parameter list includes the following:
@@ -57,11 +59,24 @@ def main():
         #
         # In this example, it is reading from the latest without the offset number.
         #
-        pubsub.subscribe("hello.topic", "hello.world", ["client1", "group1"])
+        # Since READ offset is maintained per partition in each topic,
+        # it can only be reset when your topic has only one partition
+        # or when your app subscribes to a specific partition using the
+        # pubsub.subscribe_to_partition() method.
         #
-        # this will keep the main thread running in the background
-        # so that we can use Control-C or KILL signal to stop the application
-        platform.run_forever()
+        try:
+            count = pubsub.partition_count('hello.topic')
+            print('hello.topic has '+str(count)+' partitions')
+
+            pubsub.subscribe("hello.topic", "hello.world", ["client1", "group1"])
+            #
+            # This will keep the main thread running in the background.
+            # We can use Control-C or KILL signal to stop the application.
+            platform.run_forever()
+
+        except Exception as e:
+            print(type(e).__name__ + ': ' + str(e))
+            platform.stop()
 
     else:
         print("Pub/Sub feature is not available from the underlying event stream")

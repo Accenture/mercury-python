@@ -228,15 +228,15 @@ class WorkerQueue:
         except AppException as e:
             has_error = True
             error_code = e.get_status()
-            error_msg = e.get_message()
+            error_msg = 'AppException: ' + e.get_message()
         except ValueError as e:
             has_error = True
             error_code = 400
-            error_msg = str(e)
+            error_msg = 'ValueError: ' + str(e)
         except Exception as e:
             has_error = True
             error_code = 500
-            error_msg = type(e).__name__ + ' ' + str(e)
+            error_msg = type(e).__name__ + ': ' + str(e)
 
         # execution time is rounded to 3 decimal points
         exec_time = round((end - begin) * 1000, 3)
@@ -344,12 +344,10 @@ class Platform:
         self.origin = 'py-' + (''.join(str(uuid.uuid4()).split('-')))
         self.config = ConfigReader(config_file)
         self.util = Utility()
-        log_dir = self.config.get_property('log.directory')
-        log_file = self.config.get_property('log.filename')
         log_level = self.config.get_property('log.level')
         self._max_threads = self.config.get('max.threads')
         self.work_dir = self.config.get_property('work.directory')
-        self.log = LoggingService(log_dir=log_dir, log_file=log_file, log_level=log_level).get_logger()
+        self.log = LoggingService(log_level).get_logger()
         self._loop = asyncio.new_event_loop()
         # DO NOT CHANGE 'distributed.trace.processor' which is an optional user defined trace aggregator
         my_tracer = DistributedTrace(self, 'distributed.trace.processor')
