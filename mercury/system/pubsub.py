@@ -171,10 +171,9 @@ class PubSub:
 
     @staticmethod
     def _normalize_result(result: EventEnvelope, result_obj: any):
-        (str(result.to_map()));
         if isinstance(result, EventEnvelope):
             if result.get_status() == 200:
-                if isinstance(result_obj, type(result.get_body())):
+                if isinstance(result.get_body(), type(result_obj)):
                     return result.get_body()
                 else:
                     raise AppException(500, str(result.get_body()))
