@@ -32,13 +32,14 @@ class Hi:
 
     def hello(self, headers: dict, body: any):
         # singleton function signature (headers: dict, body: any)
-        log.info(self.MY_NAME+" "+str(headers) + ", " + str(body))
-        return body
+        log.info(self.MY_NAME + " " + str(headers) + ", " + str(body))
+        return EventEnvelope().set_body({'body': body, 'origin': platform.get_origin()}) \
+            .set_header('x-notes', 'I am a python app')
 
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    log.info("#"+str(instance)+" "+str(headers)+" body="+str(body))
+    log.info("#" + str(instance) + " " + str(headers) + " body=" + str(body))
     # to set status, headers and body, return them in an event envelope
     result = EventEnvelope().set_header('hello', 'world').set_body(body)
     for h in headers:
@@ -64,7 +65,7 @@ def main():
         if isinstance(result, EventEnvelope):
             print('Received RPC response:')
             print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-                  ", STATUS =",  result.get_status(),
+                  ", STATUS =", result.get_status(),
                   ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
     except TimeoutError as e:
         print("Exception: ", str(e))
@@ -79,7 +80,7 @@ def main():
             print('Received', len(result), 'parallel RPC responses:')
             for res in result:
                 print("HEADERS =", res.get_headers(), ", BODY =", res.get_body(),
-                      ", STATUS =",  res.get_status(),
+                      ", STATUS =", res.get_status(),
                       ", EXEC =", res.get_exec_time(), ", ROUND TRIP =", res.get_round_trip(), "ms")
     except TimeoutError as e:
         print("Exception: ", str(e))
@@ -100,7 +101,7 @@ def main():
 
     # Demonstrate broadcast feature:
     # To test this feature, please run multiple instances of this demo
-    po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
+    po.broadcast("hello.world.1", body="this is a broadcast message from " + platform.get_origin())
 
     #
     # This will keep the main thread running in the background.
