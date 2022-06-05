@@ -16,31 +16,39 @@
 # limitations under the License.
 #
 
+import os
 import logging
 from mercury.system.singleton import Singleton
+
+
+def get_level(level: str):
+    # DEBUG | INFO | WARN | ERROR | FATAL
+    result = logging.INFO
+    if level is not None:
+        if level.upper() == 'DEBUG':
+            result = logging.DEBUG
+        elif level.upper() == 'ERROR':
+            result = logging.ERROR
+        elif level.upper() == 'WARN' or level.upper() == 'WARNING':
+            result = logging.WARNING
+        elif level.upper() == 'FATAL':
+            result = logging.CRITICAL
+    return result
 
 
 @Singleton
 class LoggingService:
 
     def __init__(self, log_level='INFO'):
-        # DEBUG | INFO | WARN | ERROR | FATAL
-        level = logging.INFO
-        if log_level.upper() == 'DEBUG':
-            level = logging.DEBUG
-        elif log_level.upper() == 'ERROR':
-            level = logging.ERROR
-        elif log_level.upper() == 'WARN':
-            level = logging.WARNING
-        elif log_level.upper() == 'FATAL':
-            level = logging.CRITICAL
         self.logger = logging.getLogger()
+        env_log_level = os.getenv('LOG_LEVEL')
+        level = get_level(env_log_level) if env_log_level is not None else get_level(log_level)
         self.logger.setLevel(level)
-        ch = logging.StreamHandler()
-        ch.setLevel(level)
         formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s %(message)s [%(filename)s:%(lineno)s]')
         formatter.default_msec_format = '%s.%03d'
+        ch = logging.StreamHandler()
         ch.setFormatter(formatter)
+        ch.setLevel(level)
         self.logger.addHandler(ch)
 
     def get_logger(self):

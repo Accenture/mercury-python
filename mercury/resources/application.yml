@@ -15,6 +15,9 @@ language:
 work:
   directory: '/tmp/python'
 
+#
+# this value is used if LOG_LEVEL is not defined as an environment variable
+#
 log:
   level: INFO
 
