@@ -21,6 +21,10 @@ from mercury.system.pubsub import PubSub
 
 platform = Platform()
 log = platform.get_logger()
+# You can select a different PubSub instance by providing a name.
+# e.g. ps = PubSub('user')
+# Check with your project DevOps admin if a different PubSub instance is available.
+# The default instance is 'system'
 ps = PubSub()
 
 
@@ -39,7 +43,7 @@ def subscribe_to_topic():
     if ps.feature_enabled():
 
         # ensure the topic exists
-        ps.create_topic('hello.topic', 5)
+        ps.create_topic('hello.topic')
         #
         # The pub/sub topic name must be different from the subscriber function route name
         #

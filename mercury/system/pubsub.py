@@ -72,7 +72,7 @@ class PubSub:
         else:
             return False
 
-    def create_topic(self, topic: str, partition: int = 1):
+    def create_topic(self, topic: str, partition: int = -1):
         if isinstance(topic, str):
             result = po.request('pub.sub.controller', 10.0,
                                 headers={'type': 'create', 'topic': topic, 'partition': partition,
