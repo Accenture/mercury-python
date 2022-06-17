@@ -474,7 +474,7 @@ class Platform:
         else:
             raise ValueError('Unable to register Control-C and KILL signals because this is not the main thread')
 
-    def register(self, route: str, user_function: any, total_instances: int, is_private: bool = False) -> None:
+    def register(self, route: str, user_function: any, total_instances: int = 1, is_private: bool = False) -> None:
         """
         Register a user function
         :param route: ID of the function
@@ -514,6 +514,12 @@ class Platform:
 
     def cloud_ready(self):
         return self._cloud.is_ready()
+
+    def subscribe_life_cycle(self, callback: str):
+        self._cloud.subscribe_life_cycle(callback)
+
+    def unsubscribe_life_cycle(self, callback: str):
+        self._cloud.unsubscribe_life_cycle(callback)
 
     def release(self, route: str) -> None:
         # this will un-register a route
@@ -742,7 +748,7 @@ class Platform:
             # exit the run_forever loop if any
             self.running = False
             # in case the calling function has just send an event asynchronously
-            time.sleep(0.5)
+            time.sleep(1.0)
             threading.Thread(target=self._bye).start()
 
     def _bye(self):
@@ -761,5 +767,5 @@ class Platform:
             self.util.cleanup_dir(queue_dir)
             self._loop.stop()
 
-        self._cloud.close_connection(1000, 'bye', stop_engine=True)
+        self._cloud.close_connection(1000, 'Application ' + self.get_origin() + ' is stopping', stop_engine=True)
         self._loop.call_soon_threadsafe(stopping)

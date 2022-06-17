@@ -15,9 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
-import time
-
 from mercury.platform import Platform
 from mercury.system.models import AsyncHttpRequest
 
@@ -43,14 +40,6 @@ def main():
 
     # Once it connects to the network, it is ready to serve requests
     platform.connect_to_cloud()
-    # wait until connected
-    while not platform.cloud_ready():
-        try:
-            time.sleep(0.1)
-        except KeyboardInterrupt:
-            # this allows us to stop the application while waiting for cloud connection
-            platform.stop()
-            return
     #
     # This will keep the main thread running in the background.
     # We can use Control-C or KILL signal to stop the application.
@@ -59,3 +48,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

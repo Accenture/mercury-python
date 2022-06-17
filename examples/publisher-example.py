@@ -22,29 +22,21 @@ from mercury.platform import Platform
 from mercury.system.pubsub import PubSub
 from mercury.system.utility import Utility
 
+platform = Platform()
+log = platform.get_logger()
 
-def main():
-    platform = Platform()
-    platform.connect_to_cloud()
-    # wait until connected
-    while not platform.cloud_ready():
-        try:
-            time.sleep(0.1)
-        except KeyboardInterrupt:
-            # this allows us to stop the application while waiting for cloud connection
-            platform.stop()
-            return
 
+def publish_some_events():
     util = Utility()
-    pubsub = PubSub()
-    if pubsub.feature_enabled():
+    ps = PubSub()
+    if ps.feature_enabled():
         # Publish an event
         # headers = optional parameters for the event
         # body = event payload
-        for x in range(10):
-            print("publishing event#", x)
-            pubsub.publish("hello.topic", headers={"some_parameter": "some_value", "n": x},
-                           body="hello world " + util.get_iso_8601(time.time()))
+        for x in range(100):
+            log.info("publishing event#" + str(x))
+            ps.publish("hello.topic", headers={"some_parameter": "some_value", "n": x},
+                       body="hello world " + util.get_iso_8601(time.time()))
     else:
         print("Pub/Sub feature is not available from the underlying event stream")
         print("Did you start the language connector with cloud.connector=Kafka or cloud.services=kafka.pubsub?")
@@ -52,6 +44,21 @@ def main():
 
     # quit application
     platform.stop()
+
+
+def main():
+    def life_cycle_listener(headers: dict, body: any):
+        # Detect when cloud is ready
+        log.info("Cloud life cycle event - " + str(headers))
+        if 'type' in headers and 'ready' == headers['type']:
+            publish_some_events()
+
+    platform.register('my.cloud.status', life_cycle_listener, is_private=True)
+    platform.subscribe_life_cycle('my.cloud.status')
+
+    # connect to cloud after setting up life cycle event listener
+    platform.connect_to_cloud()
+    platform.run_forever()
 
 
 if __name__ == '__main__':

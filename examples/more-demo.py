@@ -15,9 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
-import time
-
 from mercury.platform import Platform
 from mercury.system.models import EventEnvelope
 from mercury.system.po import PostOffice
@@ -88,21 +85,19 @@ def main():
     # demonstrate deferred delivery
     po.send_later('hello.world.1', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
 
-    # connect to the network
+    def life_cycle_listener(headers: dict, body: any):
+        # Detect when cloud is ready
+        log.info("Cloud life cycle event - " + str(headers))
+        if 'type' in headers and 'ready' == headers['type']:
+            # Demonstrate broadcast feature:
+            # To test this feature, please run multiple instances of this demo
+            po.broadcast("hello.world.1", body="this is a broadcast message from " + platform.get_origin())
+
+    platform.register('my.cloud.status', life_cycle_listener, is_private=True)
+    platform.subscribe_life_cycle('my.cloud.status')
+
+    # Connect to the network
     platform.connect_to_cloud()
-    # wait until connected
-    while not platform.cloud_ready():
-        try:
-            time.sleep(0.1)
-        except KeyboardInterrupt:
-            # this allows us to stop the application while waiting for cloud connection
-            platform.stop()
-            return
-
-    # Demonstrate broadcast feature:
-    # To test this feature, please run multiple instances of this demo
-    po.broadcast("hello.world.1", body="this is a broadcast message from " + platform.get_origin())
-
     #
     # This will keep the main thread running in the background.
     # We can use Control-C or KILL signal to stop the application.

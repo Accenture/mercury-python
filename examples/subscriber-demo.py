@@ -16,39 +16,30 @@
 # limitations under the License.
 #
 
-import time
 from mercury.platform import Platform
 from mercury.system.pubsub import PubSub
+
+platform = Platform()
+log = platform.get_logger()
+ps = PubSub()
 
 
 def hello(headers: dict, body: any, instance: int):
     # this is a very simple pub/sub subscriber function
     # no need to return anything because pub/sub subscriber is a listener only
-    print("#" + str(instance), "GOT", "headers =", str(headers), "body =", str(body))
+    log.info("#" + str(instance) + " GOT headers = " + str(headers) + " body = " + str(body))
 
 
-def main():
-    platform = Platform()
-    # register a route name for a pub/sub subscriber function
-    # setting number of instance to 1 because pub/sub subscriber is always a singleton
-    platform.register('hello.world', hello, 1)
+def unsubscribe_from_topic():
+    ps.unsubscribe('hello.topic', 'hello.world')
 
-    # Once it connects to the network, it is ready to serve requests
-    platform.connect_to_cloud()
-    # wait until connected
-    while not platform.cloud_ready():
-        try:
-            time.sleep(0.1)
-        except KeyboardInterrupt:
-            # this allows us to stop the application while waiting for cloud connection
-            platform.stop()
-            return
 
-    pubsub = PubSub()
-    if pubsub.feature_enabled():
+def subscribe_to_topic():
 
-        pubsub.create_topic('hello.topic', 5)
+    if ps.feature_enabled():
 
+        # ensure the topic exists
+        ps.create_topic('hello.topic', 5)
         #
         # The pub/sub topic name must be different from the subscriber function route name
         #
@@ -65,17 +56,13 @@ def main():
         # pubsub.subscribe_to_partition() method.
         #
         try:
-            count = pubsub.partition_count('hello.topic')
-            print('hello.topic has '+str(count)+' partitions')
+            count = ps.partition_count('hello.topic')
+            log.info('hello.topic has '+str(count)+' partitions')
 
-            pubsub.subscribe("hello.topic", "hello.world", ["client1", "group1"])
-            #
-            # This will keep the main thread running in the background.
-            # We can use Control-C or KILL signal to stop the application.
-            platform.run_forever()
+            ps.subscribe("hello.topic", "hello.world", ["client1", "group1"])
 
         except Exception as e:
-            print(type(e).__name__ + ': ' + str(e))
+            log.error(type(e).__name__ + ': ' + str(e))
             platform.stop()
 
     else:
@@ -83,6 +70,28 @@ def main():
         print("Did you start the language connector with cloud.connector=Kafka or cloud.services=kafka.pubsub?")
         print("e.g. java -Dcloud.connector=kafka -Dcloud.services=kafka.reporter -jar language-connector.jar")
         platform.stop()
+
+
+def main():
+    # Register a route name for a pub/sub subscriber function
+    # Service is a singleton if number of instances is not given
+    platform.register('hello.world', hello)
+
+    def life_cycle_listener(headers: dict, body: any):
+        # Detect when cloud is up or down
+        log.info("Cloud life cycle event - " + str(headers))
+        if 'type' in headers:
+            if 'ready' == headers['type']:
+                subscribe_to_topic()
+            if 'close' == headers['type']:
+                unsubscribe_from_topic()
+
+    platform.register('my.cloud.status', life_cycle_listener, is_private=True)
+    platform.subscribe_life_cycle('my.cloud.status')
+
+    # connect to cloud after setting up life cycle event listener
+    platform.connect_to_cloud()
+    platform.run_forever()
 
 
 if __name__ == '__main__':

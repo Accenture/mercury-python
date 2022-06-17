@@ -37,7 +37,7 @@ class ElasticQueue:
             raise ValueError('Missing queue_dir or queue_id')
         self.queue_id = queue_id
         if not os.path.exists(queue_dir):
-            os.makedirs(queue_dir)
+            os.makedirs(queue_dir, exist_ok=True)
         self.util = Utility()
         self._dir = self.util.normalize_path(queue_dir + '/' + queue_id)
         self._empty = False

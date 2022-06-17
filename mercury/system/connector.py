@@ -40,6 +40,7 @@ class NetworkConnector:
     MAX_PAYLOAD = "max.payload"
     TRACE_AGGREGATION = "trace.aggregation"
     DISTRIBUTED_TRACING = "distributed.tracing"
+    CONNECTOR_LIFECYCLE = 'cloud.connector.lifecycle'
     # payload segmentation reserved tags (from v1.13.0 onwards)
     MSG_ID = '_id_'
     COUNT = '_blk_'
@@ -47,6 +48,7 @@ class NetworkConnector:
 
     def __init__(self, platform, distributed_trace, loop, url_list, origin):
         self.platform = platform
+        self._subscription = list()
         self._distributed_trace = distributed_trace
         self._loop = loop
         self.log = platform.log
@@ -75,6 +77,7 @@ class NetworkConnector:
         temp_dir = '/tmp/config'
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
+            self.log.info('Folder '+temp_dir+' created')
         api_key_file = temp_dir+"/lang-api-key.txt"
         if os.path.exists(api_key_file):
             with open(api_key_file) as f:
@@ -149,6 +152,7 @@ class NetworkConnector:
                 if self.MAX_PAYLOAD in body:
                     self.max_ws_payload = body[self.MAX_PAYLOAD]
                     self.log.info('Authenticated')
+                    self._send_life_cycle_event({'type': 'authenticated'})
                     self.log.info('Automatic payload segmentation at '
                                   + format(self.max_ws_payload, ',d') + ' bytes')
                 if self.TRACE_AGGREGATION in body:
@@ -162,11 +166,38 @@ class NetworkConnector:
             if headers['type'] == 'ready':
                 self.ready = True
                 self.log.info('Ready')
+                self._send_life_cycle_event({'type': 'ready'})
                 # redo subscription if any
                 if self.platform.has_route('pub.sub.sync'):
                     event = EventEnvelope()
                     event.set_to('pub.sub.sync').set_header('type', 'subscription_sync')
                     self.platform.send_event(event)
+
+    def subscribe_life_cycle(self, callback: str):
+        if not isinstance(callback, str):
+            raise ValueError('callback route name must be str')
+        if callback not in self._subscription:
+            self._subscription.append(callback)
+
+    def unsubscribe_life_cycle(self, callback: str):
+        if not isinstance(callback, str):
+            raise ValueError('callback route name must be str')
+        if callback in self._subscription:
+            self._subscription.remove(callback)
+
+    def _send_life_cycle_event(self, headers: dict):
+        event = EventEnvelope()
+        event.set_to(self.CONNECTOR_LIFECYCLE).set_headers(headers)
+        self.platform.send_event(event)
+
+    def _life_cycle(self, headers: dict, body: any):
+        for subscriber in self._subscription:
+            try:
+                event = EventEnvelope()
+                event.set_to(subscriber).set_headers(headers).set_body(body)
+                self.platform.send_event(event)
+            except ValueError as e:
+                self.log.warn('unable to relay life cycle event ' + str(headers) + ' to '+subscriber + ' - ' + str(e))
 
     def _alert(self, headers: dict, body: any):
         if 'status' in headers:
@@ -189,9 +220,11 @@ class NetworkConnector:
                 self.ready = False
                 self.log.info("Login to language connector")
                 self.send_payload({'type': 'login', 'api_key': self.api_key})
+                self._send_life_cycle_event(headers)
             if headers['type'] == 'close':
                 self.ready = False
                 self.log.info("Closed")
+                self._send_life_cycle_event(headers)
             if headers['type'] == 'text':
                 self.log.debug(body)
             if headers['type'] == 'bytes':
@@ -296,6 +329,7 @@ class NetworkConnector:
             self.platform.register(self.OUTGOING_WS_PATH, self._outgoing, 1, is_private=True)
             self.platform.register(self.SYSTEM_ALERT, self._alert, 1, is_private=True)
             self.platform.register(self.SERVER_CONFIG, self._get_server_config, 1, is_private=True)
+            self.platform.register(self.CONNECTOR_LIFECYCLE, self._life_cycle, 1, is_private=True)
             self._loop.create_task(worker())
 
     def close_connection(self, code, reason, stop_engine=False):
@@ -320,7 +354,7 @@ class NetworkConnector:
                 full_path = url + '/' + self.origin
                 self.ws = await session.ws_connect(full_path)
                 envelope = EventEnvelope()
-                envelope.set_to(self.INCOMING_WS_PATH).set_header('type', 'open')
+                envelope.set_to(self.INCOMING_WS_PATH).set_header('type', 'open').set_header('url', full_path)
                 self.platform.send_event(envelope)
                 self.log.info("Connected to " + full_path)
                 closed = False
@@ -375,7 +409,7 @@ class NetworkConnector:
                             self.log.info("Disconnected, status="+str(self.close_code)+", message="+self.close_message)
                             if self.platform.has_route(self.INCOMING_WS_PATH):
                                 envelope = EventEnvelope()
-                                envelope.set_to(self.INCOMING_WS_PATH).set_body(self.close_message)\
+                                envelope.set_to(self.INCOMING_WS_PATH).set_header('message', self.close_message) \
                                         .set_header('type', 'close').set_header('status', self.close_code)
                                 self.platform.send_event(envelope)
                             closed = True
