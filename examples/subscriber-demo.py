@@ -41,25 +41,24 @@ def unsubscribe_from_topic():
 def subscribe_to_topic():
 
     if ps.feature_enabled():
-
-        # ensure the topic exists
-        ps.create_topic('hello.topic')
-        #
-        # The pub/sub topic name must be different from the subscriber function route name
-        #
-        # Note:
-        # For kafka, the parameter list includes the following:
-        # client_id, group_id and optional offset number (as a string)
-        # e.g. ["client1", "group1"] or ["client1", "group1", "0"]
-        #
-        # In this example, it is reading from the latest without the offset number.
-        #
-        # Since READ offset is maintained per partition in each topic,
-        # it can only be reset when your topic has only one partition
-        # or when your app subscribes to a specific partition using the
-        # pubsub.subscribe_to_partition() method.
-        #
         try:
+            # ensure the topic exists
+            ps.create_topic('hello.topic')
+            #
+            # The pub/sub topic name must be different from the subscriber function route name
+            #
+            # Note:
+            # For kafka, the parameter list includes the following:
+            # client_id, group_id and optional offset number (as a string)
+            # e.g. ["client1", "group1"] or ["client1", "group1", "0"]
+            #
+            # In this example, it is reading from the latest without the offset number.
+            #
+            # Since READ offset is maintained per partition in each topic,
+            # it can only be reset when your topic has only one partition
+            # or when your app subscribes to a specific partition using the
+            # pubsub.subscribe_to_partition() method.
+            #
             count = ps.partition_count('hello.topic')
             log.info('hello.topic has '+str(count)+' partitions')
 

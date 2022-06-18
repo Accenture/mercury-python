@@ -33,10 +33,10 @@ def publish_some_events():
         # Publish an event
         # headers = optional parameters for the event
         # body = event payload
-        for x in range(100):
+        for x in range(10):
             log.info("publishing event#" + str(x))
             ps.publish("hello.topic", headers={"some_parameter": "some_value", "n": x},
-                       body="hello world " + util.get_iso_8601(time.time()))
+                       body="hello python - " + util.get_iso_8601(time.time()))
     else:
         print("Pub/Sub feature is not available from the underlying event stream")
         print("Did you start the language connector with cloud.connector=Kafka or cloud.services=kafka.pubsub?")

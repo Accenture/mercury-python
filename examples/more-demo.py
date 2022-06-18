@@ -91,7 +91,7 @@ def main():
         if 'type' in headers and 'ready' == headers['type']:
             # Demonstrate broadcast feature:
             # To test this feature, please run multiple instances of this demo
-            po.broadcast("hello.world.1", body="this is a broadcast message from " + platform.get_origin())
+            po.broadcast("hello.world", body="this is a broadcast message from " + platform.get_origin())
 
     platform.register('my.cloud.status', life_cycle_listener, is_private=True)
     platform.subscribe_life_cycle('my.cloud.status')

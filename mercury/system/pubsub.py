@@ -38,23 +38,6 @@ class PubSub:
         self.domain = 'system' if value == '' else value
         self.subscription = dict()
 
-        def restore_subscription(headers: dict, body: any):
-            if 'type' in headers and headers['type'] == 'restore':
-                if len(self.subscription) > 0:
-                    for topic in self.subscription:
-                        route_map = self.subscription[topic]
-                        for route in route_map:
-                            parameters = route_map[route]['parameters']
-                            partition = route_map[route]['partition']
-                            if partition < 0:
-                                platform.log.info('Restore subscription ' + topic + ' -> ' + route)
-                            else:
-                                platform.log.info('Restore subscription ' + topic + ' #' + str(partition)
-                                                  + ' -> ' + route)
-                            self.subscribe_to_partition(topic, partition, route, parameters)
-
-        platform.register('restore.pub.sub', restore_subscription, 1, is_private=True)
-
     def feature_enabled(self):
         result = po.request('pub.sub.controller', 10.0, headers={'type': 'feature', 'domain': self.domain})
         return self._normalize_result(result, True)
@@ -107,7 +90,7 @@ class PubSub:
         # encode payload
         payload = dict()
         payload['body'] = body
-        payload['headers'] = self._normalize_headers(headers)
+        payload['headers'] = headers
         if partition < 0:
             result = po.request('pub.sub.controller', 10.0,
                                 headers={'type': 'publish', 'topic': topic, 'domain': self.domain}, body=payload)
@@ -130,13 +113,12 @@ class PubSub:
                 prev_map: dict = self.subscription[topic] if topic in self.subscription else dict()
                 if route in prev_map:
                     raise ValueError('Route ' + route + ' has already subscribed to topic ' + topic)
-                normalized_config = self._normalize_parameters(parameters)
                 if partition < 0:
-                    result = po.request('pub.sub.controller', 10.0, body=normalized_config,
+                    result = po.request('pub.sub.controller', 10.0, body=parameters,
                                         headers={'type': 'subscribe', 'topic': topic, 'route': route,
                                                  'domain': self.domain})
                 else:
-                    result = po.request('pub.sub.controller', 10.0, body=normalized_config,
+                    result = po.request('pub.sub.controller', 10.0, body=parameters,
                                         headers={'type': 'subscribe',
                                                  'topic': topic, 'partition': partition, 'route': route,
                                                  'domain': self.domain})
@@ -144,14 +126,14 @@ class PubSub:
                 if done:
                     if topic not in self.subscription:
                         self.subscription[topic] = dict()
-                        platform.log.info('Subscribed topic ' + topic)
+                        log.info('Subscribed topic ' + topic)
                     route_map: dict = self.subscription[topic]
                     if route not in route_map:
-                        route_map[route] = {'parameters': normalized_config, 'partition': partition}
+                        route_map[route] = {'parameters': parameters, 'partition': partition}
                         if partition < 0:
-                            platform.log.info('Attach ' + route + ' to topic ' + topic)
+                            log.info('Attach ' + route + ' to topic ' + topic)
                         else:
-                            platform.log.info('Attach ' + route + ' to topic ' + topic +
+                            log.info('Attach ' + route + ' to topic ' + topic +
                                               ' partition ' + str(partition))
                 return done
             else:
@@ -162,22 +144,23 @@ class PubSub:
     def unsubscribe(self, topic: str, route: str):
         if isinstance(topic, str) and isinstance(route, str):
             if platform.has_route(route):
-                prev_map: dict = self.subscription[topic] if topic in self.subscription else dict()
-                if route not in prev_map:
+                route_map: dict = self.subscription[topic] if topic in self.subscription else dict()
+                if route not in route_map:
                     raise ValueError('Route ' + route + ' was not subscribed to topic ' + topic)
-                if topic in self.subscription:
-                    route_map: dict = self.subscription[topic]
-                    if route in route_map:
-                        route_map.pop(route)
-                        platform.log.info('Detach ' + route + ' from topic ' + topic)
-                        if len(route_map) == 0:
-                            self.subscription.pop(topic)
-                            platform.log.info('Unsubscribed topic ' + topic)
+                route_map.pop(route)
+                log.info('Detach ' + route + ' from topic ' + topic)
+                if len(route_map) == 0:
+                    self.subscription.pop(topic)
+                    log.info('Unsubscribed topic ' + topic)
 
-                result = po.request('pub.sub.controller', 10.0,
-                                    headers={'type': 'unsubscribe', 'topic': topic, 'route': route,
-                                             'domain': self.domain})
-                return self._normalize_result(result, True)
+                if platform.cloud_ready():
+                    result = po.request('pub.sub.controller', 10.0,
+                                        headers={'type': 'unsubscribe', 'topic': topic, 'route': route,
+                                                 'domain': self.domain})
+                    return self._normalize_result(result, True)
+                else:
+                    log.warn('Subscription is ignored because cloud connection is not ready')
+                    return False
             else:
                 raise ValueError("Unable to unsubscribe topic " + topic + " because route " + route + " not registered")
         else:
@@ -193,27 +176,3 @@ class PubSub:
                     raise AppException(500, str(result.get_body()))
             else:
                 raise AppException(result.get_status(), str(result.get_body()))
-
-    @staticmethod
-    def _normalize_headers(headers: dict):
-        if headers is None:
-            return dict()
-        if isinstance(headers, dict):
-            result = dict()
-            for h in headers:
-                result[str(h)] = str(headers[h])
-            return result
-        else:
-            raise ValueError("headers must be dict of str key-values")
-
-    @staticmethod
-    def _normalize_parameters(parameters: list):
-        if parameters is None:
-            return list()
-        if isinstance(parameters, list):
-            result = list()
-            for h in parameters:
-                result.append(str(h))
-            return result
-        else:
-            raise ValueError("headers must be a list of str")
