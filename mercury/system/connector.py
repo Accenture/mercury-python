@@ -168,9 +168,9 @@ class NetworkConnector:
                 self.log.info('Ready')
                 self._send_life_cycle_event({'type': 'ready'})
                 # redo subscription if any
-                if self.platform.has_route('pub.sub.sync'):
+                if self.platform.has_route('restore.pub.sub'):
                     event = EventEnvelope()
-                    event.set_to('pub.sub.sync').set_header('type', 'subscription_sync')
+                    event.set_to('restore.pub.sub').set_header('type', 'restore')
                     self.platform.send_event(event)
 
     def subscribe_life_cycle(self, callback: str):

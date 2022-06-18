@@ -34,11 +34,12 @@ class PubSub:
     def __init__(self, domain: str = 'system'):
         if not isinstance(domain, str):
             raise ValueError('Pub/sub domain must be str. e.g. system or user')
-        self.domain = domain
+        value = domain.strip()
+        self.domain = 'system' if value == '' else value
         self.subscription = dict()
 
-        def subscription_sync(headers: dict, body: any):
-            if 'type' in headers and headers['type'] == 'subscription_sync':
+        def restore_subscription(headers: dict, body: any):
+            if 'type' in headers and headers['type'] == 'restore':
                 if len(self.subscription) > 0:
                     for topic in self.subscription:
                         route_map = self.subscription[topic]
@@ -46,15 +47,13 @@ class PubSub:
                             parameters = route_map[route]['parameters']
                             partition = route_map[route]['partition']
                             if partition < 0:
-                                platform.log.info('Update subscription ' + topic + ' -> ' + route)
+                                platform.log.info('Restore subscription ' + topic + ' -> ' + route)
                             else:
-                                platform.log.info('Update subscription ' + topic + ' #' +
-                                                  str(partition) + ' -> ' + route)
+                                platform.log.info('Restore subscription ' + topic + ' #' + str(partition)
+                                                  + ' -> ' + route)
                             self.subscribe_to_partition(topic, partition, route, parameters)
-                else:
-                    platform.log.info('No subscription to update')
 
-        platform.register('pub.sub.sync', subscription_sync, 1, is_private=True)
+        platform.register('restore.pub.sub', restore_subscription, 1, is_private=True)
 
     def feature_enabled(self):
         result = po.request('pub.sub.controller', 10.0, headers={'type': 'feature', 'domain': self.domain})
