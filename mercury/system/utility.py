@@ -40,20 +40,28 @@ class Utility:
 
         def interceptor(event: EventEnvelope):
             """
-            Sample interceptor function
-            :param event: Event envelope that contains metadata such as correlation ID
-            :return:
+            Sample interceptor function signature
+
+            Args:
+                event: Event envelope that includes metadata such as correlation ID
+
+            Returns: any
+
             """
             assert event is not None
 
         def regular_service(headers: dict, body: any, instance: int):
             """
-            Sample function
-            :param headers: dictionary of key-values as parameters
-            :param body: message payload can be None, str, integer, float, map and other standard Python primitives.
-            Note that The payload should be serializable with msgpack. i.e. it should not contain user defined classes.
-            :param instance: the instance number of the selected worker
-            :return: optional
+            Sample function signature
+
+            Args:
+                headers: dictionary of key-values as parameters
+                body: message payload can be None, str, integer, float, map and other standard Python primitives.
+                      Note that the payload must be serializable. i.e. it should not contain user defined classes.
+                instance: the instance number of the selected worker
+
+            Returns: any
+
             """
             assert type(headers) is dict
             assert type(instance) is int
@@ -61,11 +69,14 @@ class Utility:
 
         def singleton_service(headers: dict, body: any):
             """
-            Singleton function that would be useful if you want to serialize operation. e.g. guarantee of sequencing.
-            :param headers: dictionary of key-values as parameters
-            :param body: message payload can be None, str, integer, float, map and other standard Python primitives.
-            Note that The payload should be serializable with msgpack. i.e. it should not contain user defined classes.
-            :return: optional
+            'Singleton' function that would be useful if you want to serialize operation. e.g. guarantee of sequencing.
+
+            Args:
+                headers: dictionary of key-values as parameters
+                body: message payload can be None, str, integer, float, map and other standard Python primitives
+
+            Returns: any
+
             """
             # singleton service function guarantees that there is only one instance.
             # important for services that want to guarantee event sequencing.
@@ -81,7 +92,7 @@ class Utility:
 
     def get_function_type(self, user_function):
         if not inspect.ismethod(user_function) and not inspect.isfunction(user_function):
-            raise ValueError("user_function must be a function or a method")
+            raise ValueError('user_function must be a function or a method')
         # validate function signature
         signature = str(inspect.signature(user_function))
         if signature == self.interceptor_signature:
@@ -109,24 +120,24 @@ class Utility:
     @staticmethod
     def validate_service_name(name: str, po: bool = False):
         if not isinstance(name, str):
-            raise ValueError("route must be str")
+            raise ValueError('route must be str')
         route = name[0:name.index('@')] if po and '@' in name else name
         if route.startswith('.'):
-            raise ValueError("route name must not start with period")
+            raise ValueError('route name must not start with period')
         if route.startswith('_'):
-            raise ValueError("route name must not start with underline")
+            raise ValueError('route name must not start with underline')
         if route.startswith('-'):
-            raise ValueError("route name must not start with hyphen")
+            raise ValueError('route name must not start with hyphen')
         if '..' in route:
-            raise ValueError("route name must not contain consecutive dots")
+            raise ValueError('route name must not contain consecutive dots')
         if route.endswith('.'):
-            raise ValueError("route name must not end with period")
+            raise ValueError('route name must not end with period')
         if route.endswith('_'):
-            raise ValueError("route name must not end with underline")
+            raise ValueError('route name must not end with underline')
         if route.endswith('-'):
-            raise ValueError("route name must not end with hyphen")
+            raise ValueError('route name must not end with hyphen')
         if '.' not in route:
-            raise ValueError("route name must be separated by a dot. e.g. hello.world")
+            raise ValueError('route name must be separated by a dot. e.g. hello.world')
         for c in route:
             if '0' <= c <= '9':
                 continue
@@ -134,15 +145,19 @@ class Utility:
                 continue
             if c == '.' or c == '_' or c == '-':
                 continue
-            raise ValueError("route name must use 0-9, a-z, period, hyphen or underline. e.g. hello.world")
+            raise ValueError('route name must use 0-9, a-z, period, hyphen or underline. e.g. hello.world')
 
     @staticmethod
     def multi_split(string, chars):
         """
         Split a string into an array of string using one or more separators
-        :param string: input
-        :param chars: string containing one or more separator characters
-        :return: array of strings
+
+        Args:
+            string: input
+            chars: string containing one or more separator characters
+
+        Returns: list of strings
+
         """
         if not isinstance(string, str) or not isinstance(chars, str):
             return list()
@@ -155,7 +170,7 @@ class Utility:
                 string = string.replace(c, separator)
             n += 1
         if separator is None:
-            raise ValueError("Empty separator characters")
+            raise ValueError('Empty separator characters')
         parts = string.split(separator)
         rv = list()
         for p in parts:
@@ -175,8 +190,12 @@ class Utility:
     def normalize_path(self, path: str):
         """
         Normalize a path to remove duplicated slashes
-        :param path: input
-        :return: normalized path
+
+        Args:
+            path: input
+
+        Returns: normalized path
+
         """
         path = path.replace('\\', '/')
         elements = self.multi_split(path, '/')
@@ -195,8 +214,12 @@ class Utility:
     def int_to_bytes(n: int):
         """
         integer to bytes
-        :param n: integer value
-        :return: byte value
+
+        Args:
+            n: integer value
+
+        Returns: bytes
+
         """
         return struct.pack('>I', n)
 
@@ -204,23 +227,27 @@ class Utility:
     def bytes_to_int(b: bytes):
         """
         bytes to integer
-        :param b: byte value
-        :return: integer value
+
+        Args:
+            b: bytes
+
+        Returns: integer value
+
         """
-        return struct.unpack(">I", b)[0]
+        return struct.unpack('>I', b)[0]
 
     @staticmethod
     def get_iso_8601(seconds: float, show_ms=False):
         if show_ms:
-            utc = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(seconds))
+            utc = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(seconds))
             ms = (str(round(seconds - int(seconds), 3)) + '000')[1:5]
             return utc + ms + 'Z'
         else:
-            return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(seconds))
+            return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(seconds))
 
     @staticmethod
     def get_rfc_1123(seconds: float):
-        return time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(seconds))
+        return time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(seconds))
 
     @staticmethod
     def get_float(number: any):

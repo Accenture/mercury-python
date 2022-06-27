@@ -71,21 +71,21 @@ class NetworkConnector:
     def _get_api_key(self):
         api_key_env_var = self.config.get_property('language.pack.key', default_value='LANGUAGE_PACK_KEY')
         if api_key_env_var in os.environ:
-            self.log.info('Found API key in environment variable ' + api_key_env_var)
+            self.log.info(f'Found API key in environment variable {api_key_env_var}')
             return os.environ[api_key_env_var]
         # check temp file system because API key not in environment
         temp_dir = '/tmp/config'
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
-            self.log.info('Folder '+temp_dir+' created')
+            self.log.info(f'Folder {temp_dir} created')
         api_key_file = temp_dir+"/lang-api-key.txt"
         if os.path.exists(api_key_file):
             with open(api_key_file) as f:
-                self.log.info('Reading language API key from '+api_key_file)
+                self.log.info(f'Reading language API key from {api_key_file}')
                 return f.read().strip()
         else:
             with open(api_key_file, 'w') as f:
-                self.log.info('Generating new language API key in '+api_key_file)
+                self.log.info(f'Generating new language API key in {api_key_file}')
                 value = ''.join(str(uuid.uuid4()).split('-'))
                 f.write(value + '\n')
                 return value
@@ -153,8 +153,7 @@ class NetworkConnector:
                     self.max_ws_payload = body[self.MAX_PAYLOAD]
                     self.log.info('Authenticated')
                     self._send_life_cycle_event({'type': 'authenticated'})
-                    self.log.info('Automatic payload segmentation at '
-                                  + format(self.max_ws_payload, ',d') + ' bytes')
+                    self.log.info(f'Automatic payload segmentation at {format(self.max_ws_payload, ",d")} bytes')
                 if self.TRACE_AGGREGATION in body:
                     self.platform.set_trace_support(body[self.TRACE_AGGREGATION])
                 # advertise public routes to language connector
@@ -192,7 +191,7 @@ class NetworkConnector:
                 event.set_to(subscriber).set_headers(headers).set_body(body)
                 self.platform.send_event(event)
             except ValueError as e:
-                self.log.warn('unable to relay life cycle event ' + str(headers) + ' to '+subscriber + ' - ' + str(e))
+                self.log.warn(f'Unable to relay life cycle event {headers} to {subscriber} - {e}')
 
     def _alert(self, headers: dict, body: any):
         if 'status' in headers:
@@ -206,9 +205,12 @@ class NetworkConnector:
         This function handles incoming messages from the websocket connection with the Mercury language connector.
         It must be invoked using events. It should not be called directly to guarantee proper event sequencing.
 
-        :param headers: type is open, close, text or bytes
-        :param body: string or bytes
-        :return: None
+        Args:
+            headers: type is open, close, text or bytes
+            body: string or bytes
+
+        Returns: None
+
         """
         if self.ws and 'type' in headers:
             if headers['type'] == 'open':
@@ -251,7 +253,7 @@ class NetworkConnector:
                                     if self.platform.has_route(target):
                                         self.platform.send_event(restored)
                                     else:
-                                        self.log.warn('Incoming event dropped because ' + str(target) + ' not found')
+                                        self.log.warn(f'Incoming event dropped because {target} not found')
                                 else:
                                     self.cache.put(msg_id, buffer)
                     if event_type == 'event' and 'event' in event:
@@ -261,16 +263,19 @@ class NetworkConnector:
                         if self.platform.has_route(inner_event.get_to()):
                             self.platform.send_event(inner_event)
                         else:
-                            self.log.warn('Incoming event dropped because '+str(inner_event.get_to())+' not found')
+                            self.log.warn(f'Incoming event dropped because {inner_event.get_to()} not found')
 
     def _outgoing(self, headers: dict, body: any):
         """
         This function handles sending outgoing messages to the websocket connection with the Mercury language connector.
         It must be invoked using events. It should not be called directly to guarantee proper event sequencing.
 
-        :param headers: type is close, text or bytes
-        :param body: string or bytes
-        :return: None
+        Args:
+            headers: type is close, text or bytes
+            body: string or bytes
+
+        Returns: None
+
         """
         if 'type' in headers:
             if headers['type'] == 'close':
@@ -346,12 +351,12 @@ class NetworkConnector:
     async def connection_handler(self, url):
         try:
             async with aiohttp.ClientSession(loop=self._loop, timeout=aiohttp.ClientTimeout(total=10)) as session:
-                full_path = url + '/' + self.origin
+                full_path = f'{url}/{self.origin}'
                 self.ws = await session.ws_connect(full_path)
                 envelope = EventEnvelope()
                 envelope.set_to(self.INCOMING_WS_PATH).set_header('type', 'open').set_header('url', full_path)
                 self.platform.send_event(envelope)
-                self.log.info("Connected to " + full_path)
+                self.log.info(f'Connected to {full_path}')
                 closed = False
                 self.last_active = time.time()
 
@@ -387,10 +392,10 @@ class NetworkConnector:
                             break
                     else:
                         if msg.type == aiohttp.WSMsgType.ERROR:
-                            self.log.error("Unexpected connection error")
+                            self.log.error('Unexpected connection error')
                         if msg.type == aiohttp.WSMsgType.CLOSING:
                             # closing signal received - close the connection now
-                            self.log.info("Disconnected, status="+str(self.close_code)+", message="+self.close_message)
+                            self.log.info(f'Disconnected, status={self.close_code}, message={self.close_message}')
                             await self.ws.close(code=self.close_code, message=bytes(self.close_message, 'utf-8'))
                             if self.platform.has_route(self.INCOMING_WS_PATH):
                                 envelope = EventEnvelope()
@@ -401,7 +406,7 @@ class NetworkConnector:
                         if msg.type == aiohttp.WSMsgType.CLOSE or msg.type == aiohttp.WSMsgType.CLOSED:
                             self.close_code = 1001 if msg.data is None else msg.data
                             self.close_message = 'OK' if msg.extra is None else str(msg.extra)
-                            self.log.info("Disconnected, status="+str(self.close_code)+", message="+self.close_message)
+                            self.log.info(f'Disconnected, status={self.close_code}, message={self.close_message}')
                             if self.platform.has_route(self.INCOMING_WS_PATH):
                                 envelope = EventEnvelope()
                                 envelope.set_to(self.INCOMING_WS_PATH).set_header('message', self.close_message) \
@@ -420,4 +425,4 @@ class NetworkConnector:
 
         except aiohttp.ClientConnectorError:
             self._skip_url()
-            self.log.warn("Unreachable "+url)
+            self.log.warn(f'Unreachable {url}')

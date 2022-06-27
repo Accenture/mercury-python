@@ -33,7 +33,7 @@ class Throttle:
         self.tps = self.test_file_io()
         self.batch_size = int(self.tps / self.MULTIPLIER)
         if log:
-            log.debug('Throttle evaluation batch size: '+str(self.batch_size))
+            log.debug(f'Throttle evaluation batch size: {self.batch_size}')
         self.log = log
         self.lock = Lock()
 
@@ -69,7 +69,7 @@ class Throttle:
             if diff < self.interval:
                 timer = max(0.001, self.interval - diff)
                 if self.log:
-                    self.log.debug("Reduce rate for "+str(round(timer, 3))+" seconds at seq-"+str(seq))
+                    self.log.debug(f'Reduce rate for {round(timer, 3)} seconds at seq-{seq}')
                 time.sleep(timer)
                 self.transactions.clear()
         self.lock.release()

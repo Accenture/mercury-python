@@ -34,13 +34,13 @@ def publish_some_events():
         # headers = optional parameters for the event
         # body = event payload
         for x in range(10):
-            log.info("publishing event#" + str(x))
-            ps.publish("hello.topic", headers={"some_parameter": "some_value", "n": x},
+            log.info(f'publishing event#{x}')
+            ps.publish('hello.topic', headers={"some_parameter": "some_value", "n": x},
                        body="hello python - " + util.get_iso_8601(time.time()))
     else:
-        print("Pub/Sub feature is not available from the underlying event stream")
-        print("Did you start the language connector with cloud.connector=Kafka or cloud.services=kafka.pubsub?")
-        print("e.g. java -Dcloud.connector=kafka -Dcloud.services=kafka.reporter -jar language-connector.jar")
+        print('Pub/Sub feature is not available from the underlying event stream')
+        print('Did you start the language connector with cloud.connector=Kafka or cloud.services=kafka.pubsub?')
+        print('e.g. java -Dcloud.connector=kafka -Dcloud.services=kafka.reporter -jar language-connector.jar')
 
     # quit application
     platform.stop()
@@ -49,7 +49,7 @@ def publish_some_events():
 def main():
     def life_cycle_listener(headers: dict, body: any):
         # Detect when cloud is ready
-        log.info("Cloud life cycle event - " + str(headers))
+        log.info(f'Cloud life cycle event - {headers}')
         if 'type' in headers and 'ready' == headers['type']:
             publish_some_events()
 

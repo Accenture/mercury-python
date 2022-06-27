@@ -29,14 +29,14 @@ class Hi:
 
     def hello(self, headers: dict, body: any):
         # singleton function signature (headers: dict, body: any)
-        log.info(self.MY_NAME + " " + str(headers) + ", " + str(body))
+        log.info(f'{self.MY_NAME} {headers}, {body}')
         return EventEnvelope().set_body({'body': body, 'origin': platform.get_origin()}) \
             .set_header('x-notes', 'I am a python app')
 
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    log.info("#" + str(instance) + " " + str(headers) + " body=" + str(body))
+    log.info(f'#{instance} {headers} body={body}')
     # to set status, headers and body, return them in an event envelope
     result = EventEnvelope().set_header('hello', 'world').set_body(body)
     for h in headers:
@@ -60,12 +60,11 @@ def main():
     try:
         result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
         if isinstance(result, EventEnvelope):
-            print('Received RPC response:')
-            print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-                  ", STATUS =", result.get_status(),
-                  ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
+            log.info('Received RPC response:')
+            log.info(f'HEADERS = {result.get_headers()}, BODY = {result.get_body()}, STATUS = {result.get_status()}, '
+                     f'EXEC = {result.get_exec_time()} ms, ROUND TRIP = {result.get_round_trip()} ms')
     except TimeoutError as e:
-        print("Exception: ", str(e))
+        log.error(f'Exception: {e}')
 
     # illustrate parallel RPC requests
     event_list = list()
@@ -74,20 +73,19 @@ def main():
     try:
         result = po.parallel_request(event_list, 2.0)
         if isinstance(result, list):
-            print('Received', len(result), 'parallel RPC responses:')
+            log.info(f'Received {len(result)} parallel RPC responses:')
             for res in result:
-                print("HEADERS =", res.get_headers(), ", BODY =", res.get_body(),
-                      ", STATUS =", res.get_status(),
-                      ", EXEC =", res.get_exec_time(), ", ROUND TRIP =", res.get_round_trip(), "ms")
+                log.info(f'HEADERS = {res.get_headers()}, BODY = {res.get_body()}, STATUS = {res.get_status()}, '
+                         f'EXEC = {res.get_exec_time()} ms, ROUND TRIP = {res.get_round_trip()} ms')
     except TimeoutError as e:
-        print("Exception: ", str(e))
+        log.error(f'Exception: {e}')
 
     # demonstrate deferred delivery
     po.send_later('hello.world.1', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)
 
     def life_cycle_listener(headers: dict, body: any):
         # Detect when cloud is ready
-        log.info("Cloud life cycle event - " + str(headers))
+        log.info(f'Cloud life cycle event - {headers}')
         if 'type' in headers and 'ready' == headers['type']:
             # Demonstrate broadcast feature:
             # To test this feature, please run multiple instances of this demo

@@ -44,7 +44,8 @@ class ServiceQueue:
         self.platform = Platform()
         self.util = Utility()
         self.log = self.platform.log
-        queue_dir = self.util.normalize_path(self.platform.work_dir + "/queues/" + self.platform.get_origin())
+        queue_dir = self.util.normalize_path(f'{self.platform.work_dir}/queues/{self.platform.get_origin()}')
+
         self.disk_queue = ElasticQueue(queue_dir=queue_dir, queue_id=route)
         self._loop = loop
         self._executor = executor
@@ -87,10 +88,9 @@ class ServiceQueue:
             if wq:
                 wq.put_nowait(item)
             else:
-                self.log.error(
-                    "Event for " + self.route + " dropped because worker #" + str(worker_number) + "not found")
+                self.log.error(f'Event for {self.route} dropped because worker #{worker_number} not found')
         else:
-            self.log.error("Event for " + self.route + " dropped because there are no workers available")
+            self.log.error(f'Event for {self.route} dropped because there are no workers available')
 
     async def listen(self, total_instances):
         # create concurrent workers and
@@ -106,12 +106,11 @@ class ServiceQueue:
 
         route_type = 'PRIVATE' if self.platform.route_is_private(self.route) else 'PUBLIC'
         # minimize logging for temporary inbox that starts with the "r" prefix
+        s = 's' if total > 1 else ''
         if self._interceptor and self.util.is_inbox(self.route):
-            self.log.debug(route_type + ' ' + self.route + " with " + str(total) + " instance" +
-                           ('s' if total > 1 else '') + " started")
+            self.log.debug(f'{route_type} {self.route} with {total} instance{s} started')
         else:
-            self.log.info(route_type + ' ' + self.route + " with " + str(total) + " instance" +
-                          ('s' if total > 1 else '') + " started")
+            self.log.info(f'{route_type} {self.route} with {total} instance{s} started')
 
         # listen for incoming events
         while True:
@@ -157,13 +156,13 @@ class ServiceQueue:
 
         # minimize logging for temporary inbox that starts with the "r" prefix
         if self._interceptor and self.util.is_inbox(self.route):
-            self.log.debug(self.route + " stopped")
+            self.log.debug(f'{self.route} stopped')
         else:
-            self.log.info(self.route + " stopped")
+            self.log.info(f'{self.route} stopped')
 
 
 class WorkerQueue:
-    DISTRIBUTED_TRACING = "distributed.tracing"
+    DISTRIBUTED_TRACING = 'distributed.tracing'
 
     def __init__(self, loop, executor, manager_queue, worker_queue, route, user_function, instance,
                  singleton, interceptor):
@@ -181,7 +180,7 @@ class WorkerQueue:
         self.singleton = singleton
         self.interceptor = interceptor
         self._loop.create_task(self.listen())
-        self.log.debug(route + " #" + str(self.instance) + " started")
+        self.log.debug(f'{self.route} #{self.instance} started')
 
     async def listen(self):
         while True:
@@ -197,8 +196,7 @@ class WorkerQueue:
                     self._loop.run_in_executor(self._executor, self.handle_event, event, -1)
                 else:
                     self._loop.run_in_executor(self._executor, self.handle_event, event, self.instance)
-
-        self.log.debug(self.route + " #" + str(self.instance) + " stopped")
+        self.log.debug(f'{self.route} #{self.instance} stopped')
 
     def handle_event(self, event, instance):
         headers = dict() if 'headers' not in event else event['headers']
@@ -228,15 +226,15 @@ class WorkerQueue:
         except AppException as e:
             has_error = True
             error_code = e.get_status()
-            error_msg = 'AppException: ' + e.get_message()
+            error_msg = f'AppException: {e.get_message()}'
         except ValueError as e:
             has_error = True
             error_code = 400
-            error_msg = 'ValueError: ' + str(e)
+            error_msg = f'ValueError: {e}'
         except Exception as e:
             has_error = True
             error_code = 500
-            error_msg = type(e).__name__ + ': ' + str(e)
+            error_msg = f'{type(e).__name__}: {e}'
 
         # execution time is rounded to 3 decimal points
         exec_time = round((end - begin) * 1000, 3)
@@ -246,8 +244,7 @@ class WorkerQueue:
                 # set exception as result
                 result = EventEnvelope().set_status(error_code).set_body(error_msg)
             else:
-                self.log.warn(
-                    "Unhandled exception for " + self.route + " - code=" + str(error_code) + ", message=" + error_msg)
+                self.log.warn(f'Unhandled exception for {self.route} - code={error_code}, message={error_msg}')
         #
         # interceptor should not send regular response because it will forward the request to another function.
         # However, if error_code exists, the system will send the exception response.
@@ -281,7 +278,7 @@ class WorkerQueue:
             try:
                 self.platform.send_event(response.set_from(self.route))
             except Exception as e:
-                self.log.warn("Event dropped because " + str(e))
+                self.log.warn(f'Event dropped because {e}')
 
         # send tracing info to distributed trace logger
         trace_info = self.platform.stop_tracing()
@@ -335,12 +332,15 @@ class Inbox:
 
 @Singleton
 class Platform:
+    """
+    Event system platform instance
+    """
     SERVICE_QUERY = 'system.service.query'
 
     def __init__(self, config_file: str = None):
         if sys.version_info.major < 3:
-            python_version = str(sys.version_info.major) + "." + str(sys.version_info.minor)
-            raise RuntimeError("Requires python 3.6 and above. Actual: " + python_version)
+            python_version = f'{sys.version_info.major}.{sys.version_info.minor}'
+            raise RuntimeError(f'Requires python 3.6 and above. Actual: {python_version}')
         self.origin = 'py-' + (''.join(str(uuid.uuid4()).split('-')))
         self.config = ConfigReader(config_file)
         self.util = Utility()
@@ -355,17 +355,17 @@ class Platform:
         self._cloud = NetworkConnector(self, my_tracer, self._loop, my_nc, self.origin)
         self._function_queues = dict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_threads)
-        self.log.info("Concurrent thread pool = " + str(self._max_threads))
+        self.log.info(f'Concurrent thread pool = {self._max_threads}')
         #
         # Before we figure out how to solve blocking file I/O, we will regulate event output rate.
         #
-        my_test_dir = self.util.normalize_path(self.work_dir + "/test")
+        my_test_dir = self.util.normalize_path(f'{self.work_dir}/test')
         if not os.path.exists(my_test_dir):
             os.makedirs(my_test_dir)
-        self._throttle = Throttle(self.util.normalize_path(my_test_dir + "/to_be_deleted"), log=self.log)
+        self._throttle = Throttle(self.util.normalize_path(f'{my_test_dir}/to_be_deleted'), log=self.log)
         self._seq = 0
         self.util.cleanup_dir(my_test_dir)
-        self.log.info("Estimated performance is " + format(self._throttle.get_tps(), ',d') + " events per second")
+        self.log.info(f'Estimated performance is {format(self._throttle.get_tps(), ",d")} events per second')
         self.running = True
         self.stopped = False
         # distributed trace sessions
@@ -374,24 +374,28 @@ class Platform:
 
         # start event loop in a new thread to avoid blocking the main thread
         def main_event_loop():
-            self.log.info("Event system started")
+            self.log.info('Event system started')
             self._loop.run_forever()
-            self.log.info("Event system stopped")
+            self.log.info('Event system stopped')
             self._loop.close()
 
         threading.Thread(target=main_event_loop).start()
 
     def get_origin(self):
         """
-        get the origin ID of this application instance
-        :return: origin ID
+        Get the origin ID of this application instance
+
+        Returns: origin ID
+
         """
         return self.origin
 
     def get_logger(self):
         """
-        get logger
-        :return: logger instance
+        Get Logger
+
+        Returns: logger instance
+
         """
         return self.log
 
@@ -400,50 +404,65 @@ class Platform:
 
     def set_trace_support(self, enabled: bool = True):
         self.trace_aggregation = enabled
-        self.log.info('Trace aggregation is ' + ('ON' if enabled else 'OFF'))
+        status = 'ON' if enabled else 'OFF'
+        self.log.info(f'Trace aggregation is {status}')
 
     def get_trace_id(self) -> str:
         """
-        get trace ID for a transaction
-        :return: trace ID
+        Get trace ID for a transaction
+
+        Returns: trace ID
+
         """
         trace_info = self.get_trace()
         return trace_info.get_id() if trace_info is not None else None
 
     def get_trace(self) -> TraceInfo:
         """
-        get trace info for a transaction
-        :return:
+        Get trace info for a transaction
+
+        Returns: trace info
+
         """
         thread_id = threading.get_ident()
         return self._traces[thread_id] if thread_id in self._traces else None
 
-    def annotate_trace(self, key: str, value: str):
+    def annotate_trace(self, key: str, value: str) -> None:
         """
-        Annotate a trace at a point of a transaction
-        :param key: any key
-        :param value: any value
-        :return:
+        Annotate a trace at the current point of a transaction
+
+        Args:
+            key: any key
+            value: any value
+
+        Returns: None
+
         """
         trace_info = self.get_trace()
         if trace_info is not None and isinstance(trace_info, TraceInfo):
             trace_info.annotate(key, value)
 
-    def start_tracing(self, route: str, trace_id: str = None, trace_path: str = None):
+    def start_tracing(self, route: str, trace_id: str = None, trace_path: str = None) -> None:
         """
-        IMPORTANT: This method is reserved for system use. DO NOT call this from a user application.
-        :param route: route name
-        :param trace_id: id
-        :param trace_path: path such as URI
-        :return: None
+        This method is reserved for system use. DO NOT call this from a user application.
+
+        Args:
+            route: route name
+            trace_id: id
+            trace_path: path such as Method and URI
+
+        Returns: None
+
         """
         thread_id = threading.get_ident()
         self._traces[thread_id] = TraceInfo(route, trace_id, trace_path)
 
-    def stop_tracing(self):
+    def stop_tracing(self) -> TraceInfo:
         """
-        IMPORTANT: This method is reserved for system use. DO NOT call this from a user application.
-        :return: TraceInfo
+        This method is reserved for system use. DO NOT call this from a user application.
+
+        Returns: trace info
+
         """
         thread_id = threading.get_ident()
         if thread_id in self._traces:
@@ -451,22 +470,23 @@ class Platform:
             self._traces.pop(thread_id)
             return trace_info
 
-    def run_forever(self):
+    def run_forever(self) -> None:
         """
         Tell the platform to run in the background until user presses CTL-C or the application is stopped by admin
-        :return: None
-        """
 
+        Returns: None
+
+        """
         def graceful_shutdown(signum, frame):
             self.running = False
             if frame is not None:
-                self.log.warn("Control-C detected" if signal.SIGINT == signum else "KILL signal detected")
+                self.log.warn('Control-C detected' if signal.SIGINT == signum else 'KILL signal detected')
 
         if threading.current_thread() is threading.main_thread():
             signal.signal(signal.SIGTERM, graceful_shutdown)
             signal.signal(signal.SIGINT, graceful_shutdown)
             # keep the main thread running so CTL-C can be detected
-            self.log.info("To stop this application, press Control-C")
+            self.log.info('To stop this application, press Control-C')
             while self.running:
                 time.sleep(0.1)
             # exit forever loop and ask platform to end event loop
@@ -477,25 +497,29 @@ class Platform:
     def register(self, route: str, user_function: any, total_instances: int = 1, is_private: bool = False) -> None:
         """
         Register a user function
-        :param route: ID of the function
-        :param user_function: the lambda function given by you
-        :param total_instances: 1 for singleton or more for concurrency
-        :param is_private: true if internal function within this application instance
-        :return:
+
+        Args:
+            route: ID of the function
+            user_function: the lambda function given by you
+            total_instances: 1 for singleton or more for concurrency
+            is_private: true if internal function within this application instance
+
+        Returns: None
+
         """
         self.util.validate_service_name(route)
         if not isinstance(total_instances, int):
-            raise ValueError("Expect total_instances to be int, actual: " + str(type(total_instances)))
+            raise ValueError(f'Expect total_instances to be int, actual: {type(total_instances)}')
         if total_instances < 1:
-            raise ValueError("total_instances must be at least 1")
+            raise ValueError('total_instances must be at least 1')
         if total_instances > self._max_threads:
-            raise ValueError("total_instances must not exceed max threads of " + str(self._max_threads))
+            raise ValueError(f'total_instances must not exceed max threads of {self._max_threads}')
         function_type = self.util.get_function_type(user_function)
         if function_type == FunctionType.NOT_SUPPORTED:
-            raise ValueError("Function signature should be (headers: dict, body: any, instance: int) or " +
-                             "(headers: dict, body: any) or (event: EventEnvelope)")
+            raise ValueError('Function signature should be (headers: dict, body: any, instance: int) or ' +
+                             '(headers: dict, body: any) or (event: EventEnvelope)')
         if route in self._function_queues:
-            self.log.warn(route + " will be reloaded")
+            self.log.warn(f'{route} will be reloaded')
             self.release(route)
         queue = asyncio.Queue()
         if function_type == FunctionType.INTERCEPTOR:
@@ -524,9 +548,9 @@ class Platform:
     def release(self, route: str) -> None:
         # this will un-register a route
         if not isinstance(route, str):
-            raise ValueError("Expect route to be str, actual: " + str(type(route)))
+            raise ValueError(f'Expect route to be str, actual: {type(route)}')
         if route not in self._function_queues:
-            raise ValueError("route " + route + " not found")
+            raise ValueError(f'route {route} not found')
         # advertise the deleted route to the network
         if self._cloud.is_ready() and self.route_is_private(route):
             self._cloud.send_payload({'type': 'remove', 'route': route})
@@ -534,7 +558,7 @@ class Platform:
 
     def has_route(self, route: str) -> bool:
         if not isinstance(route, str):
-            raise ValueError("Expect route to be str, actual: " + str(type(route)))
+            raise ValueError(f'Expect route to be str, actual: {type(route)}')
         return route in self._function_queues
 
     def get_routes(self, options: str = 'all'):
@@ -571,18 +595,18 @@ class Platform:
     def parallel_request(self, events: list, timeout_seconds: float):
         timeout_value = self.util.get_float(timeout_seconds)
         if timeout_value <= 0:
-            raise ValueError("timeout value in seconds must be positive number")
+            raise ValueError('timeout value in seconds must be positive number')
         if not isinstance(events, list):
-            raise ValueError("events must be a list of EventEnvelope")
+            raise ValueError('events must be a list of EventEnvelope')
         if len(events) == 0:
-            raise ValueError("event list is empty")
+            raise ValueError('event list is empty')
         if len(events) == 1:
             result = list()
             result.append(self.request(events[0], timeout_value))
             return result
         for evt in events:
             if not isinstance(evt, EventEnvelope):
-                raise ValueError("events must be a list of EventEnvelope")
+                raise ValueError('events must be a list of EventEnvelope')
 
         # retrieve distributed tracing info if any
         trace_info = self.get_trace()
@@ -607,7 +631,7 @@ class Platform:
                     if self._cloud.is_connected():
                         self._cloud.send_payload({'type': 'event', 'event': evt.to_map()})
                     else:
-                        raise ValueError("route " + route + " not found")
+                        raise ValueError(f'route {route} not found')
 
             total_requests = len(events)
             result_list = list()
@@ -618,17 +642,17 @@ class Platform:
                     if len(result_list) == len(events):
                         return result_list
                 except Empty:
-                    raise TimeoutError('Requests timeout for ' + str(round(timeout_value, 3)) + " seconds. Expect: " +
-                                       str(total_requests) + " responses, actual: " + str(len(result_list)))
+                    raise TimeoutError(f'Requests timeout for {round(timeout_value, 3)} seconds. '
+                                       f'Expect: {total_requests} responses, actual: {len(result_list)}')
         finally:
             inbox.close()
 
     def request(self, event: EventEnvelope, timeout_seconds: float):
         timeout_value = self.util.get_float(timeout_seconds)
         if timeout_value <= 0:
-            raise ValueError("timeout value in seconds must be positive number")
+            raise ValueError('timeout value in seconds must be positive number')
         if not isinstance(event, EventEnvelope):
-            raise ValueError("event object must be an EventEnvelope")
+            raise ValueError('event object must be an EventEnvelope')
         # restore distributed tracing info from current thread
         trace_info = self.get_trace()
         if trace_info:
@@ -649,17 +673,17 @@ class Platform:
                 if self._cloud.is_connected():
                     self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
                 else:
-                    raise ValueError("route " + route + " not found")
+                    raise ValueError(f'route {route} not found')
             # wait until response event is delivered to the inbox
             return inbox_queue.get(True, timeout_value)
         except Empty:
-            raise TimeoutError('Route ' + event.get_to() + ' timeout for ' + str(round(timeout_value, 3)) + " seconds")
+            raise TimeoutError(f'Route {event.get_to()} timeout for {round(timeout_value, 3)} seconds')
         finally:
             inbox.close()
 
     def send_event(self, event: EventEnvelope, broadcast=False) -> None:
         if not isinstance(event, EventEnvelope):
-            raise ValueError("event object must be an EventEnvelope class")
+            raise ValueError('event object must be an EventEnvelope class')
         # restore distributed tracing info from current thread
         trace_info = self.get_trace()
         if trace_info:
@@ -677,7 +701,7 @@ class Platform:
         if reply_to:
             target = reply_to[2:] if reply_to.startswith('->') else reply_to
             if route == target:
-                raise ValueError("route and reply_to must not be the same")
+                raise ValueError('route and reply_to must not be the same')
         if route in self._function_queues:
             if event.is_broadcast() and self._cloud.is_connected():
                 self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
@@ -687,7 +711,7 @@ class Platform:
             if self._cloud.is_connected():
                 self._cloud.send_payload({'type': 'event', 'event': event.to_map()})
             else:
-                raise ValueError("route " + route + " not found")
+                raise ValueError(f'route {route} not found')
 
     def send_event_later(self, delay_in_seconds: float, event: EventEnvelope) -> None:
         self._loop.call_later(delay_in_seconds, self.send_event, event)
@@ -763,9 +787,9 @@ class Platform:
         async def full_stop():
             # give time for registered services to stop
             await asyncio.sleep(1.0)
-            queue_dir = self.util.normalize_path(self.work_dir + "/queues/" + self.get_origin())
+            queue_dir = self.util.normalize_path(f'{self.work_dir}/queues/{self.get_origin()}')
             self.util.cleanup_dir(queue_dir)
             self._loop.stop()
 
-        self._cloud.close_connection(1000, 'Application ' + self.get_origin() + ' is stopping', stop_engine=True)
+        self._cloud.close_connection(1000, f'Application {self.get_origin()} is stopping', stop_engine=True)
         self._loop.call_soon_threadsafe(stopping)

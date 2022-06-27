@@ -49,7 +49,7 @@ def main():
     input_stream = ObjectStreamReader(in_stream_id)
 
     for i in range(100):
-        output_stream.write('hello world '+str(i))
+        output_stream.write(f'hello world {i}')
 
     #
     # if output stream is not closed, input will expire

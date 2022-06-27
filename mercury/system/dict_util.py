@@ -48,7 +48,7 @@ class MultiLevelDict:
         self.validate_composite_path_syntax(composite_path)
         data = self.dataset if source_data is None else source_data
         if not isinstance(data, dict):
-            raise ValueError('Invalid input - Expect: dict, Actual: '+str(type(data)))
+            raise ValueError(f'Invalid input - Expect: dict, Actual: {type(data)}')
         segments = self.util.multi_split(composite_path, './')
         if len(segments) == 0:
             return
@@ -175,7 +175,7 @@ class MultiLevelDict:
             return None
         data = self.dataset if source_data is None else source_data
         if not isinstance(data, dict):
-            raise ValueError('Invalid input - Expect: dict, Actual: '+str(type(data)))
+            raise ValueError(f'Invalid input - Expect: dict, Actual: {type(data)}')
         if len(data) == 0:
             return None
         # special case for top level element that is using composite itself
@@ -232,7 +232,7 @@ class MultiLevelDict:
 
     def get_flat_map(self, data: dict = None):
         if not isinstance(data, dict):
-            raise ValueError('Invalid input - Expect: dict, Actual: '+str(type(data)))
+            raise ValueError(f'Invalid input - Expect: dict, Actual: {type(data)}')
         result = dict()
         self._get_flat_map(None, data, result)
         return result

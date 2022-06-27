@@ -38,7 +38,8 @@ class PostOffice:
         This is useful for Role Based Access Control (RBAC) to restrict certain user roles for a service.
         Note that RBAC is the responsibility of the user application.
 
-        :return: route name
+        Returns: route name
+
         """
         trace_info = self.get_trace()
         return "?" if trace_info is None else trace_info.get_route()
@@ -119,7 +120,7 @@ class PostOffice:
             raise ValueError('Unable to make RPC call because both headers and body are missing')
         timeout_value = self.util.get_float(timeout_seconds)
         if timeout_value <= 0:
-            raise ValueError("timeout value in seconds must be positive number")
+            raise ValueError('timeout value in seconds must be positive number')
         event = EventEnvelope().set_to(route)
         if headers is not None:
             if not isinstance(headers, dict):
@@ -136,7 +137,7 @@ class PostOffice:
                 return response
             else:
                 raise AppException(response.get_status(), response.get_body())
-        raise ValueError('Expect response is EventEnvelope, actual: ('+str(response)+')')
+        raise ValueError(f'Expect response is EventEnvelope, actual: ({response})')
 
     def parallel_request(self, events: list, timeout_seconds: float) -> list:
         return self.platform.parallel_request(events, timeout_seconds)

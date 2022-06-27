@@ -19,7 +19,7 @@ N/A
 
 ### Changed
 
-N/A
+Update to use python "f" string formatter
 
 ---
 ## Version 2.3.5, 5/30/2022
