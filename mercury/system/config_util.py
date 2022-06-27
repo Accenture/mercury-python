@@ -32,9 +32,9 @@ class ConfigReader:
             filename = os.path.join(resources, 'application.yml')
 
         if not isinstance(filename, str):
-            raise ValueError('Invalid filename - Expect: str, Actual: '+str(type(filename)))
+            raise ValueError(f'Invalid filename - Expect: str, Actual: {type(filename)}')
         if not os.path.exists(filename):
-            raise ValueError('File '+filename+' does not exist')
+            raise ValueError(f'File {filename} does not exist')
 
         with open(filename, 'r') as f:
             if filename.endswith('.yml') or filename.endswith('.yaml'):

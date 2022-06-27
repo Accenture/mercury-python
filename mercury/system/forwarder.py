@@ -39,14 +39,14 @@ class Forwarder:
                 if 'subscribe' == headers['type']:
                     if route not in self.subscription:
                         self.subscription[route] = True
-                        log.info(route + ' subscribed to ' + self.me)
+                        log.info(f'{route} subscribed to {self.me}')
                         return True
                     else:
                         return False
                 if 'unsubscribe' == headers['type']:
                     if route in self.subscription:
                         self.subscription.pop(route)
-                        log.info(route + ' unsubscribed from ' + self.me)
+                        log.info(f'{route} unsubscribed from {self.me}')
                         return True
                     else:
                         return False
@@ -57,4 +57,4 @@ class Forwarder:
             try:
                 po.send(subscriber, headers, body)
             except ValueError as e:
-                log.warn('unable to relay event to '+subscriber + ' - ' + str(e))
+                log.warn(f'Unable to relay event to {subscriber} - {e}')

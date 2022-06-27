@@ -20,18 +20,20 @@ import time
 
 from mercury.platform import Platform
 
+platform = Platform()
+log = platform.get_logger()
+
 
 def my_trace_processor(headers: dict, body: any):
     #
-    # demonstrate user defined Distributed Trace processor
-    # In this example, it just print onto the console.
+    # Demonstrate user defined Distributed Trace processor
+    # In this example, it prints the traces onto the console.
     # For production, you should save the trace and metrics into a database or search engine.
     #
-    print("TRACE", str(headers), str(body))
+    log.info(f'trace {headers} {body}')
 
 
 def main():
-    platform = Platform()
     # we should register the custom trace processor as a singleton
     platform.register('distributed.trace.processor', my_trace_processor, 1)
 

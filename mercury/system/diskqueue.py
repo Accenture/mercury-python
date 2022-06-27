@@ -39,7 +39,7 @@ class ElasticQueue:
         if not os.path.exists(queue_dir):
             os.makedirs(queue_dir, exist_ok=True)
         self.util = Utility()
-        self._dir = self.util.normalize_path(queue_dir + '/' + queue_id)
+        self._dir = self.util.normalize_path(f'{queue_dir}/{queue_id}')
         self._empty = False
         self._create_dir = False
         self._memory = list()
@@ -91,7 +91,7 @@ class ElasticQueue:
             if self._create_dir:
                 self._create_dir = False
                 os.makedirs(self._dir)
-            filename = self.util.normalize_path(self._dir + '/' + self.QUEUE + str(self._write_file_no))
+            filename = self.util.normalize_path(f'{self._dir}/{self.QUEUE}{self._write_file_no}')
             if not os.path.exists(filename):
                 open(filename, 'w').close()
             # pack data as bytes
@@ -130,7 +130,7 @@ class ElasticQueue:
             if data is not None:
                 self._read_counter += 1
             return data
-        filename = self.util.normalize_path(self._dir + '/' + self.QUEUE + str(self._read_file_no))
+        filename = self.util.normalize_path(f'{self._dir}/{self.QUEUE}{self._read_file_no}')
         if self._file is None:
             if not os.path.exists(filename):
                 return None
@@ -147,15 +147,15 @@ class ElasticQueue:
             self._read_file_no += 1
             return self.read()
         if ctl != self.DATA:
-            raise ValueError("Corrupted queue for "+self.queue_id)
+            raise ValueError(f'Corrupted queue for {self.queue_id}')
         # read data block size
         size = self._file.read(4)
         if size is None or len(size) != 4:
-            raise ValueError("Corrupted queue for " + self.queue_id)
+            raise ValueError(f'Corrupted queue for {self.queue_id}')
         block_size = self.util.bytes_to_int(size)
         block = self._file.read(block_size)
         if block is None or len(block) != block_size:
-            raise ValueError("Corrupted queue for " + self.queue_id)
+            raise ValueError(f'Corrupted queue for {self.queue_id}')
         self._read_counter += 1
         # unpack from bytes into the original data
         return msgpack.unpackb(block, raw=False)

@@ -27,7 +27,7 @@ po = PostOffice()
 
 def hello(headers: dict, body: any, instance: int):
     # regular function signature (headers: dict, body: any, instance: int)
-    log.info("#" + str(instance) + " got ---> " + str(headers) + " body=" + str(body))
+    log.info(f'#{instance} got header={headers} body={body}')
     # as a demo, just echo the original payload
     return body
 
@@ -45,16 +45,14 @@ def main():
         result = po.request('hello.world', 2.0, headers={'some_key': 'some_value'}, body='hello world')
         if isinstance(result, EventEnvelope):
             log.info('Received RPC response:')
-            log.info("HEADERS = " + str(result.get_headers()) + ", BODY = " + str(result.get_body()) +
-                     ", STATUS = " + str(result.get_status()) +
-                     ", EXEC = " + str(result.get_exec_time()) +
-                     ", ROUND TRIP = " + str(result.get_round_trip()) + "ms")
+            log.info(f'HEADERS = {result.get_headers()}, BODY = {result.get_body()}, STATUS = {result.get_status()}, '
+                     f'EXEC = {result.get_exec_time()} ms, ROUND TRIP = {result.get_round_trip()} ms')
     except TimeoutError as e:
-        log.info("Exception: " + str(e))
+        log.error(f'Exception: {e}')
 
     # demonstrate drop-n-forget
     for n in range(20):
-        po.send('hello.world', body='just a drop-n-forget message ' + str(n))
+        po.send('hello.world', body=f'drop-n-forget message {n}')
 
     # demonstrate deferred delivery
     po.send_later('hello.world', headers={'hello': 'world'}, body='this message arrives 5 seconds later', seconds=5.0)

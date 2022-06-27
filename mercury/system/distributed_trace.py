@@ -32,7 +32,7 @@ class DistributedTrace:
 
     def logger(self, event: EventEnvelope):
         if isinstance(event, EventEnvelope):
-            self.log.info('trace=' + str(event.get_headers()) + ', annotations=' + str(event.get_body()))
+            self.log.info(f'trace={event.get_headers()}, annotations={event.get_body()}')
             if self.platform.is_trace_supported():
                 # forward to user provided distributed trace logger if any
                 current_time = time.time()

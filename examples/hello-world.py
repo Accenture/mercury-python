@@ -27,9 +27,9 @@ def hello(headers: dict, body: any, instance: int):
         request = AsyncHttpRequest(body)
         # is this an HTTP request from REST automation?
         if request.get_method() is not None:
-            log.info('#' + str(instance) + ' HTTP request: ' + request.get_method() + ' ' + request.get_url())
+            log.info(f'#{instance} HTTP request: {request.get_method()} {request.get_url()}')
     # just print out the input onto the console
-    log.info('#'+str(instance) + ' GOT headers = ' + str(headers) + ', body = ' + str(body))
+    log.info(f'#{instance} GOT headers = {headers}, body = {body}')
     # return the result as a dict so that it can be rendered as JSON, XML or HTML automatically by the REST endpoint
     return {'instance': instance, 'headers': headers, 'body': body}
 
