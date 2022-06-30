@@ -365,12 +365,11 @@ class Platform:
         #
         # Before we figure out how to solve blocking file I/O, we will regulate event output rate.
         #
-        my_test_dir = self.util.normalize_path(f'{self.work_dir}/test')
+        my_test_dir = self.util.normalize_path(f'{self.work_dir}/safe_to_delete_when_apps_stop')
         if not os.path.exists(my_test_dir):
-            os.makedirs(my_test_dir)
-        self._throttle = Throttle(self.util.normalize_path(f'{my_test_dir}/to_be_deleted'), log=self.log)
+            os.makedirs(my_test_dir, exist_ok=True)
+        self._throttle = Throttle(self.util.normalize_path(f'{my_test_dir}/'+self.origin), log=self.log)
         self._seq = 0
-        self.util.cleanup_dir(my_test_dir)
         self.log.info(f'Estimated performance is {format(self._throttle.get_tps(), ",d")} events per second')
         self.running = True
         self.stopped = False
