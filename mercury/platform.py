@@ -161,6 +161,12 @@ class ServiceQueue:
             self.log.info(f'{self.route} stopped')
 
 
+def _normalize_exception(cls: str, e: Exception):
+    message = e.message if hasattr(e, 'message') else str(e)
+    cls_name = cls + ': '
+    return message if message.startswith(cls_name) else cls_name + message
+
+
 class WorkerQueue:
     DISTRIBUTED_TRACING = 'distributed.tracing'
 
@@ -226,15 +232,15 @@ class WorkerQueue:
         except AppException as e:
             has_error = True
             error_code = e.get_status()
-            error_msg = f'AppException: {e.get_message()}'
+            error_msg = _normalize_exception('AppException', e)
         except ValueError as e:
             has_error = True
             error_code = 400
-            error_msg = f'ValueError: {e}'
+            error_msg = _normalize_exception('ValueError', e)
         except Exception as e:
             has_error = True
             error_code = 500
-            error_msg = f'{type(e).__name__}: {e}'
+            error_msg = _normalize_exception(type(e).__name__, e)
 
         # execution time is rounded to 3 decimal points
         exec_time = round((end - begin) * 1000, 3)
