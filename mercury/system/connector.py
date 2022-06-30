@@ -76,7 +76,7 @@ class NetworkConnector:
         # check temp file system because API key not in environment
         temp_dir = '/tmp/config'
         if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
+            os.makedirs(temp_dir, exist_ok=True)
             self.log.info(f'Folder {temp_dir} created')
         api_key_file = temp_dir+"/lang-api-key.txt"
         if os.path.exists(api_key_file):

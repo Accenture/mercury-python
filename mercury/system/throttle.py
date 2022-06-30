@@ -16,6 +16,7 @@
 # limitations under the License.
 #
 
+import os
 import time
 from threading import Lock
 
@@ -54,6 +55,7 @@ class Throttle:
             with open(self.test_file, 'ab') as f:
                 f.write(bytes(s, 'utf-8'))
             n += 1
+        os.remove(self.test_file)
         return n
 
     def regulate_rate(self, seq):
