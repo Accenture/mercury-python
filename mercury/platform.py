@@ -173,6 +173,7 @@ class WorkerQueue:
     def __init__(self, loop, executor, manager_queue, worker_queue, route, user_function, instance,
                  singleton, interceptor):
         self.platform = Platform()
+        self.util = Utility()
         self.log = self.platform.log
         self._loop = loop
         self._executor = executor
@@ -180,7 +181,8 @@ class WorkerQueue:
         self.worker_queue = worker_queue
         self.route = route
         # trace all routes except ws.outgoing
-        self.tracing = route != 'ws.outgoing'
+        normal_service = not (interceptor and self.util.is_inbox(route))
+        self.tracing = normal_service and route != 'ws.outgoing'
         self.user_function = user_function
         self.instance = instance
         self.singleton = singleton
@@ -289,7 +291,8 @@ class WorkerQueue:
         # send tracing info to distributed trace logger
         trace_info = self.platform.stop_tracing()
         if self.tracing and trace_info is not None and isinstance(trace_info, TraceInfo) \
-                and trace_info.get_id() is not None and trace_info.get_path() is not None:
+                and trace_info.get_id() is not None and trace_info.get_path() is not None \
+                and self.platform.has_route(self.DISTRIBUTED_TRACING):
             dt = EventEnvelope().set_to(self.DISTRIBUTED_TRACING).set_body(trace_info.get_annotations())
             dt.set_header('origin', self.platform.get_origin())
             dt.set_header('id', trace_info.get_id()).set_header('path', trace_info.get_path())
@@ -718,7 +721,7 @@ class Platform:
             else:
                 raise ValueError(f'route {route} not found')
 
-    def send_event_later(self, delay_in_seconds: float, event: EventEnvelope) -> None:
+    def send_event_later(self, event: EventEnvelope, delay_in_seconds: float) -> None:
         self._loop.call_later(delay_in_seconds, self.send_event, event)
 
     def exists(self, routes: any):
