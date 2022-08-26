@@ -27,9 +27,8 @@ po = PostOffice()
 
 
 def tracing(headers: dict, body: any):
-    # regular function signature (headers: dict, body: any, instance: int)
+    # no instance parameter because this is a singleton
     log.info(f'TRACE {headers}')
-    # as a demo, just echo the original payload
     return body
 
 
