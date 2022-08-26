@@ -87,11 +87,16 @@ class PostOffice:
                         raise ValueError('reply_to must be str')
                     # encode 'me' in the "call back" if replying to this instance
                     event.set_reply_to(reply_to, me)
-                self.platform.send_event_later(seconds, event)
+                self.platform.send_event_later(event, seconds)
             else:
                 raise ValueError('delay in seconds must be larger than zero')
         else:
             raise ValueError('delay in seconds must be int or float')
+
+    def send_event_later(self, event: EventEnvelope, seconds: float = 1.0, me=True):
+        if event.get_reply_to() is not None:
+            event.set_reply_to(event.get_reply_to(), me)
+        self.platform.send_event_later(event, seconds)
 
     def send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None:
         self.util.validate_service_name(route, True)
@@ -110,6 +115,11 @@ class PostOffice:
                 raise ValueError('reply_to must be str')
             # encode 'me' in the "call back" if replying to this instance
             event.set_reply_to(reply_to, me)
+        self.platform.send_event(event)
+
+    def send_event(self, event: EventEnvelope, me=True):
+        if event.get_reply_to() is not None:
+            event.set_reply_to(event.get_reply_to(), me)
         self.platform.send_event(event)
 
     def request(self, route: str, timeout_seconds: float,
@@ -131,6 +141,15 @@ class PostOffice:
             event.set_body(body)
         if correlation_id is not None:
             event.set_correlation_id(str(correlation_id))
+        response = self.platform.request(event, timeout_seconds)
+        if isinstance(response, EventEnvelope):
+            if response.get_tag('exception') is None:
+                return response
+            else:
+                raise AppException(response.get_status(), response.get_body())
+        raise ValueError(f'Expect response is EventEnvelope, actual: ({response})')
+
+    def single_request(self, event: EventEnvelope, timeout_seconds: float):
         response = self.platform.request(event, timeout_seconds)
         if isinstance(response, EventEnvelope):
             if response.get_tag('exception') is None:
