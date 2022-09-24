@@ -35,7 +35,7 @@ def request(self, route: str, timeout_seconds: float,
               correlation_id: str = None) -> EventEnvelope:
 
 # example
-result = po.send_request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
+result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
 print(result.get_body())
 
 # send request using an event directly
