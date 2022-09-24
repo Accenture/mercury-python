@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## Version 2.5.0, 9/24/2022
+
+### Added
+
+N/A
+
+### Removed
+
+N/A
+
+### Changed
+
+For consistency,
+
+1. Refactor post office APIs for sending single event request as "send_request".
+2. Update platform APIs for sending event request and parallel requests as "send_request" and "send_parallel_requests"
+
+---
 ## Version 2.3.6, 6/16/2022
 
 ### Added

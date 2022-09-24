@@ -29,7 +29,6 @@ po = PostOffice()
 def tracing(headers: dict, body: any):
     # no instance parameter because this is a singleton
     log.info(f'TRACE {headers}')
-    return body
 
 
 def hello(headers: dict, body: any, instance: int):
@@ -54,7 +53,7 @@ def main():
         trace_path = 'GET /api/hello/world'
         event = EventEnvelope().set_to("hello.world").set_header('some_key', 'some_value').set_body('hello world')
         event.set_trace(trace_id, trace_path).set_from('this.demo')
-        result = po.single_request(event, 2.0)
+        result = po.send_request(event, 2.0)
         if isinstance(result, EventEnvelope):
             log.info('Received RPC response:')
             log.info(f'HEADERS = {result.get_headers()}, BODY = {result.get_body()}, STATUS = {result.get_status()}, '

@@ -65,9 +65,9 @@ def main():
 
     input_stream.close()
     #
-    # This will keep the main thread running in the background.
-    # We can use Control-C or KILL signal to stop the application.
-    platform.run_forever()
+    # Stop platform after demo
+    #
+    platform.stop()
 
 
 if __name__ == '__main__':

@@ -147,7 +147,7 @@ try:
     if isinstance(result, EventEnvelope):
         print('Received RPC response:')
         print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-              ", STATUS =",  result.get_status(),
+              ", STATUS =", result.get_status(),
               ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
 except TimeoutError as e:
     print("Exception: ", str(e))

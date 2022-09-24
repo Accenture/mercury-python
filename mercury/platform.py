@@ -600,7 +600,7 @@ class Platform:
         else:
             return 0
 
-    def parallel_request(self, events: list, timeout_seconds: float):
+    def send_parallel_requests(self, events: list, timeout_seconds: float):
         timeout_value = self.util.get_float(timeout_seconds)
         if timeout_value <= 0:
             raise ValueError('timeout value in seconds must be positive number')
@@ -610,7 +610,7 @@ class Platform:
             raise ValueError('event list is empty')
         if len(events) == 1:
             result = list()
-            result.append(self.request(events[0], timeout_value))
+            result.append(self.send_request(events[0], timeout_value))
             return result
         for evt in events:
             if not isinstance(evt, EventEnvelope):
@@ -650,12 +650,12 @@ class Platform:
                     if len(result_list) == len(events):
                         return result_list
                 except Empty:
-                    raise TimeoutError(f'Requests timeout for {round(timeout_value, 3)} seconds. '
+                    raise TimeoutError(f'Request timeout for {round(timeout_value, 3)} seconds. '
                                        f'Expect: {total_requests} responses, actual: {len(result_list)}')
         finally:
             inbox.close()
 
-    def request(self, event: EventEnvelope, timeout_seconds: float):
+    def send_request(self, event: EventEnvelope, timeout_seconds: float):
         timeout_value = self.util.get_float(timeout_seconds)
         if timeout_value <= 0:
             raise ValueError('timeout value in seconds must be positive number')
@@ -724,7 +724,7 @@ class Platform:
     def send_event_later(self, event: EventEnvelope, delay_in_seconds: float) -> None:
         self._loop.call_later(delay_in_seconds, self.send_event, event)
 
-    def exists(self, routes: any):
+    def exists(self, routes: any) -> bool:
         if isinstance(routes, str):
             single_route = routes
             if self.has_route(single_route):
@@ -732,7 +732,7 @@ class Platform:
             if self.cloud_ready():
                 event = EventEnvelope()
                 event.set_to(self.SERVICE_QUERY).set_header('type', 'find').set_header('route', single_route)
-                result = self.request(event, 8.0)
+                result = self.send_request(event, 8.0)
                 if isinstance(result, EventEnvelope):
                     if result.get_body() is not None:
                         return result.get_body()
@@ -749,7 +749,7 @@ class Platform:
                     event = EventEnvelope()
                     event.set_to(self.SERVICE_QUERY).set_header('type', 'find')
                     event.set_header('route', '*').set_body(routes)
-                    result = self.request(event, 8.0)
+                    result = self.send_request(event, 8.0)
                     if isinstance(result, EventEnvelope) and result.get_body() is not None:
                         return result.get_body()
         return False

@@ -141,7 +141,7 @@ class PostOffice:
             event.set_body(body)
         if correlation_id is not None:
             event.set_correlation_id(str(correlation_id))
-        response = self.platform.request(event, timeout_seconds)
+        response = self.platform.send_request(event, timeout_seconds)
         if isinstance(response, EventEnvelope):
             if response.get_tag('exception') is None:
                 return response
@@ -149,8 +149,8 @@ class PostOffice:
                 raise AppException(response.get_status(), response.get_body())
         raise ValueError(f'Expect response is EventEnvelope, actual: ({response})')
 
-    def single_request(self, event: EventEnvelope, timeout_seconds: float):
-        response = self.platform.request(event, timeout_seconds)
+    def send_request(self, event: EventEnvelope, timeout_seconds: float) -> EventEnvelope:
+        response = self.platform.send_request(event, timeout_seconds)
         if isinstance(response, EventEnvelope):
             if response.get_tag('exception') is None:
                 return response
@@ -159,7 +159,7 @@ class PostOffice:
         raise ValueError(f'Expect response is EventEnvelope, actual: ({response})')
 
     def parallel_request(self, events: list, timeout_seconds: float) -> list:
-        return self.platform.parallel_request(events, timeout_seconds)
+        return self.platform.send_parallel_requests(events, timeout_seconds)
 
-    def exists(self, routes: any):
+    def exists(self, routes: any) -> bool:
         return self.platform.exists(routes)
