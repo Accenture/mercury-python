@@ -80,8 +80,8 @@ try:
     if isinstance(result, EventEnvelope):
         print('Received RPC response:')
         print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-                ", STATUS =",  result.get_status(),
-                ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
+              ", STATUS =", result.get_status(),
+              ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
 except TimeoutError as e:
     print("Exception: ", str(e))
 
@@ -89,10 +89,10 @@ except TimeoutError as e:
 po.send('hello.world.1', headers={'one': 1}, body='hello world one')
 ```
 
-## Massive parallel processing
+## Parallel processing
 
 A function is invoked when an event happens. Before the event arrives, the function is just an entry in a routing 
-table and it does not consume any additional resources like threads.
+table, and it does not consume any additional resources like threads.
 
 All functions are running in parallel without special coding. Behind the curtain, the system uses Python futures and 
 asyncio event loops for very efficient function execution.

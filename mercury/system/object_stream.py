@@ -21,7 +21,6 @@ from mercury.system.models import EventEnvelope, AppException
 
 
 class ObjectStreamIO:
-
     STREAM_IO_MANAGER = 'object.streams.io'
 
     def __init__(self, expiry_seconds: int = 1800):

@@ -26,17 +26,23 @@ The Mercury framework is 100% event-driven and all communications are asynchrono
 it suspends the calling function and uses temporary Inbox as a callback function. The called function will send 
 the reply to the callback function which in turns wakes up the calling function.
 
-To make a RPC call, you can use the `request` method.
+To make a RPC call, you can use the `request` or the `send_request` method. 
+With the latter, you can send the request as an event and set event metadata such as correlation-ID.
 
 ```python
-request(self, route: str, timeout_seconds: float,
-                headers: dict = None, body: any = None,
-                correlation_id: str = None) -> EventEnvelope
+def request(self, route: str, timeout_seconds: float,
+              headers: dict = None, body: any = None,
+              correlation_id: str = None) -> EventEnvelope:
 
 # example
-result = po.request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
+result = po.send_request('hello.world.2', 2.0, headers={'some_key': 'some_value'}, body='hello world')
 print(result.get_body())
 
+# send request using an event directly
+def send_request(self, event: EventEnvelope, timeout_seconds: float) -> EventEnvelope:
+
+# example
+result = po.send_request(event, 2.0)
 ```
 
 Note that Mercury supports Python primitive or dictionary in the message body. If you put other object, it may throw 
@@ -47,7 +53,7 @@ serialization exception or the object may become empty.
 To make an asynchronous call, use the `send` method.
 
 ```python
-send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None
+def send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None""
 ```
 
 You may put key-value pairs in the "headers" field for holding parameters. For message payload, put Python primitive 
@@ -56,7 +62,7 @@ or dictionary in the "body" field.
 ### Deferred delivery
 
 ```python
-send_later(self, route: str, headers: dict = None, body: any = None, seconds: float = 1.0) -> None
+def send_later(self, route: str, headers: dict = None, body: any = None, seconds: float = 1.0) -> None:
 ```
 
 ### Call-back
@@ -148,7 +154,7 @@ Broadcast is the easiest way to do "pub/sub". To broadcast an event to multiple 
 use the `broadcast` method.
 
 ```python
-broadcast(self, route: str, headers: dict = None, body: any = None) -> None
+def broadcast(self, route: str, headers: dict = None, body: any = None) -> None:
 
 # example
 po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.get_origin())
@@ -160,7 +166,7 @@ po.broadcast("hello.world.1", body="this is a broadcast message from "+platform.
 You can perform join-n-fork RPC calls using a parallel version of the request, `parallel_request` method.
 
 ```python
-parallel_request(self, events: list, timeout_seconds: float) -> list
+def parallel_request(self, events: list, timeout_seconds: float) -> list:
 
 # illustrate parallel RPC requests
 event_list = list()
@@ -172,8 +178,8 @@ try:
         print('Received', len(result), 'RPC responses:')
         for res in result:
             print("HEADERS =", res.get_headers(), ", BODY =", res.get_body(),
-                    ", STATUS =",  res.get_status(),
-                    ", EXEC =", res.get_exec_time(), ", ROUND TRIP =", res.get_round_trip(), "ms")
+                  ", STATUS =", res.get_status(),
+                  ", EXEC =", res.get_exec_time(), ", ROUND TRIP =", res.get_round_trip(), "ms")
 except TimeoutError as e:
     print("Exception: ", str(e))
 ```
@@ -188,14 +194,14 @@ However, if you want to do store-n-forward pub/sub for certain use cases, you ma
 Following are some useful pub/sub API:
 
 ```python
-def feature_enabled()
-def create_topic(topic: str)
-def delete_topic(topic: str)
-def publish(topic: str, headers: dict = None, body: any = None)
-def subscribe(self, topic: str, route: str, parameters: list = None)
-def unsubscribe(self, topic: str, route: str)
-def exists(topic: str)
-def list_topics()
+def feature_enabled():
+def create_topic(topic: str):
+def delete_topic(topic: str):
+def publish(topic: str, headers: dict = None, body: any = None):
+def subscribe(self, topic: str, route: str, parameters: list = None):
+def unsubscribe(self, topic: str, route: str):
+def exists(topic: str):
+def list_topics():
 
 ```
 Some pub/sub engine would require additional parameters when subscribing a topic. For Kafka, you must provide the 
@@ -222,7 +228,7 @@ serialization yourself. The payload can be a dict, bool, str, int or float.
 To check if a target service is available, you can use the `exists` method.
 
 ```python
-exists(self, routes: any)
+def exists(self, routes: any) -> bool:
 
 # input can be a route name or a list of routes
 # it will return true only when all routes are available
