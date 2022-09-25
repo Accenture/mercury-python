@@ -30,7 +30,6 @@ class SimpleCache:
         self.normal = True
         self.timeout = int(timeout_seconds)
         self.map = dict()
-        self.log.info('Started')
         self._loop.create_task(self.auto_expire())
 
     def put(self, key: str, value: any):
@@ -57,8 +56,6 @@ class SimpleCache:
         if self.normal:
             await asyncio.sleep(0.5)
             self._loop.create_task(self.auto_expire())
-        else:
-            self.log.info('Stopped')
 
     def stop(self):
         self.normal = False
