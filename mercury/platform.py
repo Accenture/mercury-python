@@ -382,9 +382,7 @@ class Platform:
 
         # start event loop in a new thread to avoid blocking the main thread
         def main_event_loop():
-            self.log.info('Event system started')
             self._loop.run_forever()
-            self.log.info('Event system stopped')
             self._loop.close()
 
         threading.Thread(target=main_event_loop).start()
