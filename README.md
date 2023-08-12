@@ -1,3 +1,9 @@
+# This project is pending upgrade to Mercury 3.0
+
+Please note that this project will be updated by end of 2023 to catch up with Composable design patterns in Mercury 3.0.
+
+We will archive this to a branch and document the migration steps when it happens.
+
 # Python language pack for the Mercury microservices framework
 
 You can write standalone or cloud application using this software development tool.
