@@ -1,6 +1,6 @@
 # This project is pending upgrade to Mercury 3.0
 
-Please note that this project will be updated by end of 2023 to catch up with Composable design patterns in Mercury 3.0.
+Please note that this project is pending refactoring to catch up with Composable design patterns in Mercury 3.1.
 
 We will archive this to a branch and document the migration steps when it happens.
 
