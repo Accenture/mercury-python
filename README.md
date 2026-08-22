@@ -1,264 +1,130 @@
-# This project is pending upgrade to Mercury 3.0
+# Mercury Composable — polyglot functions for Python
 
-Please note that this project is pending refactoring to catch up with Composable design patterns in Mercury 3.1.
+Write decoupled functions in Python and let [Mercury Composable](https://github.com/Accenture/mercury-composable)
+engines (Java, and the official [Rust port](https://github.com/Accenture/mercury)) orchestrate
+them from Event Script flows and MiniGraph knowledge graphs — with no orchestration code in
+Python at all.
 
-We will archive this to a branch and document the migration steps when it happens.
+This package is a deliberately **lightweight wrapper of the Event-over-HTTP protocol**:
 
-# Python language pack for the Mercury microservices framework
+- an **Event API host** (`POST /api/event`) that dispatches incoming event envelopes to your
+  registered functions,
+- a **thin client** (`PostOffice`) to call functions on peer applications the same way,
+- the **standard event envelope wire format** codec (language-neutral MsgPack), and
+- the **minimalist utilities** shared with the engines for consistency: configuration
+  management, logging in the engines' presentation format, and distributed-trace context.
 
-You can write standalone or cloud application using this software development tool.
+Orchestration deliberately stays in the engines. Functions written here are addressed by
+route name through the engines' declarative `yaml.event.over.http` map, so a flow or a
+graph task calls a Python function exactly as if it were local.
 
-When running as a distributed application, this module requires the Mercury Language Connector application as a sidecar.
-The main Mercury project is available at https://github.com/Accenture/mercury
+> **Status: pre-release.** This repository was repurposed in August 2026 for the polyglot
+> initiative. The legacy Mercury language-pack implementation remains available in the git
+> history.
 
-Please clone the main project and follow the README file to build the mercury core libraries and the language-connector application.
-
-## Installing mercury
-
-You may install mercury using pip as follows:
-```
-pip install git+https://github.com/Accenture/mercury-python.git
-```
-
-## Welcome to the Mercury project
-
-The Mercury project is created with one primary objective - `to make software easy to write, read, test, deploy, scale and manage`.
-
-It introduces the concept of platform abstraction and takes event driven programming to the next level of simplicity and sophistication.
-
-Everything can be expressed as anonymous functions and they communicate with each other using events. This includes turning synchronous HTTP requests and responses into async events using the REST automation system. However, event driven and reactive programming can be challenging. The Mercury framework hides all the complexity of event driven and reactive patterns and the magic of inter-service communication.
-
-If you want digital decoupling, this is the technology that you should invest 30 minutes of your time to get familiar with.
-
-The pre-requisites are minimal. The foundation technology requires only Java (OpenJDK 8 to 14) and the Maven build system ("mvn"). Docker/Kubernetes are optional. The application modules that you create using the Mercury framework will run in bare metal, VM and any cloud environments.
-
-This project is created by architects and computer scientists who have spent years to perfect software decoupling, scalability and resilience, high performance and massively parallel processing,
-
-With a very high level of decoupling, you can focus in writing business logic without distraction.
-
-Since everything can be expressed as anonymous functions, the framework itself is written using this approach, including the cloud connectors and language pack in the project. In this way, you can add new connectors, plugins and language packs as you like. The framework is extensible.
-
-The concept is simple. You write your business logic as anonymous functions and packaged them in one or more executables. These executables may be composed as Docker images or alike for deployment. The services in the containers communicate with each other using "service route names".
-
-Mercury supports unlimited service route names on top of event stream and messaging systems such as Kafka and Hazelcast. While we make the event stream system works as a service mesh, Mercury can be used in standalone mode for applications that use pub/sub directly.
-
-In fact, you can encapsulate other event stream or even enterprise service bus (ESB) with Mercury. Just use the Kafka and Hazelcast connectors as examples. It would make your ESB runs like an event stream system for RPC, async, callback, streaming, pipeline and pub/sub use cases.
-
-Best regards, the Mercury team, Accenture
-
-May 2022
-
-## Rationale
-
-The microservices movement is gaining a lot of momentum in recent years. Very much inspired with the need to modernize service-oriented architecture and to transform monolithic applications as manageable and reusable pieces, it was first mentioned in 2011 to advocate an architectural style that defines an application as a set of loosely coupled single purpose services.
-
-Classical model of microservices architecture often focuses in the use of REST as interface and the self-containment of data and process. Oftentimes, there is a need for inter-service communication because one service may consume another service. Usually this is done with a service broker. This is an elegant architectural concept. However, many production systems face operational challenges. In reality, it is quite difficult to decompose a solution down to functional level. This applies to both green field development or application modernization. As a result, many microservices modules are indeed smaller subsystems. Within a microservice, business logic is tightly coupled with 3rd party and open sources libraries including cloud platform client components and drivers. This is suboptimal.
-
-## Architecture principles
-
-For simplicity, we advocate 3 architecture principles to write microservices
-
-- minimalist
-- event driven
-- context bound
-
-Minimalist means we want user software to be as small as possible. The Mercury framework allows you to write business logic down to functional level using simple input-process-output pattern.
-
-Event driven promotes loose coupling. All functions should run concurrently and independently of each other.
-
-Lastly, context bound means high level of encapsulation so that a function only expose API contract and nothing else.
-
-### Platform abstraction
-
-Mercury offers the highest level of decoupling where each piece of business logic can be expressed as an anonymous function. A microservices module is a collection of one or more functions. These functions connect to each other using events.
-
-The framework hides the complexity of event-driven programming and cloud platform integration. For the latter, the service mesh interface is fully encapsulated so that user functions do not need to be aware of network connectivity and details of the cloud platform.
-
-### Simple Input-Process-Output function
-
-This is a best practice in software development. Input is fed into an anonymous function. It will process the input according to some API contract and produce some output.
-
-This simplifies software development and unit tests.
-
-
-## Defining a microservice
-
-An application can declare one or more Python functions as microservices.
-Your microservices function or method must use one of the following signatures:
-
-```
-# For singleton service
-f(headers: dict, body: any)
-
-# For service that have concurrent workers
-f(headers: dict, body: any, instance: int)
-
-# For interceptor service - this allows your application to inspect event metdata
-f(event: EventEnvelope)
-
-# f can be any function or method name you like
-# headers are input parameters in key-value pairs
-# body is application specific. It can be string, byte array, dictionary, etc.
-# instance is the instance number when the lambda function is registered to support multiple instances
-# event is the event envelope that contains routing metadata, input parameters and message body
-#
-# headers, body, instance and envelope are standard parameter names that your functions should use.
-```
-
-You may then register your microservices like this:
-
-`platform.register(route: str, user_function: any, total_instances: int, is_private: bool = False)`
+## Quick start
 
 ```python
-from mercury.platform import Platform
+# app.py
+from mercury_composable import AppException, platform, preload
 
-def hello(headers: dict, body: any, instance: int):
-    # business logic here
-    return result
+@preload(route="hello.python", instances=10)
+def handle_event(headers: dict, body):
+    if not isinstance(body, dict) or "text" not in body:
+        raise AppException(400, "missing 'text'")
+    return {"text": str(body["text"]).upper(), "language": "python"}
 
-#
-# Once you have defined a microservice, you should register it with a route name.
-# The route name for your anonymous function is like the home address of a house so it can receive letters.
-#
-platform = Platform()
-platform.register("hello.world", hello, 10)
+if __name__ == "__main__":
+    platform.run()   # port from rest.server.port (default 8085)
 ```
 
-To make the service available to other nodes in the system, you can connect your application to the cloud.
+Run it:
 
-```
-platform.connect_to_cloud()
-```
-
-## making a RPC call
-
-You may make a RPC service call like this. Note that everything is non-blocking in the Mercury framework.
-
-RPC uses a temporary inbox service to simulate a synchronous request-response.
-
-```python
-from mercury.platform import Platform
-from mercury.system.po import PostOffice
-
-#
-# The signature of the request method is:
-#    request(self, route: str, timeout_seconds: float,
-#            headers: dict = None, body: any = None,
-#            correlation_id: str = None) -> EventEnvelope
-#
-
-po = PostOffice()
-try:
-    result = po.request('hello.world', 2.0, headers={'some_key': 'some_value'}, body='test message')
-    if isinstance(result, EventEnvelope):
-        print('Received RPC response:')
-        print("HEADERS =", result.get_headers(), ", BODY =", result.get_body(),
-              ", STATUS =", result.get_status(),
-              ", EXEC =", result.get_exec_time(), ", ROUND TRIP =", result.get_round_trip(), "ms")
-except TimeoutError as e:
-    print("Exception: ", str(e))
+```bash
+pip install -e '.[dev]'
+mercury-serve app.py --port 8086
 ```
 
-## making an asynchronous call
+Call it from a Mercury engine application with two configuration entries and no code —
+`application.properties`:
 
-You can make a "drop-n-forget" asynchronous request to a service like this:
-
-```python
-#
-# The signature of the send method is:
-# send(self, route: str, headers: dict = None, body: any = None, reply_to: str = None, me=True) -> None
-#
-
-po.send('hello.world', headers={'one': 1}, body='hello world one')
-
+```properties
+yaml.event.over.http=classpath:/event-over-http.yaml
 ```
 
-## call back
+`event-over-http.yaml`:
 
-You can set the route of a call back function in the "reply to" of the request in the send() method. 
-When the service responds, the result will be delivered asynchronously to the call back function.
-
-The default value for the "me" parameter is true. It guarantees that the response will be returned to your calling application.
-
-If you want the system to send the response to any function with the same route name, set the "me" parameter to false.
-
-## stopping the platform event loop
-
-The platform kernel is running in an event loop using Python asyncio. 
-You may want to call the following when your application quits.
-This will ask the system to release resources and stop gracefully.
-
-```
-platform.stop()
+```yaml
+event.http:
+  - route: 'hello.python'
+    target: 'http://127.0.0.1:8086/api/event'
 ```
 
-## stopping the application using Control-C
+Any Event Script task or MiniGraph `graph.task` node that names the route `hello.python`
+now executes the Python function, with trace context carried end to end.
 
-You may enable Control-C and Kill signal detection by calling the "run_forever()" method. Note that this must be done with the main thread.
+## The function contract
 
-```
-platform.run_forever()
-```
+A handler receives the same two-part input as an engine `TypedLambdaFunction` —
+`(headers: dict, body)` — and returns the reply body (or an `EventEnvelope` for full
+control of status and reply headers). `async def` and plain `def` are both supported;
+synchronous handlers run in a thread-pool executor so the event loop never blocks.
 
-## Pre-requisites
+- Raise `AppException(status, message)` for intentional errors — it becomes the portable
+  error contract on the wire (envelope status + message), handled by the calling flow's
+  exception handler or the graph's `error.*` contract.
+- `get_trace()` exposes `trace_id` / `trace_path` / `cid`; `annotate_trace(k, v)` sends an
+  annotation back on the reply envelope.
+- Functions must be stateless; anything you must keep belongs to the caller's flow model
+  or state machine.
 
-Please do `pip install wheel` if python wheel is not installed.
+## Configuration, logging, telemetry
 
-Mercury requires python 3.6.7 or above.
+The same conventions as the engines, so a polyglot installation stays uniform:
 
-## Typical installation issue
+| Key | Meaning | Default |
+|-----|---------|---------|
+| `application.name` | application identity in logs | `application` |
+| `rest.server.port` | Event API port | `8085` |
+| `log.format` | `text` or `json` | `text` |
+| `log.level` | log level (`LOG_LEVEL` env var wins) | `INFO` |
 
-You may install mercury using pip as follows:
-```
-pip install git+https://github.com/Accenture/mercury-python.git
-```
+Configuration lives in the `resources` folder, mirroring the engines:
+`resources/application.yml` (or `.yaml` / `.properties`), or an explicit `--config` path.
+Values support `${ENV_VAR:default}` substitution. Runtime parameter overrides use the
+same `-D` syntax as the Java engine and the Rust port — checked first on every read
+(`AppConfig.set(key, value)` does the same programmatically, the `f:setConfig` analog):
 
-You should always use `pip` to install. If you accidentally installed mercury using "python setup.py install", 
-you will see the following error when trying to upgrade or uninstall.
-```
-Cannot uninstall 'mercury'. 
-It is a distutils installed project and thus we cannot accurately determine
-which files belong to it which would lead to only a partial uninstall.
-```
-You can resolve this issue by reinstalling mercury with the option "--ignore-installed". 
-This will restore the metadata information for pip.
-```
-pip install --ignore-installed git+https://github.com/Accenture/mercury-python.git
-```
-
-## Application configuration file
-
-The default application config file is located in resources/application.yml.
-
-To use your own config file, please specify "config_file=your_config_file_path" when creating the platform instance.
-Please use application.yml as a template and update the parameters.
-e.g.
-```
-platform = Platform(config_file='/tmp/config/application.yml')
+```bash
+mercury-serve app.py -Drest.server.port=8086 -Dlog.format=json
 ```
 
-## language connector's shared secret key
+Log lines follow the Java reference engine's pattern for one-aggregation consistency:
 
-language.pack.key should point to an environment variable containing a secret key for connection to
-a language connector. If the environment variable does not exist, the system will get the secret key
-from the temporary local file system at /tmp/config/lang-api-key.txt
+```text
+2026-08-22 10:15:30.123 INFO  my_app:42 - Loaded PUBLIC hello.python, instances=10
+```
 
-If /tmp/config/lang-api-key.txt does not exist, the system will create a random secret key automatically.
-If the language connector and the python application are running in the same container, they will find each other
-without any configuration.
+## Wire compatibility
 
-## Distributed tracing
+The codec implements the
+[Event Envelope Wire Format](https://accenture.github.io/mercury-composable/guides/event-envelope-wire-format/)
+(standard format) and is verified against the golden conformance vectors shared by the
+Java and Rust engines (`tests/vectors/vectors.json`). The classic compact format is
+detected and rejected with a teaching error — engines default to the standard format for
+Event over HTTP.
 
-Microservices are likely to be deployed in a multi-tier environment. 
-As a result, a single transaction would pass through multiple layers of services.
+Serialization notes: integers and floats follow MsgPack's natural widths (the same
+long/integer care as the engines applies); timestamps travel as ISO-8601 UTC strings with
+millisecond precision; binary payloads use MsgPack `bin`.
 
-Distributed tracing allows us to visualize the complete service path for each transaction.
-This enables easy trouble shooting for large scale applications.
+## Scope
 
-With the Mercury framework, distributed tracing does not require coding at application level.
-To enable this feature, you can simply set "tracing=true" in the rest.yaml configuration of
-the rest-automation helper application.
+This package intentionally contains **no event bus, no flows, no graphs and no
+orchestration** — those live in the engines. It provides functions plus the minimalist
+foundation utilities, keeping Python fast to prototype with while the composable core
+guarantees the architecture.
 
-## Developer guide
+## License
 
-For more details, please refer to the [Developer Guide](docs/guides/TABLE-OF-CONTENTS.md)
+Apache 2.0 — see [LICENSE.txt](LICENSE.txt).

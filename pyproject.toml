@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mercury-composable"
+version = "0.1.0"
+description = "Lightweight Event-over-HTTP function host and client for Mercury Composable"
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+authors = [{ name = "Accenture Technology" }]
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.10,<4",
+    "msgpack>=1.0,<2",
+    "PyYAML>=6.0,<7",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Framework :: AsyncIO",
+]
+
+[project.urls]
+Homepage = "https://github.com/Accenture/mercury-python"
+Documentation = "https://accenture.github.io/mercury-composable"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+mercury-serve = "mercury_composable.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mercury_composable"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

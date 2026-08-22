@@ -1,0 +1,196 @@
+"""
+EventEnvelope and the standard wire format codec.
+
+Implements the language-neutral standard format from the Mercury Composable
+"Event Envelope Wire Format" reference: one MsgPack map with descriptive
+string keys, no MsgPack extension types. Optional fields are omitted when
+unset; absent and nil are equivalent; unknown keys are ignored; timestamps
+travel as ISO-8601 UTC strings with millisecond precision.
+
+The classic compact format (single-character map keys) is detected from the
+first map key and rejected with :class:`CompactFormatError` — engines default
+to the standard format for Event over HTTP.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+import msgpack
+
+from .exceptions import CompactFormatError
+
+# wire field names (standard format)
+_ID = "id"
+_TO = "to"
+_FROM = "from"
+_REPLY_TO = "reply_to"
+_CID = "cid"
+_TRACE_ID = "trace_id"
+_TRACE_PATH = "trace_path"
+_SPAN_ID = "span_id"
+_STATUS = "status"
+_HEADERS = "headers"
+_BODY = "body"
+_EXEC_TIME = "exec_time"
+_ROUND_TRIP = "round_trip"
+_TAGS = "tags"
+_ANNOTATIONS = "annotations"
+_STACK = "stack"
+_OBJ_TYPE = "obj_type"
+_EXCEPTION = "exception"
+
+
+def iso_utc(dt: Optional[datetime] = None) -> str:
+    """ISO-8601 UTC with millisecond precision, e.g. 2026-07-21T12:00:00.000Z"""
+    value = dt or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    value = value.astimezone(timezone.utc)
+    return value.strftime("%Y-%m-%dT%H:%M:%S.") + f"{value.microsecond // 1000:03d}Z"
+
+
+def _pack_default(obj: Any) -> Any:
+    if isinstance(obj, datetime):
+        return iso_utc(obj)
+    raise TypeError(f"Cannot serialize type {type(obj).__name__} in event payload")
+
+
+class EventEnvelope:
+    """In-memory event with the same field vocabulary as the Java/Rust engines."""
+
+    def __init__(self, to: Optional[str] = None, body: Any = None,
+                 headers: Optional[Dict[str, str]] = None):
+        self.id: str = str(uuid.uuid4()).replace("-", "")
+        self.to = to
+        self.sender: Optional[str] = None          # wire field "from"
+        self.reply_to: Optional[str] = None
+        self.cid: Optional[str] = None
+        self.trace_id: Optional[str] = None
+        self.trace_path: Optional[str] = None
+        self.span_id: Optional[str] = None
+        self.status: Optional[int] = None           # None encodes as absent (default 200)
+        self.headers: Dict[str, str] = dict(headers or {})
+        self.body: Any = body
+        self.exec_time: Optional[float] = None
+        self.round_trip: Optional[float] = None
+        self.tags: Dict[str, str] = {}
+        self.annotations: Dict[str, Any] = {}
+        self.stack: Optional[str] = None
+        self.obj_type: Optional[str] = None
+        self.exception: Optional[bytes] = None       # language-native, opaque here
+
+    # --- fluent helpers mirroring the engine API vocabulary ---
+
+    def set_to(self, route: str) -> "EventEnvelope":
+        self.to = route
+        return self
+
+    def set_from(self, route: str) -> "EventEnvelope":
+        self.sender = route
+        return self
+
+    def set_header(self, key: str, value: Any) -> "EventEnvelope":
+        self.headers[str(key)] = str(value)
+        return self
+
+    def set_body(self, body: Any) -> "EventEnvelope":
+        self.body = body
+        return self
+
+    def set_status(self, status: int) -> "EventEnvelope":
+        self.status = int(status)
+        return self
+
+    def set_correlation_id(self, cid: str) -> "EventEnvelope":
+        self.cid = cid
+        return self
+
+    def set_trace(self, trace_id: str, trace_path: str) -> "EventEnvelope":
+        self.trace_id = trace_id
+        self.trace_path = trace_path
+        return self
+
+    def set_reply_to(self, route: Optional[str]) -> "EventEnvelope":
+        self.reply_to = route
+        return self
+
+    def get_status(self) -> int:
+        return 200 if self.status is None else self.status
+
+    def has_error(self) -> bool:
+        return self.get_status() >= 400
+
+    # --- wire codec (standard format) ---
+
+    def to_map(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {_ID: self.id, _HEADERS: dict(self.headers)}
+        optional = [
+            (_TO, self.to), (_FROM, self.sender), (_REPLY_TO, self.reply_to),
+            (_CID, self.cid), (_TRACE_ID, self.trace_id), (_TRACE_PATH, self.trace_path),
+            (_SPAN_ID, self.span_id), (_STATUS, self.status), (_BODY, self.body),
+            (_EXEC_TIME, self.exec_time), (_ROUND_TRIP, self.round_trip),
+            (_STACK, self.stack), (_OBJ_TYPE, self.obj_type), (_EXCEPTION, self.exception),
+        ]
+        for key, value in optional:
+            if value is not None:
+                result[key] = value
+        if self.tags:
+            result[_TAGS] = dict(self.tags)
+        if self.annotations:
+            result[_ANNOTATIONS] = dict(self.annotations)
+        return result
+
+    def to_bytes(self) -> bytes:
+        return msgpack.packb(self.to_map(), use_bin_type=True, default=_pack_default)
+
+    @classmethod
+    def from_map(cls, data: Dict[str, Any]) -> "EventEnvelope":
+        event = cls()
+        event.id = str(data.get(_ID)) if data.get(_ID) is not None else event.id
+        event.to = data.get(_TO)
+        event.sender = data.get(_FROM)
+        event.reply_to = data.get(_REPLY_TO)
+        event.cid = data.get(_CID)
+        event.trace_id = data.get(_TRACE_ID)
+        event.trace_path = data.get(_TRACE_PATH)
+        event.span_id = data.get(_SPAN_ID)
+        status = data.get(_STATUS)
+        event.status = int(status) if status is not None else None
+        headers = data.get(_HEADERS)
+        event.headers = {str(k): str(v) for k, v in headers.items()} if isinstance(headers, dict) else {}
+        event.body = data.get(_BODY)
+        exec_time = data.get(_EXEC_TIME)
+        event.exec_time = float(exec_time) if exec_time is not None else None
+        round_trip = data.get(_ROUND_TRIP)
+        event.round_trip = float(round_trip) if round_trip is not None else None
+        tags = data.get(_TAGS)
+        event.tags = {str(k): str(v) for k, v in tags.items()} if isinstance(tags, dict) else {}
+        annotations = data.get(_ANNOTATIONS)
+        event.annotations = dict(annotations) if isinstance(annotations, dict) else {}
+        event.stack = data.get(_STACK)
+        event.obj_type = data.get(_OBJ_TYPE)
+        exception = data.get(_EXCEPTION)
+        event.exception = bytes(exception) if isinstance(exception, (bytes, bytearray)) else None
+        return event
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "EventEnvelope":
+        try:
+            decoded = msgpack.unpackb(data, raw=False)
+        except Exception as e:
+            raise ValueError(f"Unable to decode event envelope - {e}") from e
+        if not isinstance(decoded, dict) or not decoded:
+            raise ValueError("Unable to decode event envelope - not a MsgPack map")
+        first_key = next(iter(decoded))
+        if isinstance(first_key, str) and len(first_key) == 1:
+            raise CompactFormatError(
+                "Compact event envelope format is not supported - "
+                "use the standard format (event.over.http.format=standard)")
+        return cls.from_map(decoded)
+
+    def __repr__(self) -> str:
+        return (f"EventEnvelope(id={self.id!r}, to={self.to!r}, "
+                f"status={self.get_status()}, headers={self.headers!r})")
