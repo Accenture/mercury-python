@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# pre-commit fragment dispatcher. Executable files in pre-commit.d run in C-locale
+# filename order. Every fragment runs; the first non-zero status is returned.
+# Bash 3.2-compatible.
+
+LC_COLLATE=C
+
+hook_dir="$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd)" || exit 1
+fragment_dir="$hook_dir/pre-commit.d"
+[ -d "$fragment_dir" ] || exit 0
+
+status=0
+for fragment in "$fragment_dir"/*; do
+  [ -f "$fragment" ] || continue
+  [ -x "$fragment" ] || continue
+
+  "$fragment" "$@"
+  fragment_status=$?
+  if [ "$fragment_status" -ne 0 ]; then
+    [ "$status" -ne 0 ] || status="$fragment_status"
+    printf 'pre-commit: fragment %s failed with status %s\n' \
+      "${fragment##*/}" "$fragment_status" >&2
+  fi
+done
+
+exit "$status"

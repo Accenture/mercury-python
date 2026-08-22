@@ -1,0 +1,5 @@
+This project uses the agent-memory shared memory system.
+
+Follow memory/PROTOCOL.md first. AGENTS.md is its one-line universal discovery shim.
+
+Identify yourself as Windsurf in all session logs.
