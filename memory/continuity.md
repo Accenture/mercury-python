@@ -17,7 +17,7 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-22 | agent: Claude Code (2026-08-22-171555)
+- **last_session:** 2026-08-22 | agent: Claude Code (2026-08-22-173136)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -85,8 +85,20 @@
 > Mark completed items `- [x]` and leave them in place — the review sweeps them to
 > the archive once older than `archive_window` sessions. Don't archive them by hand.
 
-- [ ] **(vision-bootstrap)** Confirm the Vision in `memory/vision.md` — set the target /
-  success criteria / non-goals; then derive the Blueprint.
+- [ ] **(blueprint) Publish behind the interop gate.** The wrapper is complete and green
+  (tests incl. the shared golden vectors; cross-wrapper interop proven; the
+  composable-example flow executed a Python function unchanged) but **unreleased** — the
+  Vision's "releasable on its own cadence" is unmet until 0.1.0 ships to PyPI with
+  protocol-compat versioning and the interop gate green per release (design P5/D6).
+  Publishing itself is Eric-gated (ownership, cadence, supply-chain posture).
+  → serves: vision-mercury-python
+  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-173136 -->
+
+- [x] **(vision-bootstrap)** Vision ratified by Eric, 2026-08-22 — drafted from the
+  ratified polyglot design (D0–D8 + same-day refinements): tiny Event-over-HTTP wrapper,
+  engines own orchestration, protocol-compat releases, the scope fence as non-goals.
+  First Blueprint gap derived (publish behind the interop gate). Detail:
+  2026-08-22-173136.
   <!-- id: ot-vision-bootstrap | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 - [ ] **Dedicated consumer AI surface (optional).** The root fork points consumers at
   `README.md` for now (Eric, 2026-08-22). If the team wants a dedicated version-matched
