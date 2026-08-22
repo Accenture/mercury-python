@@ -31,6 +31,14 @@ the engines by design. The legacy pre-composable language pack lives in git hist
 - Root `README.md` — the consumer-facing guide (quick start, function contract,
   configuration, wire compatibility); the root `AGENTS.md` fork routes consumers there.
 
+## How an engine calls a function here (the wiring)
+
+Zero caller code: an engine application's declarative **`yaml.event.over.http` map** binds
+a route name (e.g. `hello.python`) to this app's `POST /api/event` URL
+(config-substituted per environment). Any Event Script task or MiniGraph `graph.task`
+node naming that route then executes the Python function registered here with
+`@preload(route=...)` exactly as if it were local, with trace context carried end to end.
+
 ## Two audiences, two paths
 
 Root `AGENTS.md` forks readers: **contributors** follow `memory/PROTOCOL.md` (this memory

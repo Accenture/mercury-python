@@ -45,3 +45,4 @@ review. Don't edit the questions to make them pass.
 | Date | Through session | Score (✅/total) | Gaps found → action |
 |---|---|---|---|
 | 2026-08-22 | (enable) | — | baseline — run the test to populate |
+| 2026-08-22 | 2026-08-22-173136 | 11/12 | Q9: engine-side wiring (`yaml.event.over.http` route→URL map) was only in README, not memory → added "How an engine calls a function here" to instructions.md. Fresh-context agent, memory files only. |
