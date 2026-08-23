@@ -17,7 +17,7 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-22 | agent: Claude Code (2026-08-22-175327)
+- **last_session:** 2026-08-23 | agent: Claude Code (2026-08-23-005709)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -75,6 +75,15 @@
 
 ## Conventions
 
+- **Quality gates (adopted 2026-08-23, Eric's IDE review round): ruff + basedpyright +
+  pytest, config lives in pyproject.toml.** ruff: line-length 100, py310, isort extend.
+  basedpyright: standard mode + reportMissingParameterType=error, TESTS INCLUDED (Eric's
+  ruling — test signatures are annotated; handlers take `(dict[str, str], Body)`).
+  `agent-skills/` excluded from both (tool-managed by agent-memory — style fixes belong
+  upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
+  Unused contract params take the underscore prefix; deliberate suppressions carry
+  rationale comments (PyBroadException / noqa only where the rule actually fires).
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-08-23 | uses: 1 | tier: working | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
@@ -82,6 +91,27 @@
 
 ## Open Threads
 
+- [ ] (feature — design RATIFIED by Eric 2026-08-23 in the quality-round conversation;
+  implementation next on `feature/primitive-event-bus`, LOCK-STEP with mercury-nodejs)
+  **Primitive in-process event bus — the single dispatch pipeline.** Ratified shape:
+  per-route FIFO mailbox (asyncio.Queue; node = queue + worker loops) with
+  **instances = N worker tasks** (replaces the semaphore — the parameter becomes faithful);
+  two operations only: `deliver` (RPC with ttl → 408 envelope; dead-work skip when the
+  caller's future already expired) and `publish` (drop-n-forget, returns the 202-shape
+  ack). The HTTP host becomes thin ingress (hygiene + 403-private, then bus); PostOffice
+  WITHOUT an endpoint = local ingress reaching private AND public routes (engine
+  semantics — `private` becomes faithful: in-app only); with endpoint = wire client,
+  unchanged. **No spill tier / no queue cap (Eric's ruling): back-pressure belongs to the
+  tier that owns recovery — the engine's flows/graphs; a leaf host fails fast by deadline
+  rather than hoarding work.** Caveats recorded: in-memory = in-flight events die with the
+  process (durability was never this layer's contract); send() has no ttl valve (engine
+  parity; per-route cap only on field demand). Bus class stays INTERNAL (developers touch
+  preload/PostOffice only). Scope fence amended: + "primitive in-process event bus, no
+  orchestration/flows/persistence/broadcast". Pins: local RPC public+private, FIFO order,
+  instances=2 concurrency, local 408, unregistered-route error, trace-chained
+  hosted→local-private. README boundary statement: leaf-side composition here; workflow
+  processing = Event Script / Knowledge Graph.
+  <!-- id: thread-primitive-event-bus | created: 2026-08-23 | last_used: 2026-08-23 | uses: 1 | tier: working | origin: 2026-08-23-005709 -->
 > Mark completed items `- [x]` and leave them in place — the review sweeps them to
 > the archive once older than `archive_window` sessions. Don't archive them by hand.
 
