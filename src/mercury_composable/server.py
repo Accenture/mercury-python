@@ -103,11 +103,9 @@ class EventApiServer:
     def create_app(self) -> web.Application:
         app = web.Application(client_max_size=16 * 1024 * 1024)
         app.router.add_post("/api/event", self.handle_event)
-        app.router.add_get("/info", self.actuator.handle_info)
-        app.router.add_get("/info/routes", self.actuator.handle_routes)
-        app.router.add_get("/env", self.actuator.handle_env)
-        app.router.add_get("/health", self.actuator.handle_health)
-        app.router.add_get("/livenessprobe", self.actuator.handle_livenessprobe)
+        # the engines' actuator endpoints (see actuator.py)
+        for path in ("/info", "/info/routes", "/env", "/health", "/livenessprobe"):
+            app.router.add_get(path, self.actuator.handle)
         return app
 
 

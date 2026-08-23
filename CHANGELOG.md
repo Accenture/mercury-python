@@ -4,7 +4,7 @@
 
 - Actuator endpoints `/info`, `/info/routes`, `/env`, `/health` and `/livenessprobe` -
   the engines' operational surface, for Kubernetes probes and one-dashboard monitoring
-  of polyglot installations. Health-check functions are normal registered functions
+  of polyglot installations. Health check functions are normal registered functions
   speaking the engines' `type=info` / `type=health` interface contract, listed in
   `mandatory.health.dependencies` / `optional.health.dependencies` and called through
   the event bus. `/health` answers `UP` (200) / `DOWN` (400); `/livenessprobe` follows

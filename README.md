@@ -143,8 +143,8 @@ Kubernetes probes and dashboards treat a Python app exactly like a Java or Rust 
 Configuration keys carry the engines' names: `info.app.version`, `info.app.description`,
 `show.env.variables` and `show.application.properties` (opt-in lists — secrets are never
 dumped wholesale), and `mandatory.health.dependencies` / `optional.health.dependencies`
-(routes of health-check functions; optional ones never change the overall status). A
-health-check function is a normal registered function — usually private — speaking the
+(routes of health check functions; optional ones never change the overall status). A
+health check function is a normal registered function — usually private — speaking the
 engines' interface contract, called through the event bus:
 
 ```python

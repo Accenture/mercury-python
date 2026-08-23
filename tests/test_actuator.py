@@ -57,7 +57,7 @@ async def get_text(url: str) -> tuple[int, str]:
 
 
 def engine_contract_registry() -> FunctionRegistry:
-    """A health-check function speaking the engines' type=info/type=health contract."""
+    """A health check function speaking the engines' type=info/type=health contract."""
     registry = FunctionRegistry()
 
     async def health(headers: dict[str, str], _body: Body):
@@ -193,5 +193,6 @@ def test_elapsed_time_matches_engine_rendering():
 
 
 def test_origin_is_stable_and_engine_shaped():
-    assert app_origin() == app_origin()  # minted once per process
-    assert re.fullmatch(ORIGIN_SHAPE, app_origin())
+    minted = app_origin()
+    assert minted == app_origin()  # minted once per process
+    assert re.fullmatch(ORIGIN_SHAPE, minted)

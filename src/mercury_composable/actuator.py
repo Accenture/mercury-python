@@ -11,14 +11,14 @@ and its Rust port), so a polyglot installation monitors every app one way:
 - ``GET /env`` - selected environment variables (``show.env.variables``) and
   selected configuration parameters (``show.application.properties``) -
   opt-in lists, so secrets are never dumped wholesale (engine parity).
-- ``GET /health`` - runs the health-check functions listed in
+- ``GET /health`` - runs the health check functions listed in
   ``mandatory.health.dependencies`` / ``optional.health.dependencies``.
   All mandatory up -> ``UP`` (HTTP 200); any mandatory down -> ``DOWN``
   (HTTP 400, engine parity). The outcome feeds the liveness state.
 - ``GET /livenessprobe`` - ``OK`` (text) while the last health outcome is
   good, else HTTP 400 ``Unhealthy. Please check '/health' endpoint.``
 
-A health-check function is a normal registered function (usually private)
+A health check function is a normal registered function (usually private)
 speaking the engines' interface contract - called through the same event bus
 that serves PostOffice, first with header ``type=info`` (an advisory identity
 map merged into its dependency entry), then with ``type=health`` (a status
@@ -71,9 +71,11 @@ def app_origin() -> str:
     """Unique instance id, minted once per process (the Java reference
     engine's format: UTC yyyyMMdd date prefix + 32-hex uuid)."""
     global _origin
-    if _origin is None:
-        _origin = time.strftime("%Y%m%d", time.gmtime()) + uuid.uuid4().hex
-    return _origin
+    origin = _origin  # local narrowing - checkers do not narrow module globals
+    if origin is None:
+        origin = time.strftime("%Y%m%d", time.gmtime()) + uuid.uuid4().hex
+        _origin = origin
+    return origin
 
 
 def elapsed_time(milliseconds: float) -> str:
@@ -135,9 +137,24 @@ class Actuator:
         return {"name": self.app_name, "version": self.app_version,
                 "description": self.description}
 
-    # aiohttp handlers must be coroutines - async is the framework contract
-    # even when a handler has nothing to await
-    async def handle_info(self, _request: web.Request) -> web.Response:
+    async def handle(self, request: web.Request) -> web.Response:
+        """The single GET dispatcher (aiohttp handlers must be coroutines):
+        /health awaits its dependency probes; the rest render synchronously."""
+        match request.path:
+            case "/info":
+                return self._info()
+            case "/info/routes":
+                return self._routes()
+            case "/env":
+                return self._env()
+            case "/health":
+                return await self._health()
+            case "/livenessprobe":
+                return self._liveness_probe()
+            case _:  # the router only maps the five paths above here
+                return web.Response(status=404, text="Not found")
+
+    def _info(self) -> web.Response:
         now = datetime.now(timezone.utc)
         return web.json_response({
             "app": self._app_block(),
@@ -151,7 +168,7 @@ class Actuator:
             "up_time": elapsed_time((now - self.start).total_seconds() * 1000),
         })
 
-    async def handle_routes(self, _request: web.Request) -> web.Response:
+    def _routes(self) -> web.Response:
         public: dict[str, int] = {}
         private: dict[str, int] = {}
         for route, service in sorted(self.registry.routes().items()):
@@ -162,7 +179,7 @@ class Actuator:
             "routing": {"public": public, "private": private},
         })
 
-    async def handle_env(self, _request: web.Request) -> web.Response:
+    def _env(self) -> web.Response:
         config = app_config()
         environment = {name: os.environ.get(name, "")
                        for name in _as_list(config.get("show.env.variables"))}
@@ -173,7 +190,7 @@ class Actuator:
             "env": {"environment": environment, "properties": properties},
         })
 
-    async def handle_health(self, _request: web.Request) -> web.Response:
+    async def _health(self) -> web.Response:
         dependency: list[dict[str, Any]] = []
         # optional services never affect the overall status (engine semantics)
         await self._check_services(self.optional, required=False, dependency=dependency)
@@ -189,7 +206,7 @@ class Actuator:
         result["name"] = self.app_name
         return web.json_response(result, status=200 if up else 400)
 
-    async def handle_livenessprobe(self, _request: web.Request) -> web.Response:
+    def _liveness_probe(self) -> web.Response:
         if self.healthy:
             return web.Response(text="OK")
         return web.Response(status=400, text=UNHEALTHY)
