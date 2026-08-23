@@ -17,6 +17,7 @@ def build_registry() -> FunctionRegistry:
     async def whoami(headers, body):
         from mercury_composable import get_trace
         info = get_trace()
+        assert info is not None
         return {"trace_id": info.trace_id, "trace_path": info.trace_path, "cid": info.cid}
 
     registry.register("client.echo", echo)
@@ -31,7 +32,7 @@ async def endpoint():
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)
     await site.start()
-    port = site._server.sockets[0].getsockname()[1]
+    port = runner.addresses[0][1]
     yield f"http://127.0.0.1:{port}/api/event"
     await runner.cleanup()
 

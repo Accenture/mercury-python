@@ -26,10 +26,10 @@ graph task calls a Python function exactly as if it were local.
 
 ```python
 # app.py
-from mercury_composable import AppException, platform, preload
+from mercury_composable import AppException, Body, platform, preload
 
 @preload(route="hello.python", instances=10)
-def handle_event(headers: dict, body):
+def handle_event(headers: dict[str, str], body: Body):
     if not isinstance(body, dict) or "text" not in body:
         raise AppException(400, "missing 'text'")
     return {"text": str(body["text"]).upper(), "language": "python"}
@@ -66,7 +66,7 @@ now executes the Python function, with trace context carried end to end.
 ## The function contract
 
 A handler receives the same two-part input as an engine `TypedLambdaFunction` —
-`(headers: dict, body)` — and returns the reply body (or an `EventEnvelope` for full
+`(headers: dict[str, str], body: Body)` — `Body` is any MsgPack value — and returns the reply body (or an `EventEnvelope` for full
 control of status and reply headers). `async def` and plain `def` are both supported;
 synchronous handlers run in a thread-pool executor so the event loop never blocks.
 

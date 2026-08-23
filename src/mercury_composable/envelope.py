@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypeAlias, cast
 
 import msgpack
 
 from .exceptions import CompactFormatError
+
+# any MsgPack value - the payload universe of the standard wire format:
+# a map, array, string, integer, float, boolean, binary or nil
+Body: TypeAlias = "None | bool | int | float | str | bytes | list[Body] | dict[str, Body]"
 
 # wire field names (standard format)
 _ID = "id"
@@ -144,7 +148,8 @@ class EventEnvelope:
         return result
 
     def to_bytes(self) -> bytes:
-        return msgpack.packb(self.to_map(), use_bin_type=True, default=_pack_default)
+        # packb returns None only in the legacy stream mode - never here
+        return cast(bytes, msgpack.packb(self.to_map(), use_bin_type=True, default=_pack_default))
 
     @classmethod
     def from_map(cls, data: dict[str, Any]) -> EventEnvelope:

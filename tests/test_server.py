@@ -65,7 +65,7 @@ async def server_url(aiohttp_server=None):
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)
     await site.start()
-    port = site._server.sockets[0].getsockname()[1]
+    port = runner.addresses[0][1]
     yield f"http://127.0.0.1:{port}"
     await runner.cleanup()
 
@@ -128,6 +128,7 @@ async def test_unexpected_exception_maps_to_500_with_stack(server_url):
     assert status == 200
     assert reply.get_status() == 500
     assert reply.body == "kaboom"
+    assert reply.stack is not None
     assert "RuntimeError" in reply.stack
 
 

@@ -50,7 +50,7 @@ class PostOffice:
     async def __aenter__(self) -> PostOffice:  # noqa: PYI034
         return self
 
-    async def __aexit__(self, *_exc) -> None:
+    async def __aexit__(self, *_exc: object) -> None:
         await self.close()
 
     def _http_headers(self, timeout_ms: int, is_async: bool,

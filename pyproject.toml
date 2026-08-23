@@ -45,6 +45,22 @@ extend-exclude = ["agent-skills"]
 [tool.ruff.lint]
 extend-select = ["I"]
 
+[tool.basedpyright]
+# standard mode plus the contract-relevant strictness: every parameter of a
+# public-surface function is annotated (the wire contract is typed - Body,
+# dict[str, str]); the reportUnknown* warning family of the editor's
+# "recommended" mode is deliberately not chased. agent-skills is tool-managed
+# by agent-memory and excluded.
+typeCheckingMode = "standard"
+reportMissingParameterType = "error"
+include = ["src", "examples", "tests"]
+exclude = ["agent-skills", ".venv"]
+
+[[tool.basedpyright.executionEnvironments]]
+# tests stay at standard mode - fixture/handler annotations are not enforced
+root = "tests"
+reportMissingParameterType = "warning"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

@@ -46,7 +46,7 @@ DEFAULT_CANDIDATES = [
 ]
 
 
-def _flatten(prefix: str, node: Any, out: dict) -> None:
+def _flatten(prefix: str, node: Any, out: dict[str, Any]) -> None:
     if isinstance(node, dict):
         for k, v in node.items():
             key = f"{prefix}.{k}" if prefix else str(k)
@@ -55,8 +55,8 @@ def _flatten(prefix: str, node: Any, out: dict) -> None:
         out[prefix] = node
 
 
-def _parse_properties(text: str) -> dict:
-    result: dict = {}
+def _parse_properties(text: str) -> dict[str, Any]:
+    result: dict[str, Any] = {}
     for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -66,9 +66,9 @@ def _parse_properties(text: str) -> dict:
     return result
 
 
-def parse_d_args(argv: list[str]) -> dict:
+def parse_d_args(argv: list[str]) -> dict[str, Any]:
     """Extract -Dkey=value runtime overrides (Java/Rust engine syntax)."""
-    overrides: dict = {}
+    overrides: dict[str, Any] = {}
     for arg in argv:
         if arg.startswith("-D") and "=" in arg:
             key, _, value = arg[2:].partition("=")
@@ -81,8 +81,8 @@ class AppConfig:
     """Flat, dot-addressed application configuration."""
 
     def __init__(self, path: str | None = None, argv: list[str] | None = None):
-        self._store: dict = {}
-        self._overrides: dict = parse_d_args(sys.argv[1:] if argv is None else argv)
+        self._store: dict[str, Any] = {}
+        self._overrides: dict[str, Any] = parse_d_args(sys.argv[1:] if argv is None else argv)
         self._source = "none"
         candidates = [path] if path else DEFAULT_CANDIDATES
         for candidate in candidates:
@@ -99,7 +99,7 @@ class AppConfig:
             text = f.read()
         if path.endswith((".yml", ".yaml")):
             data = yaml.safe_load(text) or {}
-            flat: dict = {}
+            flat: dict[str, Any] = {}
             _flatten("", data, flat)
             self._store = flat
         else:

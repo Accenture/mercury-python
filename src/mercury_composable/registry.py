@@ -3,7 +3,7 @@ Function registry and the @preload decorator.
 
 Mirrors the engines' PreLoad vocabulary: a function is registered under a
 route name with an instance count (its concurrency limit) and a private flag.
-Handlers take ``(headers: dict, body)`` — the same two-part input as a
+Handlers take ``(headers: dict[str, str], body)`` — the same two-part input as a
 TypedLambdaFunction — and return the reply body (or an EventEnvelope for full
 control of status and reply headers). Both ``async def`` and plain ``def``
 handlers are supported; synchronous handlers run in the default executor so
@@ -17,6 +17,12 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+
+from .envelope import Body
+
+# the function contract: (headers, body) in, reply body (or EventEnvelope) out -
+# mirrors the node package's exported Handler type
+Handler = Callable[[dict[str, str], Body], Any]
 
 _ROUTE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -33,7 +39,7 @@ def validate_route(route: str) -> str:
 @dataclass
 class ServiceDef:
     route: str
-    handler: Callable[[dict[str, str], Any], Any]
+    handler: Handler
     instances: int = 10
     private: bool = False
     is_async: bool = False
@@ -43,7 +49,7 @@ class FunctionRegistry:
     def __init__(self) -> None:
         self._services: dict[str, ServiceDef] = {}
 
-    def register(self, route: str, handler: Callable, *,
+    def register(self, route: str, handler: Handler, *,
                  instances: int = 10, private: bool = False) -> ServiceDef:
         route = validate_route(route)
         service = ServiceDef(
@@ -76,10 +82,10 @@ def preload(route: str, instances: int = 10, private: bool = False):
     Usage::
 
         @preload(route="hello.python", instances=10)
-        def handle_event(headers: dict, body):
+        def handle_event(headers: dict[str, str], body):
             return {"text": body["text"].upper()}
     """
-    def wrapper(fn: Callable) -> Callable:
+    def wrapper(fn: Handler) -> Handler:
         default_registry.register(route, fn, instances=instances, private=private)
         return fn
     return wrapper

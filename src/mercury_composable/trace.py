@@ -40,9 +40,9 @@ def annotate_trace(key: str, value: Any) -> None:
         info.annotations[str(key)] = value
 
 
-def _set_trace(info: TraceInfo | None) -> contextvars.Token:
+def _set_trace(info: TraceInfo | None) -> contextvars.Token[TraceInfo | None]:
     return _current.set(info)
 
 
-def _reset_trace(token: contextvars.Token) -> None:
+def _reset_trace(token: contextvars.Token[TraceInfo | None]) -> None:
     _current.reset(token)

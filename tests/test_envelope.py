@@ -8,6 +8,13 @@ from datetime import datetime, timezone
 import msgpack
 import pytest
 
+
+def packb(obj: object) -> bytes:
+    """msgpack.packb is typed bytes | None (None only in stream mode)."""
+    data = msgpack.packb(obj, use_bin_type=True)
+    assert data is not None
+    return data
+
 from mercury_composable import CompactFormatError, EventEnvelope, iso_utc
 
 VECTORS = os.path.join(os.path.dirname(__file__), "vectors", "vectors.json")
@@ -51,20 +58,20 @@ def test_unset_fields_are_omitted_and_headers_id_always_present():
 
 
 def test_absent_and_nil_are_equivalent():
-    explicit_nil = msgpack.packb({"id": "x1", "headers": {}, "body": None}, use_bin_type=True)
+    explicit_nil = packb({"id": "x1", "headers": {}, "body": None})
     decoded = EventEnvelope.from_bytes(explicit_nil)
     assert decoded.body is None
     assert decoded.get_status() == 200  # default when unset
 
 
 def test_unknown_keys_are_ignored():
-    payload = msgpack.packb({"id": "x2", "headers": {}, "future_field": 42}, use_bin_type=True)
+    payload = packb({"id": "x2", "headers": {}, "future_field": 42})
     decoded = EventEnvelope.from_bytes(payload)
     assert decoded.id == "x2"
 
 
 def test_compact_format_detected_and_rejected():
-    compact = msgpack.packb({"0": "e1", "T": "hello.world"}, use_bin_type=True)
+    compact = packb({"0": "e1", "T": "hello.world"})
     with pytest.raises(CompactFormatError):
         EventEnvelope.from_bytes(compact)
 
