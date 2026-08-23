@@ -37,7 +37,7 @@ from typing import Any
 
 import yaml
 
-_REF = re.compile(r"\$\{([^}]+)\}")
+_REF = re.compile(r"\$\{([^}]+)}")
 
 DEFAULT_CANDIDATES = [
     "resources/application.yml",
@@ -139,8 +139,8 @@ class AppConfig:
             return resolved if resolved is not None else default
 
         def repl(m: re.Match[str]) -> str:
-            resolved = self._resolve_ref(m.group(1))
-            return "" if resolved is None else str(resolved)
+            replacement = self._resolve_ref(m.group(1))
+            return "" if replacement is None else str(replacement)
 
         return _REF.sub(repl, value)
 
@@ -165,14 +165,17 @@ def app_config() -> AppConfig:
     """The shared AppConfig singleton (created on first use)."""
     global _instance
     with _lock:
-        if _instance is None:
-            _instance = AppConfig()
-        return _instance
+        instance = _instance
+        if instance is None:
+            instance = AppConfig()
+            _instance = instance
+        return instance
 
 
 def load_config(path: str | None = None) -> AppConfig:
     """Replace the shared AppConfig (used by the CLI before startup)."""
     global _instance
     with _lock:
-        _instance = AppConfig(path)
-        return _instance
+        instance = AppConfig(path)
+        _instance = instance
+        return instance
