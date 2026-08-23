@@ -11,6 +11,8 @@ This package is a deliberately **lightweight wrapper of the Event-over-HTTP prot
   registered functions,
 - a **thin client** (`PostOffice`) to call functions on peer applications the same way,
 - the **standard event envelope wire format** codec (language-neutral MsgPack), and
+- a **primitive in-process event bus** — the single dispatch pipeline: one FIFO mailbox
+  per route consumed by `instances` worker tasks, and
 - the **minimalist utilities** shared with the engines for consistency: configuration
   management, logging in the engines' presentation format, and distributed-trace context.
 
@@ -42,7 +44,7 @@ Run it:
 
 ```bash
 pip install -e '.[dev]'
-mercury-serve app.py --port 8086
+mercury-serve app.py -Drest.server.port=8086
 ```
 
 Call it from a Mercury engine application with two configuration entries and no code —
@@ -80,6 +82,24 @@ synchronous handlers run in a thread-pool executor so the event loop never block
 - Functions must be stateless; anything you must keep belongs to the caller's flow model
   or state machine.
 
+### Local function calls
+
+`PostOffice` **without an endpoint** delivers through this application's own event bus —
+the engines' semantics for an in-app `po` call:
+
+- `private=True` means exactly what it means in the engines: callable **in-app only**.
+  Local calls reach private and public routes alike; the HTTP host keeps answering 403
+  for private targets from the wire.
+- `instances` is faithful: each route has one FIFO mailbox consumed by that many worker
+  tasks. RPC waits are bounded by `timeout_ms` (the standard 408 envelope on breach), and
+  a queued call whose caller already timed out is skipped, never wastefully executed.
+- There is **no spill tier and no queue cap** by design: back-pressure belongs to the tier
+  that owns recovery — the engines' flows and graphs. A leaf host fails fast by deadline
+  instead of hoarding work.
+
+Local eventing is for simple leaf-side composition. Workflow processing belongs in Event
+Script and Knowledge Graph on the engines — that boundary is the architecture.
+
 ## Configuration, logging, telemetry
 
 The same conventions as the engines, so a polyglot installation stays uniform:
@@ -88,12 +108,14 @@ The same conventions as the engines, so a polyglot installation stays uniform:
 |-----|---------|---------|
 | `application.name` | application identity in logs | `application` |
 | `rest.server.port` | Event API port | `8085` |
-| `log.format` | `text` or `json` | `text` |
+| `log.format` | `text`, `json` (pretty-printed) or `compact` (single-line JSONL) | `text` |
 | `log.level` | log level (`LOG_LEVEL` env var wins) | `INFO` |
 
 Configuration lives in the `resources` folder, mirroring the engines:
-`resources/application.yml` (or `.yaml` / `.properties`), or an explicit `--config` path.
-Values support `${ENV_VAR:default}` substitution. Runtime parameter overrides use the
+`resources/application.yml` (or `.yaml` / `.properties`) in the working directory or next
+to the application file, or an explicit `--config` path — see
+[`examples/resources/application.yml`](examples/resources/application.yml) for a worked
+sample. Values support `${ENV_VAR:default}` substitution. Runtime parameter overrides use the
 same `-D` syntax as the Java engine and the Rust port — checked first on every read
 (`AppConfig.set(key, value)` does the same programmatically, the `f:setConfig` analog):
 
@@ -106,6 +128,37 @@ Log lines follow the Java reference engine's pattern for one-aggregation consist
 ```text
 2026-08-22 10:15:30.123 INFO  my_app:42 - Loaded PUBLIC hello.python, instances=10
 ```
+
+## Actuator endpoints
+
+The host serves the engines' operational endpoints on the same port as `/api/event`, so
+Kubernetes probes and dashboards treat a Python app exactly like a Java or Rust engine app:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /info` | app identity, runtime, origin id, start time, uptime |
+| `GET /info/routes` | registered routes split by visibility, with instance counts |
+| `GET /env` | selected environment variables and configuration parameters |
+| `GET /health` | dependency health checks — `UP` (HTTP 200) or `DOWN` (HTTP 400) |
+| `GET /livenessprobe` | `OK` while the last health outcome was good, else HTTP 400 |
+
+Configuration keys carry the engines' names: `info.app.version`, `info.app.description`,
+`show.env.variables` and `show.application.properties` (opt-in lists — secrets are never
+dumped wholesale), and `mandatory.health.dependencies` / `optional.health.dependencies`
+(routes of health check functions; optional ones never change the overall status). A
+health check function is a normal registered function — usually private — speaking the
+engines' interface contract, called through the event bus:
+
+```python
+@preload("demo.health", private=True)
+async def health(headers: dict[str, str], _body: Body) -> Body:
+    if headers.get("type") == "info":
+        return {"service": "demo.service", "href": "http://127.0.0.1"}
+    return "demo.service is running fine"   # a non-200 reply marks it down
+```
+
+Kubernetes wiring: point `livenessProbe` at `/livenessprobe` and `readinessProbe` at
+`/health`.
 
 ## Wire compatibility
 
@@ -122,10 +175,12 @@ millisecond precision; binary payloads use MsgPack `bin`.
 
 ## Scope
 
-This package intentionally contains **no event bus, no flows, no graphs and no
-orchestration** — those live in the engines. It provides functions plus the minimalist
-foundation utilities, keeping Python fast to prototype with while the composable core
-guarantees the architecture.
+This package intentionally contains **no orchestration: no flows, no graphs, no
+persistence, no pub/sub broadcast** — those live in the engines. What it does carry is
+deliberately minimal: functions, a primitive in-process event bus (route mailboxes +
+workers, RPC and drop-n-forget — nothing more), and the minimalist foundation utilities,
+keeping Python fast to prototype with while the composable core guarantees the
+architecture.
 
 ## Development
 

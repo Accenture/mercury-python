@@ -22,7 +22,8 @@ Well-known keys shared with the engines:
 
 - ``application.name`` — application identity used in logs.
 - ``rest.server.port`` — the Event API port (default 8085).
-- ``log.format`` — ``text`` (default) or ``json``.
+- ``log.format`` — ``text`` (default), ``json`` (pretty-printed) or
+  ``compact`` (single-line JSONL), the engines' three presentations.
 - ``log.level`` — default INFO; the ``LOG_LEVEL`` environment variable wins,
   mirroring the engines' log4j2 setting.
 """

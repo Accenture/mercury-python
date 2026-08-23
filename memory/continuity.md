@@ -17,7 +17,7 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-23 | agent: Claude Code (2026-08-23-005709)
+- **last_session:** 2026-08-23 | agent: Claude Code (2026-08-23-031558)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -91,8 +91,10 @@
 
 ## Open Threads
 
-- [ ] (feature — design RATIFIED by Eric 2026-08-23 in the quality-round conversation;
-  implementation next on `feature/primitive-event-bus`, LOCK-STEP with mercury-nodejs)
+- [ ] (feature — design RATIFIED by Eric 2026-08-23; **IMPLEMENTED same day on
+  `feature/primitive-event-bus`, commit `957d6b7`, tests 40/40 incl. the 8 bus pins +
+  live wire proof (chain → private via bus; wire → private = 403); node twin `da8ce4c`
+  39/39; PENDING Eric's PR gate**)
   **Primitive in-process event bus — the single dispatch pipeline.** Ratified shape:
   per-route FIFO mailbox (asyncio.Queue; node = queue + worker loops) with
   **instances = N worker tasks** (replaces the semaphore — the parameter becomes faithful);
@@ -112,6 +114,23 @@
   hosted→local-private. README boundary statement: leaf-side composition here; workflow
   processing = Event Script / Knowledge Graph.
   <!-- id: thread-primitive-event-bus | created: 2026-08-23 | last_used: 2026-08-23 | uses: 1 | tier: working | origin: 2026-08-23-005709 -->
+
+- [ ] (feature — Eric's directive 2026-08-23, **IMPLEMENTED same day on
+  `feature/primitive-event-bus`, commits `56c002c` + `a674198` (IDE/Sonar round);
+  node twin `342a854` + `7a8b12c`; PENDING Eric's PR gate together with the bus**)
+  **Actuator endpoints — the engines' operational surface for Kubernetes PODs.**
+  GET `/info`, `/info/routes`, `/env`, `/health`, `/livenessprobe` on the Event API port;
+  shapes mirror the Rust engine's actuator (the approved minimalist port of Java
+  `ActuatorServices`). Health check functions are normal registered functions speaking
+  the engines' `type=info` / `type=health` interface contract (Eric's ruling), listed in
+  `mandatory.health.dependencies` / `optional.health.dependencies` and called through the
+  event bus; `/health` = UP 200 / DOWN 400 (Java parity); `/livenessprobe` follows the
+  most recent health outcome. Engine formats verbatim (origin = UTC yyyyMMdd + 32-hex
+  uuid per the Java reference; elapsed-time boundary quirks pinned). Documented deltas:
+  no `/info/lib`, no XML, no info cache. One async `handle()` dispatcher (S7503-clean,
+  mirrors the node twin). 10 pins + live demo drives on both wrappers.
+  Relates [[thread-primitive-event-bus]]; serves [[bp-publish-interop-gate]].
+  <!-- id: thread-actuator-endpoints | created: 2026-08-23 | last_used: 2026-08-23 | uses: 1 | tier: working | origin: 2026-08-23-031558 -->
 > Mark completed items `- [x]` and leave them in place — the review sweeps them to
 > the archive once older than `archive_window` sessions. Don't archive them by hand.
 

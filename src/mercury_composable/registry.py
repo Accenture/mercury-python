@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from .bus import EventBus
 from .envelope import Body
 
 # the function contract: (headers, body) in, reply body (or EventEnvelope) out -
@@ -48,6 +49,9 @@ class ServiceDef:
 class FunctionRegistry:
     def __init__(self) -> None:
         self._services: dict[str, ServiceDef] = {}
+        # the registry's own dispatch pipeline (see bus.py) - shared by the
+        # HTTP host and the local side of PostOffice
+        self.bus = EventBus()
 
     def register(self, route: str, handler: Handler, *,
                  instances: int = 10, private: bool = False) -> ServiceDef:
