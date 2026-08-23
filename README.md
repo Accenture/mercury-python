@@ -75,6 +75,8 @@ synchronous handlers run in a thread-pool executor so the event loop never block
   exception handler or the graph's `error.*` contract.
 - `get_trace()` exposes `trace_id` / `trace_path` / `cid`; `annotate_trace(k, v)` sends an
   annotation back on the reply envelope.
+- Outside a hosted function (batch jobs, tests), `trace_context(trace_id, trace_path)`
+  establishes the context your `PostOffice` calls inherit — the node `runWithTrace` twin.
 - Functions must be stateless; anything you must keep belongs to the caller's flow model
   or state machine.
 

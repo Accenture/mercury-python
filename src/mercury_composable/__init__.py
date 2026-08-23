@@ -16,7 +16,7 @@ from .exceptions import AppException, CompactFormatError
 from .log import get_logger
 from .registry import FunctionRegistry, Handler, default_registry, preload
 from .server import EventApiServer, Platform, platform
-from .trace import TraceInfo, annotate_trace, get_trace
+from .trace import TraceInfo, annotate_trace, get_trace, trace_context
 
 __version__ = "0.1.0"
 
@@ -42,4 +42,5 @@ __all__ = [
     "load_config",
     "platform",
     "preload",
+    "trace_context",
 ]

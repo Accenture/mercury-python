@@ -27,28 +27,28 @@ def build_registry() -> FunctionRegistry:
     async def echo(headers: dict[str, str], body: Body):
         return {"headers": headers, "body": body}
 
-    def upper(headers: dict[str, str], body: Body):  # sync handler runs in the executor
+    def upper(_headers: dict[str, str], body: Body):  # sync handler runs in the executor
         info = get_trace()
         text = body.get("text", "") if isinstance(body, dict) else ""
         return {"text": str(text).upper(),
                 "trace_id": info.trace_id if info else None,
                 "cid": info.cid if info else None}
 
-    async def annotated(headers: dict[str, str], body: Body):
+    async def annotated(_headers: dict[str, str], _body: Body):
         annotate_trace("checked", "yes")
         return {"ok": True}
 
-    async def app_error(headers: dict[str, str], body: Body):
+    async def app_error(_headers: dict[str, str], _body: Body):
         raise AppException(400, "missing 'text'")
 
-    async def boom(headers: dict[str, str], body: Body):
+    async def boom(_headers: dict[str, str], _body: Body):
         raise RuntimeError("kaboom")
 
-    async def slow(headers: dict[str, str], body: Body):
+    async def slow(_headers: dict[str, str], _body: Body):
         await asyncio.sleep(5)
         return {"late": True}
 
-    async def secret(headers: dict[str, str], body: Body):
+    async def secret(_headers: dict[str, str], _body: Body):
         return {"secret": True}
 
     registry.register("unit.echo", echo)

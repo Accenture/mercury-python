@@ -11,6 +11,8 @@ plumbing arguments. Annotations ride back on the reply envelope's
 from __future__ import annotations
 
 import contextvars
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,6 +33,23 @@ _current: contextvars.ContextVar[TraceInfo | None] = contextvars.ContextVar(
 def get_trace() -> TraceInfo | None:
     """The trace context of the event being handled, if any."""
     return _current.get()
+
+
+@contextmanager
+def trace_context(trace_id: str, trace_path: str,
+                  cid: str | None = None) -> Iterator[TraceInfo]:
+    """Establish a trace context around a block - the node runWithTrace twin.
+
+    Useful for callers outside a hosted function (batch jobs, tests) whose
+    PostOffice calls should carry a trace: the client inherits the context
+    into the outbound envelope.
+    """
+    info = TraceInfo(trace_id=trace_id, trace_path=trace_path, cid=cid)
+    token = _set_trace(info)
+    try:
+        yield info
+    finally:
+        _reset_trace(token)
 
 
 def annotate_trace(key: str, value: Any) -> None:

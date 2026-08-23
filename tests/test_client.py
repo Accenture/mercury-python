@@ -7,7 +7,7 @@ from aiohttp import web
 
 from mercury_composable import Body, FunctionRegistry, PostOffice
 from mercury_composable.server import EventApiServer
-from mercury_composable.trace import TraceInfo, _reset_trace, _set_trace
+from mercury_composable.trace import trace_context
 
 
 def build_registry() -> FunctionRegistry:
@@ -16,7 +16,7 @@ def build_registry() -> FunctionRegistry:
     async def echo(headers: dict[str, str], body: Body):
         return {"headers": headers, "body": body}
 
-    async def whoami(headers: dict[str, str], body: Body):
+    async def whoami(_headers: dict[str, str], _body: Body):
         from mercury_composable import get_trace
         info = get_trace()
         assert info is not None
@@ -49,12 +49,9 @@ async def test_rpc_round_trip(endpoint: str):
 
 
 async def test_trace_context_propagates_through_client(endpoint: str):
-    token = _set_trace(TraceInfo(trace_id="trace-777", trace_path="TEST /client", cid="cid-42"))
-    try:
+    with trace_context("trace-777", "TEST /client", cid="cid-42"):
         async with PostOffice(endpoint=endpoint) as po:
             reply = await po.request("client.whoami", body={}, timeout_ms=5000)
-    finally:
-        _reset_trace(token)
     assert reply.body == {"trace_id": "trace-777", "trace_path": "TEST /client", "cid": "cid-42"}
 
 
