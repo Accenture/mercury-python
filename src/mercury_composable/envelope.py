@@ -154,7 +154,9 @@ class EventEnvelope:
     @classmethod
     def from_map(cls, data: dict[str, Any]) -> EventEnvelope:
         event = cls()
-        event.id = str(data.get(_ID)) if data.get(_ID) is not None else event.id
+        raw_id = data.get(_ID)
+        if raw_id is not None:
+            event.id = str(raw_id)
         event.to = data.get(_TO)
         event.sender = data.get(_FROM)
         event.reply_to = data.get(_REPLY_TO)
@@ -162,23 +164,30 @@ class EventEnvelope:
         event.trace_id = data.get(_TRACE_ID)
         event.trace_path = data.get(_TRACE_PATH)
         event.span_id = data.get(_SPAN_ID)
-        status = data.get(_STATUS)
-        event.status = int(status) if status is not None else None
-        headers = data.get(_HEADERS)
-        event.headers = {str(k): str(v) for k, v in headers.items()} if isinstance(headers, dict) else {}
+        raw_status = data.get(_STATUS)
+        if raw_status is not None:
+            event.status = int(raw_status)
+        raw_headers = data.get(_HEADERS)
+        if isinstance(raw_headers, dict):
+            event.headers = {str(k): str(v) for k, v in raw_headers.items()}
         event.body = data.get(_BODY)
-        exec_time = data.get(_EXEC_TIME)
-        event.exec_time = float(exec_time) if exec_time is not None else None
-        round_trip = data.get(_ROUND_TRIP)
-        event.round_trip = float(round_trip) if round_trip is not None else None
-        tags = data.get(_TAGS)
-        event.tags = {str(k): str(v) for k, v in tags.items()} if isinstance(tags, dict) else {}
-        annotations = data.get(_ANNOTATIONS)
-        event.annotations = dict(annotations) if isinstance(annotations, dict) else {}
+        raw_exec_time = data.get(_EXEC_TIME)
+        if raw_exec_time is not None:
+            event.exec_time = float(raw_exec_time)
+        raw_round_trip = data.get(_ROUND_TRIP)
+        if raw_round_trip is not None:
+            event.round_trip = float(raw_round_trip)
+        raw_tags = data.get(_TAGS)
+        if isinstance(raw_tags, dict):
+            event.tags = {str(k): str(v) for k, v in raw_tags.items()}
+        raw_annotations = data.get(_ANNOTATIONS)
+        if isinstance(raw_annotations, dict):
+            event.annotations = dict(raw_annotations)
         event.stack = data.get(_STACK)
         event.obj_type = data.get(_OBJ_TYPE)
-        exception = data.get(_EXCEPTION)
-        event.exception = bytes(exception) if isinstance(exception, (bytes, bytearray)) else None
+        raw_exception = data.get(_EXCEPTION)
+        if isinstance(raw_exception, (bytes, bytearray)):
+            event.exception = bytes(raw_exception)
         return event
 
     @classmethod
@@ -197,5 +206,5 @@ class EventEnvelope:
         return cls.from_map(decoded)
 
     def __repr__(self) -> str:
-        return (f"EventEnvelope(id={self.id!r}, to={self.to!r}, "
-                f"status={self.get_status()}, headers={self.headers!r})")
+        return (f"EventEnvelope(id='{self.id}', to='{self.to or ''}', "
+                f"status={self.get_status()}, headers={self.headers})")
