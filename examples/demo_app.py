@@ -16,8 +16,13 @@ log = get_logger(__name__)
 
 
 @preload(route="hello.python", instances=10)
-def handle_event(headers: dict, body):
-    """Uppercase transform - the polyglot hello world."""
+def handle_event(_headers: dict, body):
+    """Uppercase transform - the polyglot hello world.
+
+    The (headers, body) two-part signature is the function contract (the
+    TypedLambdaFunction mirror) - a handler that does not need headers keeps
+    the parameter, underscore-prefixed per Python convention.
+    """
     if not isinstance(body, dict) or "text" not in body:
         raise AppException(400, "missing 'text'")
     annotate_trace("language", "python")
