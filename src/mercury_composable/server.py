@@ -144,14 +144,15 @@ class EventApiServer:
     @staticmethod
     def _log_async_outcome(route: str):
         def callback(task: asyncio.Task[EventEnvelope]) -> None:
+            # noinspection PyBroadException
             try:
                 reply = task.result()
                 if reply.has_error():
                     log.warning("Async event %s ended with status %d - %s",
                                 route, reply.get_status(), reply.body)
             except Exception:
-                # event has no requester to answer, so any failure is logged with its
-                # traceback, never raised
+                # deliberate log-only sink: a drop-n-forget event has no requester
+                # to answer, so any failure is logged with its traceback, never raised
                 log.exception("Async event %s failed", route)
         return callback
 
