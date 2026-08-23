@@ -125,6 +125,19 @@ orchestration** — those live in the engines. It provides functions plus the mi
 foundation utilities, keeping Python fast to prototype with while the composable core
 guarantees the architecture.
 
+## Development
+
+```bash
+uv venv .venv && uv pip install -e '.[dev]'   # environment (uv-managed python)
+.venv/bin/pytest -q                           # tests
+uvx ruff check .                              # lint (config in pyproject.toml)
+uvx basedpyright                              # type check (config in pyproject.toml)
+```
+
+PyCharm: use interpreter type **uv** pointing at the project `.venv`, and set
+*Settings → Tools → Python Integrated Tools → Package requirements file* to
+`pyproject.toml` so the requirements inspection reads `[project.dependencies]`.
+
 ## License
 
 Apache 2.0 — see [LICENSE.txt](LICENSE.txt).
