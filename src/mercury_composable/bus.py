@@ -65,7 +65,7 @@ class _Delivery:
     trace_id: str | None
     trace_path: str | None
     cid: str | None
-    reply: asyncio.Future[EventEnvelope] | None  # None = drop-n-forget
+    reply: asyncio.Future[EventEnvelope] | None  # drop-n-forget deliveries carry no reply future
 
 
 class EventBus:
@@ -112,15 +112,12 @@ class EventBus:
 
     async def close(self) -> None:
         """Cancel all workers (tests and orderly shutdown)."""
-        for workers in self._workers.values():
-            for worker in workers:
-                worker.cancel()
-        for workers in self._workers.values():
-            for worker in workers:
-                try:
-                    await worker
-                except asyncio.CancelledError:
-                    pass
+        cancelled = [worker for workers in self._workers.values() for worker in workers]
+        for worker in cancelled:
+            worker.cancel()
+        # return_exceptions collects the workers' own CancelledError outcomes;
+        # a cancellation of close() itself still propagates from the gather
+        await asyncio.gather(*cancelled, return_exceptions=True)
         self._workers.clear()
         self._mailboxes.clear()
 
@@ -139,7 +136,8 @@ class EventBus:
                 log.warning("Async event %s ended with status %d - %s",
                             delivery.service.route, reply.get_status(), reply.body)
 
-    async def _execute(self, delivery: _Delivery) -> EventEnvelope:
+    @staticmethod
+    async def _execute(delivery: _Delivery) -> EventEnvelope:
         """Run the handler under its trace context and shape the outcome as a reply."""
         service = delivery.service
         info = TraceInfo(trace_id=delivery.trace_id, trace_path=delivery.trace_path,
