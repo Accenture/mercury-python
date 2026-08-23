@@ -2,8 +2,8 @@
 
 import base64
 import json
-import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import msgpack
 import pytest
@@ -17,7 +17,7 @@ def packb(obj: object) -> bytes:
 
 from mercury_composable import CompactFormatError, EventEnvelope, iso_utc
 
-VECTORS = os.path.join(os.path.dirname(__file__), "vectors", "vectors.json")
+VECTORS = Path(__file__).parent / "vectors" / "vectors.json"
 
 
 def test_round_trip_all_fields():
@@ -96,11 +96,12 @@ def _decoded_wire_fields(envelope: EventEnvelope) -> dict:
 
 
 def test_golden_vectors_conformance():
-    with open(VECTORS, "r", encoding="utf-8") as f:
+    with VECTORS.open("r", encoding="utf-8") as f:
         catalog = json.load(f)
     standard = [v for v in catalog["vectors"] if v["format"] == "standard"]
     compact = [v for v in catalog["vectors"] if v["format"] == "compact"]
-    assert standard and compact
+    assert standard
+    assert compact
     for vector in standard:
         raw = base64.b64decode(vector["base64"])
         decoded = EventEnvelope.from_bytes(raw)
@@ -112,5 +113,6 @@ def test_golden_vectors_conformance():
         for key, expected in vector["expect"].items():
             assert again.get(key) == expected, f"{vector['name']} re-encoded: field '{key}'"
     for vector in compact:
+        raw = base64.b64decode(vector["base64"])
         with pytest.raises(CompactFormatError):
-            EventEnvelope.from_bytes(base64.b64decode(vector["base64"]))
+            EventEnvelope.from_bytes(raw)
