@@ -17,7 +17,7 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-23 | agent: Claude Code (2026-08-23-005709)
+- **last_session:** 2026-08-23 | agent: Claude Code (2026-08-23-024221)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -91,8 +91,10 @@
 
 ## Open Threads
 
-- [ ] (feature — design RATIFIED by Eric 2026-08-23 in the quality-round conversation;
-  implementation next on `feature/primitive-event-bus`, LOCK-STEP with mercury-nodejs)
+- [ ] (feature — design RATIFIED by Eric 2026-08-23; **IMPLEMENTED same day on
+  `feature/primitive-event-bus`, commit `957d6b7`, tests 40/40 incl. the 8 bus pins +
+  live wire proof (chain → private via bus; wire → private = 403); node twin `da8ce4c`
+  39/39; PENDING Eric's PR gate**)
   **Primitive in-process event bus — the single dispatch pipeline.** Ratified shape:
   per-route FIFO mailbox (asyncio.Queue; node = queue + worker loops) with
   **instances = N worker tasks** (replaces the semaphore — the parameter becomes faithful);
