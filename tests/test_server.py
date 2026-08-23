@@ -90,7 +90,8 @@ async def test_rpc_success_with_exec_time(server_url: str):
     assert reply.get_status() == 200
     assert reply.body["body"] == {"a": 1}
     assert reply.sender == "unit.echo"
-    assert reply.exec_time is not None and reply.exec_time >= 0
+    assert reply.exec_time is not None
+    assert reply.exec_time >= 0
 
 
 async def test_sync_handler_sees_trace_context(server_url: str):
