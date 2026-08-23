@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 import msgpack
 
@@ -43,7 +43,7 @@ _OBJ_TYPE = "obj_type"
 _EXCEPTION = "exception"
 
 
-def iso_utc(dt: Optional[datetime] = None) -> str:
+def iso_utc(dt: datetime | None = None) -> str:
     """ISO-8601 UTC with millisecond precision, e.g. 2026-07-21T12:00:00.000Z"""
     value = dt or datetime.now(timezone.utc)
     if value.tzinfo is None:
@@ -61,59 +61,59 @@ def _pack_default(obj: Any) -> Any:
 class EventEnvelope:
     """In-memory event with the same field vocabulary as the Java/Rust engines."""
 
-    def __init__(self, to: Optional[str] = None, body: Any = None,
-                 headers: Optional[Dict[str, str]] = None):
+    def __init__(self, to: str | None = None, body: Any = None,
+                 headers: dict[str, str] | None = None):
         self.id: str = str(uuid.uuid4()).replace("-", "")
         self.to = to
-        self.sender: Optional[str] = None          # wire field "from"
-        self.reply_to: Optional[str] = None
-        self.cid: Optional[str] = None
-        self.trace_id: Optional[str] = None
-        self.trace_path: Optional[str] = None
-        self.span_id: Optional[str] = None
-        self.status: Optional[int] = None           # None encodes as absent (default 200)
-        self.headers: Dict[str, str] = dict(headers or {})
+        self.sender: str | None = None          # wire field "from"
+        self.reply_to: str | None = None
+        self.cid: str | None = None
+        self.trace_id: str | None = None
+        self.trace_path: str | None = None
+        self.span_id: str | None = None
+        self.status: int | None = None           # None encodes as absent (default 200)
+        self.headers: dict[str, str] = dict(headers or {})
         self.body: Any = body
-        self.exec_time: Optional[float] = None
-        self.round_trip: Optional[float] = None
-        self.tags: Dict[str, str] = {}
-        self.annotations: Dict[str, Any] = {}
-        self.stack: Optional[str] = None
-        self.obj_type: Optional[str] = None
-        self.exception: Optional[bytes] = None       # language-native, opaque here
+        self.exec_time: float | None = None
+        self.round_trip: float | None = None
+        self.tags: dict[str, str] = {}
+        self.annotations: dict[str, Any] = {}
+        self.stack: str | None = None
+        self.obj_type: str | None = None
+        self.exception: bytes | None = None       # language-native, opaque here
 
     # --- fluent helpers mirroring the engine API vocabulary ---
 
-    def set_to(self, route: str) -> "EventEnvelope":
+    def set_to(self, route: str) -> EventEnvelope:
         self.to = route
         return self
 
-    def set_from(self, route: str) -> "EventEnvelope":
+    def set_from(self, route: str) -> EventEnvelope:
         self.sender = route
         return self
 
-    def set_header(self, key: str, value: Any) -> "EventEnvelope":
+    def set_header(self, key: str, value: Any) -> EventEnvelope:
         self.headers[str(key)] = str(value)
         return self
 
-    def set_body(self, body: Any) -> "EventEnvelope":
+    def set_body(self, body: Any) -> EventEnvelope:
         self.body = body
         return self
 
-    def set_status(self, status: int) -> "EventEnvelope":
+    def set_status(self, status: int) -> EventEnvelope:
         self.status = int(status)
         return self
 
-    def set_correlation_id(self, cid: str) -> "EventEnvelope":
+    def set_correlation_id(self, cid: str) -> EventEnvelope:
         self.cid = cid
         return self
 
-    def set_trace(self, trace_id: str, trace_path: str) -> "EventEnvelope":
+    def set_trace(self, trace_id: str, trace_path: str) -> EventEnvelope:
         self.trace_id = trace_id
         self.trace_path = trace_path
         return self
 
-    def set_reply_to(self, route: Optional[str]) -> "EventEnvelope":
+    def set_reply_to(self, route: str | None) -> EventEnvelope:
         self.reply_to = route
         return self
 
@@ -125,8 +125,8 @@ class EventEnvelope:
 
     # --- wire codec (standard format) ---
 
-    def to_map(self) -> Dict[str, Any]:
-        result: Dict[str, Any] = {_ID: self.id, _HEADERS: dict(self.headers)}
+    def to_map(self) -> dict[str, Any]:
+        result: dict[str, Any] = {_ID: self.id, _HEADERS: dict(self.headers)}
         optional = [
             (_TO, self.to), (_FROM, self.sender), (_REPLY_TO, self.reply_to),
             (_CID, self.cid), (_TRACE_ID, self.trace_id), (_TRACE_PATH, self.trace_path),
@@ -147,7 +147,7 @@ class EventEnvelope:
         return msgpack.packb(self.to_map(), use_bin_type=True, default=_pack_default)
 
     @classmethod
-    def from_map(cls, data: Dict[str, Any]) -> "EventEnvelope":
+    def from_map(cls, data: dict[str, Any]) -> EventEnvelope:
         event = cls()
         event.id = str(data.get(_ID)) if data.get(_ID) is not None else event.id
         event.to = data.get(_TO)
@@ -177,7 +177,7 @@ class EventEnvelope:
         return event
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "EventEnvelope":
+    def from_bytes(cls, data: bytes) -> EventEnvelope:
         try:
             decoded = msgpack.unpackb(data, raw=False)
         except Exception as e:

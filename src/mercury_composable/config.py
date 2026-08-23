@@ -33,7 +33,7 @@ import os
 import re
 import sys
 import threading
-from typing import Any, List, Optional
+from typing import Any
 
 import yaml
 
@@ -66,7 +66,7 @@ def _parse_properties(text: str) -> dict:
     return result
 
 
-def parse_d_args(argv: List[str]) -> dict:
+def parse_d_args(argv: list[str]) -> dict:
     """Extract -Dkey=value runtime overrides (Java/Rust engine syntax)."""
     overrides: dict = {}
     for arg in argv:
@@ -80,7 +80,7 @@ def parse_d_args(argv: List[str]) -> dict:
 class AppConfig:
     """Flat, dot-addressed application configuration."""
 
-    def __init__(self, path: Optional[str] = None, argv: Optional[List[str]] = None):
+    def __init__(self, path: str | None = None, argv: list[str] | None = None):
         self._store: dict = {}
         self._overrides: dict = parse_d_args(sys.argv[1:] if argv is None else argv)
         self._source = "none"
@@ -125,7 +125,7 @@ class AppConfig:
             return value
         return default
 
-    def get_property(self, key: str, default: Optional[str] = None) -> Optional[str]:
+    def get_property(self, key: str, default: str | None = None) -> str | None:
         value = self.get(key, default)
         return None if value is None else str(value)
 
@@ -138,7 +138,7 @@ class AppConfig:
             resolved = self._resolve_ref(match.group(1))
             return resolved if resolved is not None else default
 
-        def repl(m: "re.Match[str]") -> str:
+        def repl(m: re.Match[str]) -> str:
             resolved = self._resolve_ref(m.group(1))
             return "" if resolved is None else str(resolved)
 
@@ -158,7 +158,7 @@ class AppConfig:
 
 
 _lock = threading.Lock()
-_instance: Optional[AppConfig] = None
+_instance: AppConfig | None = None
 
 
 def app_config() -> AppConfig:
@@ -170,7 +170,7 @@ def app_config() -> AppConfig:
         return _instance
 
 
-def load_config(path: Optional[str] = None) -> AppConfig:
+def load_config(path: str | None = None) -> AppConfig:
     """Replace the shared AppConfig (used by the CLI before startup)."""
     global _instance
     with _lock:

@@ -15,7 +15,7 @@ back as a normal envelope with status >= 400 — inspect ``reply.get_status()``.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 
@@ -30,11 +30,11 @@ _W3C_SPAN_ID = re.compile(r"^[0-9a-f]{16}$")
 class PostOffice:
     """Event-over-HTTP client for calling functions on peer applications."""
 
-    def __init__(self, endpoint: Optional[str] = None,
-                 security_headers: Optional[Dict[str, str]] = None):
+    def __init__(self, endpoint: str | None = None,
+                 security_headers: dict[str, str] | None = None):
         self.endpoint = endpoint
         self.security_headers = dict(security_headers or {})
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -45,14 +45,16 @@ class PostOffice:
         if self._session is not None and not self._session.closed:
             await self._session.close()
 
-    async def __aenter__(self) -> "PostOffice":
+    # PYI034 wants '-> Self', which needs python >= 3.11; switch when the
+    # floor moves past 3.10
+    async def __aenter__(self) -> PostOffice:  # noqa: PYI034
         return self
 
     async def __aexit__(self, *_exc) -> None:
         await self.close()
 
     def _http_headers(self, timeout_ms: int, is_async: bool,
-                      event: EventEnvelope) -> Dict[str, str]:
+                      event: EventEnvelope) -> dict[str, str]:
         headers = {
             "content-type": "application/octet-stream",
             "accept": "*/*",
@@ -71,8 +73,8 @@ class PostOffice:
                 headers["traceparent"] = f"00-{event.trace_id}-{event.span_id}-01"
         return headers
 
-    def _build_event(self, route: str, body: Any, headers: Optional[Dict[str, str]],
-                     from_route: Optional[str], cid: Optional[str]) -> EventEnvelope:
+    def _build_event(self, route: str, body: Any, headers: dict[str, str] | None,
+                     from_route: str | None, cid: str | None) -> EventEnvelope:
         event = EventEnvelope(to=route, body=body, headers=headers or {})
         if from_route:
             event.set_from(from_route)
@@ -84,9 +86,9 @@ class PostOffice:
             event.set_correlation_id(effective_cid)
         return event
 
-    async def _call(self, route: str, body: Any, headers: Optional[Dict[str, str]],
-                    timeout_ms: int, endpoint: Optional[str], is_async: bool,
-                    from_route: Optional[str], cid: Optional[str]) -> EventEnvelope:
+    async def _call(self, route: str, body: Any, headers: dict[str, str] | None,
+                    timeout_ms: int, endpoint: str | None, is_async: bool,
+                    from_route: str | None, cid: str | None) -> EventEnvelope:
         url = endpoint or self.endpoint
         if not url:
             raise ValueError("Missing event endpoint - "
@@ -106,21 +108,21 @@ class PostOffice:
                                    f"Invalid event-over-http response - {e}") from e
 
     async def request(self, route: str, body: Any = None, *,
-                      headers: Optional[Dict[str, str]] = None,
+                      headers: dict[str, str] | None = None,
                       timeout_ms: int = 30000,
-                      endpoint: Optional[str] = None,
-                      from_route: Optional[str] = None,
-                      cid: Optional[str] = None) -> EventEnvelope:
+                      endpoint: str | None = None,
+                      from_route: str | None = None,
+                      cid: str | None = None) -> EventEnvelope:
         """RPC call: returns the target function's reply envelope."""
         return await self._call(route, body, headers, timeout_ms, endpoint,
                                 False, from_route, cid)
 
     async def send(self, route: str, body: Any = None, *,
-                   headers: Optional[Dict[str, str]] = None,
+                   headers: dict[str, str] | None = None,
                    timeout_ms: int = 30000,
-                   endpoint: Optional[str] = None,
-                   from_route: Optional[str] = None,
-                   cid: Optional[str] = None) -> EventEnvelope:
+                   endpoint: str | None = None,
+                   from_route: str | None = None,
+                   cid: str | None = None) -> EventEnvelope:
         """Drop-n-forget: returns the peer's 202 delivery acknowledgement envelope."""
         return await self._call(route, body, headers, timeout_ms, endpoint,
                                 True, from_route, cid)

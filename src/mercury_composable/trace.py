@@ -12,23 +12,23 @@ from __future__ import annotations
 
 import contextvars
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
 class TraceInfo:
-    trace_id: Optional[str] = None
-    trace_path: Optional[str] = None
-    cid: Optional[str] = None
-    annotations: Dict[str, Any] = field(default_factory=dict)
+    trace_id: str | None = None
+    trace_path: str | None = None
+    cid: str | None = None
+    annotations: dict[str, Any] = field(default_factory=dict)
 
 
-_current: contextvars.ContextVar[Optional[TraceInfo]] = contextvars.ContextVar(
+_current: contextvars.ContextVar[TraceInfo | None] = contextvars.ContextVar(
     "mercury_trace", default=None
 )
 
 
-def get_trace() -> Optional[TraceInfo]:
+def get_trace() -> TraceInfo | None:
     """The trace context of the event being handled, if any."""
     return _current.get()
 
@@ -40,7 +40,7 @@ def annotate_trace(key: str, value: Any) -> None:
         info.annotations[str(key)] = value
 
 
-def _set_trace(info: Optional[TraceInfo]) -> contextvars.Token:
+def _set_trace(info: TraceInfo | None) -> contextvars.Token:
     return _current.set(info)
 
 

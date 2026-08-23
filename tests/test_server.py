@@ -4,12 +4,16 @@ import asyncio
 
 import aiohttp
 import msgpack
-import pytest
 import pytest_asyncio
 from aiohttp import web
 
-from mercury_composable import (AppException, EventEnvelope, FunctionRegistry,
-                                annotate_trace, get_trace)
+from mercury_composable import (
+    AppException,
+    EventEnvelope,
+    FunctionRegistry,
+    annotate_trace,
+    get_trace,
+)
 from mercury_composable.server import EventApiServer
 
 OCTET = "application/octet-stream"
@@ -69,10 +73,11 @@ async def server_url(aiohttp_server=None):
 async def post_event(url: str, event: EventEnvelope, *, ttl="10000", extra=None):
     headers = {"content-type": OCTET, "x-ttl": ttl}
     headers.update(extra or {})
-    async with aiohttp.ClientSession() as session:
-        async with session.post(f"{url}/api/event", data=event.to_bytes(),
-                                headers=headers) as response:
-            return response.status, EventEnvelope.from_bytes(await response.read())
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(f"{url}/api/event", data=event.to_bytes(), headers=headers) as response,
+    ):
+        return response.status, EventEnvelope.from_bytes(await response.read())
 
 
 async def test_rpc_success_with_exec_time(server_url):
@@ -147,11 +152,13 @@ async def test_missing_routing_path_400(server_url):
 
 async def test_compact_request_rejected_400(server_url):
     compact = msgpack.packb({"0": "e1", "T": "unit.echo"}, use_bin_type=True)
-    async with aiohttp.ClientSession() as session:
-        async with session.post(f"{server_url}/api/event", data=compact,
-                                headers={"content-type": OCTET, "x-ttl": "5000"}) as response:
-            assert response.status == 400
-            reply = EventEnvelope.from_bytes(await response.read())
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(f"{server_url}/api/event", data=compact,
+                     headers={"content-type": OCTET, "x-ttl": "5000"}) as response,
+    ):
+        assert response.status == 400
+        reply = EventEnvelope.from_bytes(await response.read())
     assert reply.get_status() == 400
     assert "standard" in str(reply.body)
 
@@ -175,7 +182,9 @@ async def test_async_drop_n_forget_202_ack(server_url):
 
 
 async def test_health_endpoint(server_url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"{server_url}/health") as response:
-            assert response.status == 200
-            assert await response.text() == "OK"
+    async with (
+        aiohttp.ClientSession() as session,
+        session.get(f"{server_url}/health") as response,
+    ):
+        assert response.status == 200
+        assert await response.text() == "OK"

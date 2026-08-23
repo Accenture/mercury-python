@@ -21,8 +21,23 @@ from .trace import TraceInfo, annotate_trace, get_trace
 __version__ = "0.1.0"
 
 __all__ = [
-    "AppConfig", "AppException", "CompactFormatError", "EventApiServer",
-    "EventEnvelope", "FunctionRegistry", "Platform", "PostOffice", "TraceInfo",
-    "annotate_trace", "app_config", "default_registry", "get_logger",
-    "get_trace", "iso_utc", "load_config", "platform", "preload", "__version__",
+    "AppConfig",
+    "AppException",
+    "CompactFormatError",
+    "EventApiServer",
+    "EventEnvelope",
+    "FunctionRegistry",
+    "Platform",
+    "PostOffice",
+    "TraceInfo",
+    "__version__",
+    "annotate_trace",
+    "app_config",
+    "default_registry",
+    "get_logger",
+    "get_trace",
+    "iso_utc",
+    "load_config",
+    "platform",
+    "preload",
 ]

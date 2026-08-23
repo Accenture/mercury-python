@@ -3,7 +3,7 @@
 import pytest_asyncio
 from aiohttp import web
 
-from mercury_composable import EventEnvelope, FunctionRegistry, PostOffice
+from mercury_composable import FunctionRegistry, PostOffice
 from mercury_composable.server import EventApiServer
 from mercury_composable.trace import TraceInfo, _reset_trace, _set_trace
 

@@ -25,7 +25,6 @@ import logging
 import os
 import sys
 import time
-from typing import Optional
 
 from .config import app_config
 
@@ -73,7 +72,7 @@ def _setup() -> None:
     _configured = True
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
+def get_logger(name: str | None = None) -> logging.Logger:
     """A logger writing engine-consistent log lines."""
     _setup()
     return logging.getLogger(name or "mercury")

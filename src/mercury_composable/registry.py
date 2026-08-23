@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import inspect
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 _ROUTE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -32,7 +33,7 @@ def validate_route(route: str) -> str:
 @dataclass
 class ServiceDef:
     route: str
-    handler: Callable[[Dict[str, str], Any], Any]
+    handler: Callable[[dict[str, str], Any], Any]
     instances: int = 10
     private: bool = False
     is_async: bool = False
@@ -40,7 +41,7 @@ class ServiceDef:
 
 class FunctionRegistry:
     def __init__(self) -> None:
-        self._services: Dict[str, ServiceDef] = {}
+        self._services: dict[str, ServiceDef] = {}
 
     def register(self, route: str, handler: Callable, *,
                  instances: int = 10, private: bool = False) -> ServiceDef:
@@ -55,13 +56,13 @@ class FunctionRegistry:
         self._services[route] = service
         return service
 
-    def get(self, route: str) -> Optional[ServiceDef]:
+    def get(self, route: str) -> ServiceDef | None:
         return self._services.get(route)
 
     def exists(self, route: str) -> bool:
         return route in self._services
 
-    def routes(self) -> Dict[str, ServiceDef]:
+    def routes(self) -> dict[str, ServiceDef]:
         return dict(self._services)
 
 

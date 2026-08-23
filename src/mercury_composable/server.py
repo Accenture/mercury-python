@@ -24,7 +24,6 @@ import asyncio
 import contextvars
 import time
 import traceback
-from typing import Optional
 
 from aiohttp import web
 
@@ -60,7 +59,7 @@ def _handler_headers(event: EventEnvelope) -> dict:
 
 
 class EventApiServer:
-    def __init__(self, registry: Optional[FunctionRegistry] = None):
+    def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
         self._semaphores: dict = {}
 
@@ -91,7 +90,9 @@ class EventApiServer:
             reply = EventEnvelope().set_status(e.status).set_body(e.message)
         except asyncio.CancelledError:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - the host converts ANY handler failure
+            # into the portable error contract (envelope status 500 + message + stack),
+            # mirroring the engines; letting it propagate would drop the reply
             reply = EventEnvelope().set_status(500).set_body(str(e))
             reply.stack = traceback.format_exc(limit=20)
         finally:
@@ -146,7 +147,8 @@ class EventApiServer:
                 if reply.has_error():
                     log.warning("Async event %s ended with status %d - %s",
                                 route, reply.get_status(), reply.body)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - log-only sink: a drop-n-forget
+                # event has no requester to answer, so any failure is logged, never raised
                 log.error("Async event %s failed - %s", route, e)
         return callback
 
@@ -163,10 +165,10 @@ class EventApiServer:
 class Platform:
     """Runs the Event API host for the default (or a given) registry."""
 
-    def __init__(self, registry: Optional[FunctionRegistry] = None):
+    def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
 
-    def run(self, port: Optional[int] = None, host: str = "127.0.0.1") -> None:
+    def run(self, port: int | None = None, host: str = "127.0.0.1") -> None:
         config = app_config()
         app_name = config.get_property("application.name", "application")
         actual_port = int(port if port is not None else config.get("rest.server.port", 8085))
