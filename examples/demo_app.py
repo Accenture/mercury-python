@@ -43,5 +43,21 @@ async def declarative_echo(headers: dict[str, str], body: Body):
     return {"body": body, "headers": headers, "language": "python"}
 
 
+@preload(route="demo.suffix.helper", instances=10, private=True)
+async def suffix_helper(_headers: dict[str, str], body: Body):
+    """Private helper - callable in-app only (the HTTP host answers 403 for it)."""
+    assert isinstance(body, dict)
+    return {"text": f"{body.get('text', '')}!", "language": "python"}
+
+
+@preload(route="hello.chain", instances=10)
+async def chain(_headers: dict[str, str], body: Body):
+    """Local composition: a public function calls a private sibling through the bus."""
+    from mercury_composable import PostOffice
+
+    reply = await PostOffice().request("demo.suffix.helper", body=body, timeout_ms=5000)
+    return reply.body
+
+
 if __name__ == "__main__":
     platform.run()

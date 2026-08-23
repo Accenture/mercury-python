@@ -20,19 +20,13 @@ Behavior mirrors the Java engine's EventApiService:
 
 from __future__ import annotations
 
-import asyncio
-import contextvars
-import time
-import traceback
-
 from aiohttp import web
 
+from .bus import DeliveryTimeout
 from .config import app_config
-from .envelope import EventEnvelope, iso_utc
-from .exceptions import AppException
+from .envelope import EventEnvelope
 from .log import get_logger
-from .registry import FunctionRegistry, ServiceDef, default_registry
-from .trace import TraceInfo, _reset_trace, _set_trace
+from .registry import FunctionRegistry, default_registry
 
 OCTET_STREAM = "application/octet-stream"
 X_TTL = "x-ttl"
@@ -59,49 +53,10 @@ def _handler_headers(event: EventEnvelope) -> dict[str, str]:
 
 
 class EventApiServer:
+    """Thin ingress: protocol guards + header hygiene, then the registry's bus."""
+
     def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
-        self._semaphores: dict[str, asyncio.Semaphore] = {}
-
-    def _semaphore(self, service: ServiceDef) -> asyncio.Semaphore:
-        semaphore = self._semaphores.get(service.route)
-        if semaphore is None:
-            semaphore = asyncio.Semaphore(service.instances)
-            self._semaphores[service.route] = semaphore
-        return semaphore
-
-    async def _invoke(self, service: ServiceDef, event: EventEnvelope,
-                      headers: dict[str, str]) -> EventEnvelope:
-        """Run the handler under its trace context and shape the outcome as a reply."""
-        info = TraceInfo(trace_id=event.trace_id, trace_path=event.trace_path, cid=event.cid)
-        token = _set_trace(info)
-        start = time.perf_counter()
-        try:
-            async with self._semaphore(service):
-                if service.is_async:
-                    result = await service.handler(headers, event.body)
-                else:
-                    # copy_context() carries the trace contextvar into the executor thread
-                    context = contextvars.copy_context()
-                    result = await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: context.run(service.handler, headers, event.body))
-            reply = result if isinstance(result, EventEnvelope) else EventEnvelope(body=result)
-        except AppException as e:
-            reply = EventEnvelope().set_status(e.status).set_body(e.message)
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:  # noqa: BLE001 - the host converts ANY handler failure
-            # into the portable error contract (envelope status 500 + message + stack),
-            # mirroring the engines; letting it propagate would drop the reply
-            reply = EventEnvelope().set_status(500).set_body(str(e))
-            reply.stack = traceback.format_exc(limit=20)
-        finally:
-            _reset_trace(token)
-        reply.sender = reply.sender or service.route
-        reply.exec_time = round((time.perf_counter() - start) * 1000, 3)
-        if info.annotations:
-            reply.annotations.update(info.annotations)
-        return reply
 
     async def handle_event(self, request: web.Request) -> web.Response:
         raw = await request.read()
@@ -124,37 +79,21 @@ class EventApiServer:
         if service.private:
             return _transport_error(403, f"{event.to} is private")
         headers = _handler_headers(event)
+        bus = self.registry.bus
         if is_async:
-            task = asyncio.get_running_loop().create_task(
-                self._invoke(service, event, headers))
-            task.add_done_callback(self._log_async_outcome(event.to))
-            ack = EventEnvelope().set_status(202).set_body(
-                {"type": "async", "delivered": True, "time": iso_utc()})
+            ack = bus.publish(service, headers, event.body, trace_id=event.trace_id,
+                              trace_path=event.trace_path, cid=event.cid)
             return web.Response(status=202, body=ack.to_bytes(), content_type=OCTET_STREAM)
         try:
-            reply = await asyncio.wait_for(
-                self._invoke(service, event, headers), timeout=ttl / 1000)
-        except asyncio.TimeoutError:
+            reply = await bus.deliver(service, headers, event.body, ttl,
+                                      trace_id=event.trace_id, trace_path=event.trace_path,
+                                      cid=event.cid)
+        except DeliveryTimeout:
             log.warning("Event %s timeout for %d ms (trace_id=%s)", event.to, ttl, event.trace_id)
             return _transport_error(408, f"Timeout for {ttl} ms")
         log.info("Handled %s status=%d exec_time=%sms trace_id=%s",
                  event.to, reply.get_status(), reply.exec_time, event.trace_id)
         return web.Response(status=200, body=reply.to_bytes(), content_type=OCTET_STREAM)
-
-    @staticmethod
-    def _log_async_outcome(route: str):
-        def callback(task: asyncio.Task[EventEnvelope]) -> None:
-            # noinspection PyBroadException
-            try:
-                reply = task.result()
-                if reply.has_error():
-                    log.warning("Async event %s ended with status %d - %s",
-                                route, reply.get_status(), reply.body)
-            except Exception:
-                # deliberate log-only sink: a drop-n-forget event has no requester
-                # to answer, so any failure is logged with its traceback, never raised
-                log.exception("Async event %s failed", route)
-        return callback
 
     # aiohttp handlers must be coroutines - async is the framework contract
     # even though this one has nothing to await

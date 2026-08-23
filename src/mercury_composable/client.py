@@ -1,14 +1,24 @@
 """
-Thin Event-over-HTTP client — the PostOffice analog.
+The PostOffice — local and remote function calls with one envelope contract.
 
-Sends an event envelope to a peer's ``/api/event`` endpoint (a Java or Rust
-engine application, or another polyglot function host) with the same HTTP
-contract as the engines' relay: ``content-type: application/octet-stream``,
+**Remote** (an ``endpoint`` is given, on the constructor or per call): sends
+the event envelope to a peer's ``/api/event`` — a Java or Rust engine
+application, or another polyglot function host — with the same HTTP contract
+as the engines' relay: ``content-type: application/octet-stream``,
 ``accept: */*``, ``x-no-stream: true``, ``x-ttl`` (ms), ``x-async: true`` for
-drop-n-forget, optional security headers, and trace headers
-(``X-Trace-Id`` plus a W3C ``traceparent`` when the trace id is W3C-shaped).
+drop-n-forget, optional security headers, and trace headers (``X-Trace-Id``
+plus a W3C ``traceparent`` when the trace id is W3C-shaped). The remote
+target must be public (its host answers 403 for private routes).
 
-The decoded reply envelope is authoritative: an error from the target rides
+**Local** (no endpoint): the call goes through this application's primitive
+event bus to a locally registered function — private OR public, the engines'
+semantics (``private`` means in-app only). Headers are delivered verbatim
+(ingress hygiene applies to the wire, not to in-app calls), the ttl bounds
+the wait with the standard 408 envelope, and the reply shape is identical to
+the remote path. Local eventing is for simple leaf-side composition; workflow
+processing belongs in Event Script and Knowledge Graph on the engines.
+
+The decoded reply envelope is authoritative in both modes: an error rides
 back as a normal envelope with status >= 400 — inspect ``reply.get_status()``.
 """
 
@@ -19,8 +29,10 @@ from typing import Any
 
 import aiohttp
 
+from .bus import DeliveryTimeout
 from .envelope import EventEnvelope
 from .exceptions import AppException
+from .registry import FunctionRegistry, default_registry
 from .trace import get_trace
 
 _W3C_TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -46,9 +58,11 @@ class PostOffice:
     """Event-over-HTTP client for calling functions on peer applications."""
 
     def __init__(self, endpoint: str | None = None,
-                 security_headers: dict[str, str] | None = None):
+                 security_headers: dict[str, str] | None = None,
+                 registry: FunctionRegistry | None = None):
         self.endpoint = endpoint
         self.security_headers = dict(security_headers or {})
+        self._registry = registry or default_registry
         self._session: aiohttp.ClientSession | None = None
 
     def _get_session(self) -> aiohttp.ClientSession:
@@ -91,13 +105,33 @@ class PostOffice:
                 headers["traceparent"] = f"00-{event.trace_id}-{event.span_id}-01"
         return headers
 
+    async def _call_local(self, route: str, body: Any, headers: dict[str, str] | None,
+                          timeout_ms: int, is_async: bool, from_route: str | None,
+                          cid: str | None) -> EventEnvelope:
+        """In-app delivery through the primitive event bus (private OR public)."""
+        service = self._registry.get(route)
+        if service is None:
+            return EventEnvelope().set_status(404).set_body(f"Route {route} not found")
+        event = _build_event(route, body, headers, from_route, cid)
+        bus = self._registry.bus
+        if is_async:
+            return bus.publish(service, event.headers, event.body, trace_id=event.trace_id,
+                               trace_path=event.trace_path, cid=event.cid)
+        try:
+            return await bus.deliver(service, event.headers, event.body, timeout_ms,
+                                     trace_id=event.trace_id, trace_path=event.trace_path,
+                                     cid=event.cid)
+        except DeliveryTimeout:
+            return EventEnvelope().set_status(408).set_body(f"Timeout for {timeout_ms} ms")
+
     async def _call(self, route: str, body: Any, headers: dict[str, str] | None,
                     timeout_ms: int, endpoint: str | None, is_async: bool,
                     from_route: str | None, cid: str | None) -> EventEnvelope:
         url = endpoint or self.endpoint
         if not url:
-            raise ValueError("Missing event endpoint - "
-                             "e.g. PostOffice(endpoint='http://peer:8085/api/event')")
+            # no endpoint = local: the engines' semantics for an in-app po call
+            return await self._call_local(route, body, headers, timeout_ms,
+                                          is_async, from_route, cid)
         event = _build_event(route, body, headers, from_route, cid)
         session = self._get_session()
         # +100 ms cushion so the HTTP client does not time out before the target
