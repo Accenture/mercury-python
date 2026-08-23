@@ -29,7 +29,7 @@ from aiohttp import web
 
 from .config import app_config
 from .envelope import EventEnvelope, iso_utc
-from .exceptions import AppException, CompactFormatError
+from .exceptions import AppException
 from .log import get_logger
 from .registry import FunctionRegistry, ServiceDef, default_registry
 from .trace import TraceInfo, _reset_trace, _set_trace
@@ -113,7 +113,8 @@ class EventApiServer:
         is_async = request.headers.get(X_ASYNC, "") == "true"
         try:
             event = EventEnvelope.from_bytes(raw)
-        except (CompactFormatError, ValueError) as e:
+        # CompactFormatError is a ValueError - one catch covers the codec errors
+        except ValueError as e:
             return _transport_error(400, str(e))
         if not event.to:
             return _transport_error(400, "Missing routing path")
@@ -140,19 +141,24 @@ class EventApiServer:
                  event.to, reply.get_status(), reply.exec_time, event.trace_id)
         return web.Response(status=200, body=reply.to_bytes(), content_type=OCTET_STREAM)
 
-    def _log_async_outcome(self, route: str):
+    @staticmethod
+    def _log_async_outcome(route: str):
         def callback(task: asyncio.Task[EventEnvelope]) -> None:
             try:
                 reply = task.result()
                 if reply.has_error():
                     log.warning("Async event %s ended with status %d - %s",
                                 route, reply.get_status(), reply.body)
-            except Exception as e:  # noqa: BLE001 - log-only sink: a drop-n-forget
-                # event has no requester to answer, so any failure is logged, never raised
-                log.error("Async event %s failed - %s", route, e)
+            except Exception:
+                # event has no requester to answer, so any failure is logged with its
+                # traceback, never raised
+                log.exception("Async event %s failed", route)
         return callback
 
-    async def handle_health(self, _request: web.Request) -> web.Response:
+    # aiohttp handlers must be coroutines - async is the framework contract
+    # even though this one has nothing to await
+    @staticmethod
+    async def handle_health(_request: web.Request) -> web.Response:
         return web.Response(text="OK")
 
     def create_app(self) -> web.Application:

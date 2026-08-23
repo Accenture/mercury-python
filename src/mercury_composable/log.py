@@ -36,7 +36,10 @@ class EngineTextFormatter(logging.Formatter):
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.created))
         ms = int(record.msecs)
         level = f"{record.levelname:<5}"
-        return f"{ts}.{ms:03d} {level} {record.name}:{record.lineno} - {record.getMessage()}"
+        line = f"{ts}.{ms:03d} {level} {record.name}:{record.lineno} - {record.getMessage()}"
+        if record.exc_info:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
 
 
 class EngineJsonFormatter(logging.Formatter):
@@ -53,6 +56,8 @@ class EngineJsonFormatter(logging.Formatter):
         info = get_trace()
         if info and info.trace_id:
             entry["trace_id"] = info.trace_id
+        if record.exc_info:
+            entry["exception"] = self.formatException(record.exc_info)
         return json.dumps(entry, ensure_ascii=False)
 
 
