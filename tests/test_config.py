@@ -1,17 +1,20 @@
 """AppConfig tests: resources/ convention, -D overrides, ${ENV:default} substitution."""
 
 import os
+from pathlib import Path
+
+import pytest
 
 from mercury_composable import AppConfig
 
 
-def write(path, text):
+def write(path: str, text: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
 
-def test_resources_location_convention(tmp_path, monkeypatch):
+def test_resources_location_convention(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     write(str(tmp_path / "resources" / "application.yml"),
           "application:\n  name: 'demo-app'\nrest:\n  server:\n    port: 8086\n")
     monkeypatch.chdir(tmp_path)
@@ -21,7 +24,7 @@ def test_resources_location_convention(tmp_path, monkeypatch):
     assert config.get("rest.server.port") == 8086
 
 
-def test_properties_format(tmp_path):
+def test_properties_format(tmp_path: Path):
     path = str(tmp_path / "application.properties")
     write(path, "# comment\nrest.server.port=8087\napplication.name=props-app\n")
     config = AppConfig(path=path, argv=[])
@@ -29,7 +32,7 @@ def test_properties_format(tmp_path):
     assert config.get("application.name") == "props-app"
 
 
-def test_d_argument_overrides_win(tmp_path):
+def test_d_argument_overrides_win(tmp_path: Path):
     path = str(tmp_path / "application.yml")
     write(path, "rest:\n  server:\n    port: 8086\n")
     config = AppConfig(path=path, argv=["-Drest.server.port=9999", "-Dnew.key=live"])
@@ -37,7 +40,7 @@ def test_d_argument_overrides_win(tmp_path):
     assert config.get("new.key") == "live"
 
 
-def test_set_is_runtime_override(tmp_path):
+def test_set_is_runtime_override(tmp_path: Path):
     path = str(tmp_path / "application.yml")
     write(path, "some:\n  key: 'original'\n")
     config = AppConfig(path=path, argv=[])
@@ -46,7 +49,7 @@ def test_set_is_runtime_override(tmp_path):
     assert config.get("some.key") == "changed"
 
 
-def test_env_substitution_with_default(tmp_path, monkeypatch):
+def test_env_substitution_with_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     path = str(tmp_path / "application.yml")
     write(path, "peer:\n  url: 'http://127.0.0.1:${PEER_PORT:8085}/api/event'\n"
                 "missing: '${NOT_SET_ANYWHERE}'\n")

@@ -1,6 +1,7 @@
 """Event API host tests: engine-mirrored semantics over real HTTP."""
 
 import asyncio
+from collections.abc import AsyncIterator
 
 import aiohttp
 import msgpack
@@ -9,6 +10,7 @@ from aiohttp import web
 
 from mercury_composable import (
     AppException,
+    Body,
     EventEnvelope,
     FunctionRegistry,
     annotate_trace,
@@ -22,30 +24,31 @@ OCTET = "application/octet-stream"
 def build_registry() -> FunctionRegistry:
     registry = FunctionRegistry()
 
-    async def echo(headers, body):
+    async def echo(headers: dict[str, str], body: Body):
         return {"headers": headers, "body": body}
 
-    def upper(headers, body):  # synchronous handler runs in the executor
+    def upper(headers: dict[str, str], body: Body):  # sync handler runs in the executor
         info = get_trace()
-        return {"text": str(body.get("text", "")).upper(),
+        text = body.get("text", "") if isinstance(body, dict) else ""
+        return {"text": str(text).upper(),
                 "trace_id": info.trace_id if info else None,
                 "cid": info.cid if info else None}
 
-    async def annotated(headers, body):
+    async def annotated(headers: dict[str, str], body: Body):
         annotate_trace("checked", "yes")
         return {"ok": True}
 
-    async def app_error(headers, body):
+    async def app_error(headers: dict[str, str], body: Body):
         raise AppException(400, "missing 'text'")
 
-    async def boom(headers, body):
+    async def boom(headers: dict[str, str], body: Body):
         raise RuntimeError("kaboom")
 
-    async def slow(headers, body):
+    async def slow(headers: dict[str, str], body: Body):
         await asyncio.sleep(5)
         return {"late": True}
 
-    async def secret(headers, body):
+    async def secret(headers: dict[str, str], body: Body):
         return {"secret": True}
 
     registry.register("unit.echo", echo)
@@ -59,7 +62,7 @@ def build_registry() -> FunctionRegistry:
 
 
 @pytest_asyncio.fixture
-async def server_url(aiohttp_server=None):
+async def server_url() -> AsyncIterator[str]:
     server = EventApiServer(build_registry())
     runner = web.AppRunner(server.create_app())
     await runner.setup()
@@ -70,7 +73,8 @@ async def server_url(aiohttp_server=None):
     await runner.cleanup()
 
 
-async def post_event(url: str, event: EventEnvelope, *, ttl="10000", extra=None):
+async def post_event(url: str, event: EventEnvelope, *, ttl: str = "10000",
+                     extra: dict[str, str] | None = None) -> tuple[int, EventEnvelope]:
     headers = {"content-type": OCTET, "x-ttl": ttl}
     headers.update(extra or {})
     async with (
@@ -80,7 +84,7 @@ async def post_event(url: str, event: EventEnvelope, *, ttl="10000", extra=None)
         return response.status, EventEnvelope.from_bytes(await response.read())
 
 
-async def test_rpc_success_with_exec_time(server_url):
+async def test_rpc_success_with_exec_time(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(to="unit.echo", body={"a": 1}))
     assert status == 200
     assert reply.get_status() == 200
@@ -89,7 +93,7 @@ async def test_rpc_success_with_exec_time(server_url):
     assert reply.exec_time is not None and reply.exec_time >= 0
 
 
-async def test_sync_handler_sees_trace_context(server_url):
+async def test_sync_handler_sees_trace_context(server_url: str):
     event = EventEnvelope(to="unit.upper", body={"text": "hello"})
     event.set_trace("trace-100", "TEST /upper").set_correlation_id("cid-9")
     status, reply = await post_event(server_url, event)
@@ -97,7 +101,7 @@ async def test_sync_handler_sees_trace_context(server_url):
     assert reply.body == {"text": "HELLO", "trace_id": "trace-100", "cid": "cid-9"}
 
 
-async def test_reserved_header_hygiene_and_my_cid_injection(server_url):
+async def test_reserved_header_hygiene_and_my_cid_injection(server_url: str):
     event = EventEnvelope(to="unit.echo", body={})
     event.set_header("x-event-api", "callback").set_header("my_secret", "x")
     event.set_header("content-type", "application/json")
@@ -110,12 +114,12 @@ async def test_reserved_header_hygiene_and_my_cid_injection(server_url):
     assert delivered["content-type"] == "application/json"
 
 
-async def test_annotations_ride_the_reply(server_url):
+async def test_annotations_ride_the_reply(server_url: str):
     _, reply = await post_event(server_url, EventEnvelope(to="unit.annotated", body={}))
     assert reply.annotations == {"checked": "yes"}
 
 
-async def test_app_exception_is_portable_error_on_http_200(server_url):
+async def test_app_exception_is_portable_error_on_http_200(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(to="unit.app.error", body={}))
     assert status == 200  # handler-level errors ride HTTP 200, engine-style
     assert reply.get_status() == 400
@@ -123,7 +127,7 @@ async def test_app_exception_is_portable_error_on_http_200(server_url):
     assert reply.stack is None
 
 
-async def test_unexpected_exception_maps_to_500_with_stack(server_url):
+async def test_unexpected_exception_maps_to_500_with_stack(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(to="unit.boom", body={}))
     assert status == 200
     assert reply.get_status() == 500
@@ -132,26 +136,26 @@ async def test_unexpected_exception_maps_to_500_with_stack(server_url):
     assert "RuntimeError" in reply.stack
 
 
-async def test_unknown_route_404(server_url):
+async def test_unknown_route_404(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(to="no.where", body={}))
     assert status == 404
     assert reply.get_status() == 404
     assert reply.body == "Route no.where not found"
 
 
-async def test_private_route_403(server_url):
+async def test_private_route_403(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(to="unit.secret", body={}))
     assert status == 403
     assert reply.body == "unit.secret is private"
 
 
-async def test_missing_routing_path_400(server_url):
+async def test_missing_routing_path_400(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(body={"x": 1}))
     assert status == 400
     assert reply.body == "Missing routing path"
 
 
-async def test_compact_request_rejected_400(server_url):
+async def test_compact_request_rejected_400(server_url: str):
     compact = msgpack.packb({"0": "e1", "T": "unit.echo"}, use_bin_type=True)
     async with (
         aiohttp.ClientSession() as session,
@@ -164,7 +168,7 @@ async def test_compact_request_rejected_400(server_url):
     assert "standard" in str(reply.body)
 
 
-async def test_timeout_408_mirrors_engine_message(server_url):
+async def test_timeout_408_mirrors_engine_message(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(to="unit.slow", body={}),
                                      ttl="1000")
     assert status == 408
@@ -172,7 +176,7 @@ async def test_timeout_408_mirrors_engine_message(server_url):
     assert reply.body == "Timeout for 1000 ms"
 
 
-async def test_async_drop_n_forget_202_ack(server_url):
+async def test_async_drop_n_forget_202_ack(server_url: str):
     status, reply = await post_event(server_url, EventEnvelope(to="unit.echo", body={}),
                                      extra={"x-async": "true"})
     assert status == 202
@@ -182,7 +186,7 @@ async def test_async_drop_n_forget_202_ack(server_url):
     assert "time" in reply.body
 
 
-async def test_health_endpoint(server_url):
+async def test_health_endpoint(server_url: str):
     async with (
         aiohttp.ClientSession() as session,
         session.get(f"{server_url}/health") as response,
