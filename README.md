@@ -127,6 +127,37 @@ Log lines follow the Java reference engine's pattern for one-aggregation consist
 2026-08-22 10:15:30.123 INFO  my_app:42 - Loaded PUBLIC hello.python, instances=10
 ```
 
+## Actuator endpoints
+
+The host serves the engines' operational endpoints on the same port as `/api/event`, so
+Kubernetes probes and dashboards treat a Python app exactly like a Java or Rust engine app:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /info` | app identity, runtime, origin id, start time, uptime |
+| `GET /info/routes` | registered routes split by visibility, with instance counts |
+| `GET /env` | selected environment variables and configuration parameters |
+| `GET /health` | dependency health checks — `UP` (HTTP 200) or `DOWN` (HTTP 400) |
+| `GET /livenessprobe` | `OK` while the last health outcome was good, else HTTP 400 |
+
+Configuration keys carry the engines' names: `info.app.version`, `info.app.description`,
+`show.env.variables` and `show.application.properties` (opt-in lists — secrets are never
+dumped wholesale), and `mandatory.health.dependencies` / `optional.health.dependencies`
+(routes of health-check functions; optional ones never change the overall status). A
+health-check function is a normal registered function — usually private — speaking the
+engines' interface contract, called through the event bus:
+
+```python
+@preload("demo.health", private=True)
+async def health(headers: dict[str, str], _body: Body) -> Body:
+    if headers.get("type") == "info":
+        return {"service": "demo.service", "href": "http://127.0.0.1"}
+    return "demo.service is running fine"   # a non-200 reply marks it down
+```
+
+Kubernetes wiring: point `livenessProbe` at `/livenessprobe` and `readinessProbe` at
+`/health`.
+
 ## Wire compatibility
 
 The codec implements the

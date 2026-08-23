@@ -59,5 +59,17 @@ async def chain(_headers: dict[str, str], body: Body):
     return reply.body
 
 
+@preload(route="demo.health", instances=5, private=True)
+async def health_check(headers: dict[str, str], _body: Body):
+    """Health check speaking the engines' interface contract (type=info / type=health).
+
+    Activate it for the /health actuator endpoint:
+    mercury-serve examples/demo_app.py -Dmandatory.health.dependencies=demo.health
+    """
+    if headers.get("type") == "info":
+        return {"service": "demo.service", "href": "http://127.0.0.1"}
+    return "demo.service is running fine"
+
+
 if __name__ == "__main__":
     platform.run()

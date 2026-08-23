@@ -16,12 +16,16 @@ Behavior mirrors the Java engine's EventApiService:
   guard) and transported ``my_*`` keys are removed from the handler's header
   view; the ``my_cid`` tag is injected as the read-only ``my_correlation_id``
   header, per the wire-format contract.
+- The host also serves the engines' actuator endpoints (``/info``,
+  ``/info/routes``, ``/env``, ``/health``, ``/livenessprobe``) for
+  operations and Kubernetes probes - see :mod:`mercury_composable.actuator`.
 """
 
 from __future__ import annotations
 
 from aiohttp import web
 
+from .actuator import Actuator
 from .bus import DeliveryTimeout
 from .config import app_config
 from .envelope import EventEnvelope
@@ -57,6 +61,7 @@ class EventApiServer:
 
     def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
+        self.actuator = Actuator(self.registry)
 
     async def handle_event(self, request: web.Request) -> web.Response:
         raw = await request.read()
@@ -95,16 +100,14 @@ class EventApiServer:
                  event.to, reply.get_status(), reply.exec_time, event.trace_id)
         return web.Response(status=200, body=reply.to_bytes(), content_type=OCTET_STREAM)
 
-    # aiohttp handlers must be coroutines - async is the framework contract
-    # even though this one has nothing to await
-    @staticmethod
-    async def handle_health(_request: web.Request) -> web.Response:
-        return web.Response(text="OK")
-
     def create_app(self) -> web.Application:
         app = web.Application(client_max_size=16 * 1024 * 1024)
         app.router.add_post("/api/event", self.handle_event)
-        app.router.add_get("/health", self.handle_health)
+        app.router.add_get("/info", self.actuator.handle_info)
+        app.router.add_get("/info/routes", self.actuator.handle_routes)
+        app.router.add_get("/env", self.actuator.handle_env)
+        app.router.add_get("/health", self.actuator.handle_health)
+        app.router.add_get("/livenessprobe", self.actuator.handle_livenessprobe)
         return app
 
 

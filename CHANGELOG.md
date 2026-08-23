@@ -2,6 +2,13 @@
 
 ## 0.1.0 (unreleased)
 
+- Actuator endpoints `/info`, `/info/routes`, `/env`, `/health` and `/livenessprobe` -
+  the engines' operational surface, for Kubernetes probes and one-dashboard monitoring
+  of polyglot installations. Health-check functions are normal registered functions
+  speaking the engines' `type=info` / `type=health` interface contract, listed in
+  `mandatory.health.dependencies` / `optional.health.dependencies` and called through
+  the event bus. `/health` answers `UP` (200) / `DOWN` (400); `/livenessprobe` follows
+  the most recent health outcome.
 - Primitive in-process event bus - the single dispatch pipeline: one FIFO mailbox per
   route consumed by `instances` worker tasks (the parameter is faithful); RPC deliveries
   are ttl-bounded with a dead-work skip; drop-n-forget returns the 202-shape ack. The

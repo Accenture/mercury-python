@@ -187,10 +187,12 @@ async def test_async_drop_n_forget_202_ack(server_url: str):
     assert "time" in reply.body
 
 
-async def test_health_endpoint(server_url: str):
-    async with (
-        aiohttp.ClientSession() as session,
-        session.get(f"{server_url}/health") as response,
-    ):
-        assert response.status == 200
-        assert await response.text() == "OK"
+async def test_actuator_endpoints_are_wired(server_url: str):
+    # shapes are pinned in test_actuator.py - this pins the host wiring only
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{server_url}/livenessprobe") as response:
+            assert response.status == 200
+            assert await response.text() == "OK"
+        async with session.get(f"{server_url}/info") as response:
+            assert response.status == 200
+            assert (await response.json())["runtime"]["language"] == "python"
