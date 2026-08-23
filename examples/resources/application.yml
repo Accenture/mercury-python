@@ -1,0 +1,22 @@
+# Sample configuration - the engines' "resources" convention.
+# mercury-serve loads resources/application.yml from the working directory, or from
+# the resources folder next to the application file (this one). Any key can be
+# overridden at run time with the engines' -D syntax, e.g.:
+#   mercury-serve examples/demo_app.py -Drest.server.port=8090 -Dlog.format=compact
+
+application.name: 'demo-app'
+info.app.description: 'Mercury Composable polyglot demo'
+
+rest.server.port: 8086
+
+# text (default) | json (pretty-printed) | compact (single-line JSONL)
+log.format: text
+log.level: INFO
+
+# Actuator /health dependencies - routes of health check functions speaking the
+# engines' type=info / type=health contract (demo.health in demo_app.py).
+mandatory.health.dependencies: 'demo.health'
+
+# Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
+show.env.variables: 'LOG_LEVEL'
+show.application.properties: 'application.name, rest.server.port'

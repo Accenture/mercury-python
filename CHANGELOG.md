@@ -9,6 +9,10 @@
   `mandatory.health.dependencies` / `optional.health.dependencies` and called through
   the event bus. `/health` answers `UP` (200) / `DOWN` (400); `/livenessprobe` follows
   the most recent health outcome.
+- `log.format` carries the engines' three presentations: `text` (default), `json`
+  (pretty-printed) and `compact` (single-line JSONL for log aggregators). A sample
+  `examples/resources/application.yml` demonstrates the resources convention and the
+  well-known keys.
 - Primitive in-process event bus - the single dispatch pipeline: one FIFO mailbox per
   route consumed by `instances` worker tasks (the parameter is faithful); RPC deliveries
   are ttl-bounded with a dead-work skip; drop-n-forget returns the 202-shape ack. The

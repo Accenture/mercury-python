@@ -13,9 +13,10 @@ Example::
 - The level comes from the ``LOG_LEVEL`` environment variable when set
   (mirroring the engines), else the ``log.level`` configuration key,
   else INFO.
-- ``log.format=json`` switches to one JSON object per line with the same
-  information (time, level, logger, message, and trace_id when a trace
-  context is active).
+- ``log.format`` carries the engines' three presentations: ``text``
+  (default), ``json`` (pretty-printed JSON with time, level, logger,
+  message, and trace_id when a trace context is active) and ``compact``
+  (the same object on a single line - JSONL - for log aggregators).
 """
 
 from __future__ import annotations
@@ -43,6 +44,12 @@ class EngineTextFormatter(logging.Formatter):
 
 
 class EngineJsonFormatter(logging.Formatter):
+    """Engine JSON presentations: json = pretty-printed, compact = one line (JSONL)."""
+
+    def __init__(self, *, compact: bool = False):
+        super().__init__()
+        self._indent = None if compact else 2
+
     def format(self, record: logging.LogRecord) -> str:
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.created))
         entry = {
@@ -58,7 +65,7 @@ class EngineJsonFormatter(logging.Formatter):
             entry["trace_id"] = info.trace_id
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
-        return json.dumps(entry, ensure_ascii=False)
+        return json.dumps(entry, ensure_ascii=False, indent=self._indent)
 
 
 def _setup() -> None:
@@ -69,7 +76,10 @@ def _setup() -> None:
     level_name = os.environ.get("LOG_LEVEL") or str(config.get("log.level", "INFO"))
     log_format = str(config.get("log.format", "text")).lower()
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(EngineJsonFormatter() if log_format == "json" else EngineTextFormatter())
+    if log_format in ("json", "compact"):
+        handler.setFormatter(EngineJsonFormatter(compact=log_format == "compact"))
+    else:
+        handler.setFormatter(EngineTextFormatter())
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(handler)

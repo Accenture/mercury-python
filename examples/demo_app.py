@@ -1,7 +1,11 @@
 """
 Demo polyglot functions.
 
-Run:  mercury-serve examples/demo_app.py --port 8086
+Run:  mercury-serve examples/demo_app.py
+
+Configuration comes from examples/resources/application.yml (the engines'
+"resources" convention - port 8086, the demo.health dependency, log format);
+override any key with -Dkey=value, e.g. -Drest.server.port=8090.
 
 Then map a route from a Mercury engine application (event-over-http.yaml):
 
@@ -63,8 +67,8 @@ async def chain(_headers: dict[str, str], body: Body):
 async def health_check(headers: dict[str, str], _body: Body):
     """Health check speaking the engines' interface contract (type=info / type=health).
 
-    Activate it for the /health actuator endpoint:
-    mercury-serve examples/demo_app.py -Dmandatory.health.dependencies=demo.health
+    Activated for the /health actuator endpoint by mandatory.health.dependencies
+    in examples/resources/application.yml (or a -D override).
     """
     if headers.get("type") == "info":
         return {"service": "demo.service", "href": "http://127.0.0.1"}

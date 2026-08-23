@@ -33,3 +33,15 @@ def test_json_formatter_carries_exception():
     assert entry["logger"] == "unit.test:42"
     assert entry["message"] == "Async event demo.route failed"
     assert "RuntimeError: boom-x" in entry["exception"]
+
+
+def test_json_is_pretty_and_compact_is_jsonl():
+    import json
+
+    record = _record_with_exception()
+    pretty = EngineJsonFormatter().format(record)
+    compact = EngineJsonFormatter(compact=True).format(record)
+    # engine presentations: json = pretty-printed, compact = single line (JSONL)
+    assert "\n" in pretty
+    assert "\n" not in compact
+    assert json.loads(pretty) == json.loads(compact)  # same information, two renderings
