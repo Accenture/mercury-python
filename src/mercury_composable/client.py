@@ -27,6 +27,21 @@ _W3C_TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
 _W3C_SPAN_ID = re.compile(r"^[0-9a-f]{16}$")
 
 
+def _build_event(route: str, body: Any, headers: dict[str, str] | None,
+                 from_route: str | None, cid: str | None) -> EventEnvelope:
+    """Build the outbound envelope, inheriting the current trace context."""
+    event = EventEnvelope(to=route, body=body, headers=headers or {})
+    if from_route:
+        event.set_from(from_route)
+    info = get_trace()
+    if info and info.trace_id:
+        event.set_trace(info.trace_id, info.trace_path or route)
+    effective_cid = cid or (info.cid if info else None)
+    if effective_cid:
+        event.set_correlation_id(effective_cid)
+    return event
+
+
 class PostOffice:
     """Event-over-HTTP client for calling functions on peer applications."""
 
@@ -36,10 +51,13 @@ class PostOffice:
         self.security_headers = dict(security_headers or {})
         self._session: aiohttp.ClientSession | None = None
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
+    def _get_session(self) -> aiohttp.ClientSession:
+        # called from the running event loop only (inside request/send)
+        session = self._session
+        if session is None or session.closed:
+            session = aiohttp.ClientSession()
+            self._session = session
+        return session
 
     async def close(self) -> None:
         if self._session is not None and not self._session.closed:
@@ -73,19 +91,6 @@ class PostOffice:
                 headers["traceparent"] = f"00-{event.trace_id}-{event.span_id}-01"
         return headers
 
-    def _build_event(self, route: str, body: Any, headers: dict[str, str] | None,
-                     from_route: str | None, cid: str | None) -> EventEnvelope:
-        event = EventEnvelope(to=route, body=body, headers=headers or {})
-        if from_route:
-            event.set_from(from_route)
-        info = get_trace()
-        if info and info.trace_id:
-            event.set_trace(info.trace_id, info.trace_path or route)
-        effective_cid = cid or (info.cid if info else None)
-        if effective_cid:
-            event.set_correlation_id(effective_cid)
-        return event
-
     async def _call(self, route: str, body: Any, headers: dict[str, str] | None,
                     timeout_ms: int, endpoint: str | None, is_async: bool,
                     from_route: str | None, cid: str | None) -> EventEnvelope:
@@ -93,8 +98,8 @@ class PostOffice:
         if not url:
             raise ValueError("Missing event endpoint - "
                              "e.g. PostOffice(endpoint='http://peer:8085/api/event')")
-        event = self._build_event(route, body, headers, from_route, cid)
-        session = await self._get_session()
+        event = _build_event(route, body, headers, from_route, cid)
+        session = self._get_session()
         # +100 ms cushion so the HTTP client does not time out before the target
         client_timeout = aiohttp.ClientTimeout(total=(max(100, timeout_ms) + 100) / 1000)
         async with session.post(url, data=event.to_bytes(),
