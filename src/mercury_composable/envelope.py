@@ -154,7 +154,7 @@ class EventEnvelope:
     @classmethod
     def from_map(cls, data: dict[str, Any]) -> EventEnvelope:
         event = cls()
-        raw_id = data.get(_ID)
+        raw_id: Any = data.get(_ID)
         if raw_id is not None:
             event.id = str(raw_id)
         event.to = data.get(_TO)
@@ -164,17 +164,17 @@ class EventEnvelope:
         event.trace_id = data.get(_TRACE_ID)
         event.trace_path = data.get(_TRACE_PATH)
         event.span_id = data.get(_SPAN_ID)
-        raw_status = data.get(_STATUS)
+        raw_status: Any = data.get(_STATUS)
         if raw_status is not None:
             event.status = int(raw_status)
         raw_headers = data.get(_HEADERS)
         if isinstance(raw_headers, dict):
             event.headers = {str(k): str(v) for k, v in raw_headers.items()}
         event.body = data.get(_BODY)
-        raw_exec_time = data.get(_EXEC_TIME)
+        raw_exec_time: Any = data.get(_EXEC_TIME)
         if raw_exec_time is not None:
             event.exec_time = float(raw_exec_time)
-        raw_round_trip = data.get(_ROUND_TRIP)
+        raw_round_trip: Any = data.get(_ROUND_TRIP)
         if raw_round_trip is not None:
             event.round_trip = float(raw_round_trip)
         raw_tags = data.get(_TAGS)
