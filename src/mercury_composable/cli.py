@@ -25,10 +25,15 @@ def main() -> int:
                         help="Configuration file (default: resources/application.yml|properties)")
     # -Dkey=value runtime overrides are consumed by AppConfig from sys.argv
     args, _unknown = parser.parse_known_args()
+    # argparse Namespace attributes are untyped - pin the types at the boundary
+    app_arg: str = args.app
+    port_arg: int | None = args.port
+    host_arg: str = args.host
+    config_arg: str | None = args.config
 
     from .config import DEFAULT_CANDIDATES, load_config
-    app_path = os.path.abspath(args.app)
-    config_path = args.config
+    app_path = os.path.abspath(app_arg)
+    config_path: str | None = config_arg
     if config_path is None and not any(os.path.isfile(c) for c in DEFAULT_CANDIDATES):
         # fall back to a resources folder next to the application file
         app_dir = os.path.dirname(app_path)
@@ -56,7 +61,7 @@ def main() -> int:
         print("No functions registered - use @preload(route=..., instances=...)",
               file=sys.stderr)
         return 1
-    platform.run(port=args.port, host=args.host)
+    platform.run(port=port_arg, host=host_arg)
     return 0
 
 

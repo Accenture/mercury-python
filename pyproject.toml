@@ -27,13 +27,34 @@ Homepage = "https://github.com/Accenture/mercury-python"
 Documentation = "https://accenture.github.io/mercury-composable"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.9"]
 
 [project.scripts]
 mercury-serve = "mercury_composable.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mercury_composable"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# the agent-skills layer is tool-managed by agent-memory (overwritten on upgrade);
+# style fixes for it belong upstream, not here
+extend-exclude = ["agent-skills"]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.basedpyright]
+# standard mode plus the contract-relevant strictness: every function parameter
+# is annotated, unit tests included (the wire contract is typed - Body,
+# dict[str, str]); the reportUnknown* warning family of the editor's
+# "recommended" mode is deliberately not chased. agent-skills is tool-managed
+# by agent-memory and excluded.
+typeCheckingMode = "standard"
+reportMissingParameterType = "error"
+include = ["src", "examples", "tests"]
+exclude = ["agent-skills", ".venv"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

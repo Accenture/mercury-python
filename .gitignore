@@ -9,6 +9,7 @@ build/
 .mypy_cache/
 .ruff_cache/
 uv.lock
+.idea/
 .DS_Store
 
 # === agent-memory: AI infrastructure (personal / per-machine — do not commit) ===

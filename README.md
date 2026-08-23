@@ -26,10 +26,10 @@ graph task calls a Python function exactly as if it were local.
 
 ```python
 # app.py
-from mercury_composable import AppException, platform, preload
+from mercury_composable import AppException, Body, platform, preload
 
 @preload(route="hello.python", instances=10)
-def handle_event(headers: dict, body):
+def handle_event(headers: dict[str, str], body: Body):
     if not isinstance(body, dict) or "text" not in body:
         raise AppException(400, "missing 'text'")
     return {"text": str(body["text"]).upper(), "language": "python"}
@@ -66,7 +66,7 @@ now executes the Python function, with trace context carried end to end.
 ## The function contract
 
 A handler receives the same two-part input as an engine `TypedLambdaFunction` —
-`(headers: dict, body)` — and returns the reply body (or an `EventEnvelope` for full
+`(headers: dict[str, str], body: Body)` — `Body` is any MsgPack value — and returns the reply body (or an `EventEnvelope` for full
 control of status and reply headers). `async def` and plain `def` are both supported;
 synchronous handlers run in a thread-pool executor so the event loop never blocks.
 
@@ -75,6 +75,8 @@ synchronous handlers run in a thread-pool executor so the event loop never block
   exception handler or the graph's `error.*` contract.
 - `get_trace()` exposes `trace_id` / `trace_path` / `cid`; `annotate_trace(k, v)` sends an
   annotation back on the reply envelope.
+- Outside a hosted function (batch jobs, tests), `trace_context(trace_id, trace_path)`
+  establishes the context your `PostOffice` calls inherit — the node `runWithTrace` twin.
 - Functions must be stateless; anything you must keep belongs to the caller's flow model
   or state machine.
 
@@ -124,6 +126,19 @@ This package intentionally contains **no event bus, no flows, no graphs and no
 orchestration** — those live in the engines. It provides functions plus the minimalist
 foundation utilities, keeping Python fast to prototype with while the composable core
 guarantees the architecture.
+
+## Development
+
+```bash
+uv venv .venv && uv pip install -e '.[dev]'   # environment (uv-managed python)
+.venv/bin/pytest -q                           # tests
+uvx ruff check .                              # lint (config in pyproject.toml)
+uvx basedpyright                              # type check (config in pyproject.toml)
+```
+
+PyCharm: use interpreter type **uv** pointing at the project `.venv`, and set
+*Settings → Tools → Python Integrated Tools → Package requirements file* to
+`pyproject.toml` so the requirements inspection reads `[project.dependencies]`.
 
 ## License
 

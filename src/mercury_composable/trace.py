@@ -11,26 +11,45 @@ plumbing arguments. Annotations ride back on the reply envelope's
 from __future__ import annotations
 
 import contextvars
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
 class TraceInfo:
-    trace_id: Optional[str] = None
-    trace_path: Optional[str] = None
-    cid: Optional[str] = None
-    annotations: Dict[str, Any] = field(default_factory=dict)
+    trace_id: str | None = None
+    trace_path: str | None = None
+    cid: str | None = None
+    annotations: dict[str, Any] = field(default_factory=dict)
 
 
-_current: contextvars.ContextVar[Optional[TraceInfo]] = contextvars.ContextVar(
+_current: contextvars.ContextVar[TraceInfo | None] = contextvars.ContextVar(
     "mercury_trace", default=None
 )
 
 
-def get_trace() -> Optional[TraceInfo]:
+def get_trace() -> TraceInfo | None:
     """The trace context of the event being handled, if any."""
     return _current.get()
+
+
+@contextmanager
+def trace_context(trace_id: str, trace_path: str,
+                  cid: str | None = None) -> Iterator[TraceInfo]:
+    """Establish a trace context around a block - the node runWithTrace twin.
+
+    Useful for callers outside a hosted function (batch jobs, tests) whose
+    PostOffice calls should carry a trace: the client inherits the context
+    into the outbound envelope.
+    """
+    info = TraceInfo(trace_id=trace_id, trace_path=trace_path, cid=cid)
+    token = _set_trace(info)
+    try:
+        yield info
+    finally:
+        _reset_trace(token)
 
 
 def annotate_trace(key: str, value: Any) -> None:
@@ -40,9 +59,9 @@ def annotate_trace(key: str, value: Any) -> None:
         info.annotations[str(key)] = value
 
 
-def _set_trace(info: Optional[TraceInfo]) -> contextvars.Token:
+def _set_trace(info: TraceInfo | None) -> contextvars.Token[TraceInfo | None]:
     return _current.set(info)
 
 
-def _reset_trace(token: contextvars.Token) -> None:
+def _reset_trace(token: contextvars.Token[TraceInfo | None]) -> None:
     _current.reset(token)

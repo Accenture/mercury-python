@@ -24,13 +24,12 @@ import asyncio
 import contextvars
 import time
 import traceback
-from typing import Optional
 
 from aiohttp import web
 
 from .config import app_config
 from .envelope import EventEnvelope, iso_utc
-from .exceptions import AppException, CompactFormatError
+from .exceptions import AppException
 from .log import get_logger
 from .registry import FunctionRegistry, ServiceDef, default_registry
 from .trace import TraceInfo, _reset_trace, _set_trace
@@ -50,7 +49,7 @@ def _transport_error(status: int, message: str) -> web.Response:
     return web.Response(status=status, body=reply.to_bytes(), content_type=OCTET_STREAM)
 
 
-def _handler_headers(event: EventEnvelope) -> dict:
+def _handler_headers(event: EventEnvelope) -> dict[str, str]:
     headers = {k: v for k, v in event.headers.items()
                if k.lower() != X_EVENT_API and not k.lower().startswith("my_")}
     my_cid = event.tags.get(MY_CID_TAG)
@@ -60,9 +59,9 @@ def _handler_headers(event: EventEnvelope) -> dict:
 
 
 class EventApiServer:
-    def __init__(self, registry: Optional[FunctionRegistry] = None):
+    def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
-        self._semaphores: dict = {}
+        self._semaphores: dict[str, asyncio.Semaphore] = {}
 
     def _semaphore(self, service: ServiceDef) -> asyncio.Semaphore:
         semaphore = self._semaphores.get(service.route)
@@ -72,7 +71,7 @@ class EventApiServer:
         return semaphore
 
     async def _invoke(self, service: ServiceDef, event: EventEnvelope,
-                      headers: dict) -> EventEnvelope:
+                      headers: dict[str, str]) -> EventEnvelope:
         """Run the handler under its trace context and shape the outcome as a reply."""
         info = TraceInfo(trace_id=event.trace_id, trace_path=event.trace_path, cid=event.cid)
         token = _set_trace(info)
@@ -83,15 +82,17 @@ class EventApiServer:
                     result = await service.handler(headers, event.body)
                 else:
                     # copy_context() carries the trace contextvar into the executor thread
-                    call = contextvars.copy_context().run
+                    context = contextvars.copy_context()
                     result = await asyncio.get_running_loop().run_in_executor(
-                        None, call, service.handler, headers, event.body)
+                        None, lambda: context.run(service.handler, headers, event.body))
             reply = result if isinstance(result, EventEnvelope) else EventEnvelope(body=result)
         except AppException as e:
             reply = EventEnvelope().set_status(e.status).set_body(e.message)
         except asyncio.CancelledError:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - the host converts ANY handler failure
+            # into the portable error contract (envelope status 500 + message + stack),
+            # mirroring the engines; letting it propagate would drop the reply
             reply = EventEnvelope().set_status(500).set_body(str(e))
             reply.stack = traceback.format_exc(limit=20)
         finally:
@@ -112,7 +113,8 @@ class EventApiServer:
         is_async = request.headers.get(X_ASYNC, "") == "true"
         try:
             event = EventEnvelope.from_bytes(raw)
-        except (CompactFormatError, ValueError) as e:
+        # CompactFormatError is a ValueError - one catch covers the codec errors
+        except ValueError as e:
             return _transport_error(400, str(e))
         if not event.to:
             return _transport_error(400, "Missing routing path")
@@ -139,18 +141,25 @@ class EventApiServer:
                  event.to, reply.get_status(), reply.exec_time, event.trace_id)
         return web.Response(status=200, body=reply.to_bytes(), content_type=OCTET_STREAM)
 
-    def _log_async_outcome(self, route: str):
-        def callback(task: asyncio.Task) -> None:
+    @staticmethod
+    def _log_async_outcome(route: str):
+        def callback(task: asyncio.Task[EventEnvelope]) -> None:
+            # noinspection PyBroadException
             try:
                 reply = task.result()
                 if reply.has_error():
                     log.warning("Async event %s ended with status %d - %s",
                                 route, reply.get_status(), reply.body)
-            except Exception as e:
-                log.error("Async event %s failed - %s", route, e)
+            except Exception:
+                # deliberate log-only sink: a drop-n-forget event has no requester
+                # to answer, so any failure is logged with its traceback, never raised
+                log.exception("Async event %s failed", route)
         return callback
 
-    async def handle_health(self, _request: web.Request) -> web.Response:
+    # aiohttp handlers must be coroutines - async is the framework contract
+    # even though this one has nothing to await
+    @staticmethod
+    async def handle_health(_request: web.Request) -> web.Response:
         return web.Response(text="OK")
 
     def create_app(self) -> web.Application:
@@ -163,10 +172,10 @@ class EventApiServer:
 class Platform:
     """Runs the Event API host for the default (or a given) registry."""
 
-    def __init__(self, registry: Optional[FunctionRegistry] = None):
+    def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
 
-    def run(self, port: Optional[int] = None, host: str = "127.0.0.1") -> None:
+    def run(self, port: int | None = None, host: str = "127.0.0.1") -> None:
         config = app_config()
         app_name = config.get_property("application.name", "application")
         actual_port = int(port if port is not None else config.get("rest.server.port", 8085))

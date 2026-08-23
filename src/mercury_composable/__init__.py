@@ -11,18 +11,36 @@ utilities (configuration, logging, telemetry) shared with the engine style.
 
 from .client import PostOffice
 from .config import AppConfig, app_config, load_config
-from .envelope import EventEnvelope, iso_utc
+from .envelope import Body, EventEnvelope, iso_utc
 from .exceptions import AppException, CompactFormatError
 from .log import get_logger
-from .registry import FunctionRegistry, default_registry, preload
+from .registry import FunctionRegistry, Handler, default_registry, preload
 from .server import EventApiServer, Platform, platform
-from .trace import TraceInfo, annotate_trace, get_trace
+from .trace import TraceInfo, annotate_trace, get_trace, trace_context
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "AppConfig", "AppException", "CompactFormatError", "EventApiServer",
-    "EventEnvelope", "FunctionRegistry", "Platform", "PostOffice", "TraceInfo",
-    "annotate_trace", "app_config", "default_registry", "get_logger",
-    "get_trace", "iso_utc", "load_config", "platform", "preload", "__version__",
+    "AppConfig",
+    "AppException",
+    "Body",
+    "CompactFormatError",
+    "EventApiServer",
+    "EventEnvelope",
+    "FunctionRegistry",
+    "Handler",
+    "Platform",
+    "PostOffice",
+    "TraceInfo",
+    "__version__",
+    "annotate_trace",
+    "app_config",
+    "default_registry",
+    "get_logger",
+    "get_trace",
+    "iso_utc",
+    "load_config",
+    "platform",
+    "preload",
+    "trace_context",
 ]
