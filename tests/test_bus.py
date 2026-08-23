@@ -125,8 +125,8 @@ async def test_trace_chain_through_local_private_sibling(registry: FunctionRegis
     async def entry(_headers: dict[str, str], _body: Body):
         info = get_trace()
         assert info is not None
-        po = PostOffice(registry=registry)
-        inner = await po.request("bus.helper", body={}, timeout_ms=5000)
+        inner_po = PostOffice(registry=registry)
+        inner = await inner_po.request("bus.helper", body={}, timeout_ms=5000)
         assert isinstance(inner.body, dict)
         return {"entry_trace": info.trace_id, **inner.body}
 
