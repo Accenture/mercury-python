@@ -42,6 +42,17 @@ if TYPE_CHECKING:
 
 log = get_logger("mercury.bus")
 
+# The loop hosting the current sync handler - stamped by _execute before the
+# handler is dispatched to the executor thread (copy_context carries it), so
+# PostOffice's sync bridge can submit coroutines back to the right loop.
+_HOST_LOOP: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = \
+    contextvars.ContextVar("mercury_host_loop", default=None)
+
+
+def get_host_loop() -> asyncio.AbstractEventLoop | None:
+    """The event loop hosting the current sync handler (None off-host)."""
+    return _HOST_LOOP.get()
+
 
 class DeliveryTimeout(Exception):
     """An RPC delivery missed its deadline; adapters shape the 408 for their protocol."""
@@ -149,9 +160,15 @@ class EventBus:
             if service.is_async:
                 result = await service.handler(delivery.headers, delivery.body)
             else:
-                # copy_context() carries the trace contextvar into the executor thread
-                context = contextvars.copy_context()
-                result = await asyncio.get_running_loop().run_in_executor(
+                # stamp the host loop (for the PostOffice sync bridge), then let
+                # copy_context() carry trace + loop into the executor thread
+                loop = asyncio.get_running_loop()
+                loop_token = _HOST_LOOP.set(loop)
+                try:
+                    context = contextvars.copy_context()
+                finally:
+                    _HOST_LOOP.reset(loop_token)
+                result = await loop.run_in_executor(
                     None, lambda: context.run(service.handler, delivery.headers,
                                               delivery.body))
             reply = result if isinstance(result, EventEnvelope) else EventEnvelope(body=result)

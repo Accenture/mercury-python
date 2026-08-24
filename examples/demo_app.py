@@ -63,6 +63,17 @@ async def chain(_headers: dict[str, str], body: Body):
     return reply.body
 
 
+@preload(route="hello.sync.chain", instances=10)
+def sync_chain(_headers: dict[str, str], body: Body):
+    """Sync composition: a plain-def handler (the requests/NumPy world) calls a
+    sibling through the sync bridge - blocking its own worker thread only,
+    never the event loop."""
+    from mercury_composable import PostOffice
+
+    reply = PostOffice().request_sync("demo.suffix.helper", body=body, timeout_ms=5000)
+    return reply.body
+
+
 @preload(route="demo.health", instances=5, private=True)
 async def health_check(headers: dict[str, str], _body: Body):
     """Health check speaking the engines' interface contract (type=info / type=health).

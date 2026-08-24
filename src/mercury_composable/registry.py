@@ -5,9 +5,16 @@ Mirrors the engines' PreLoad vocabulary: a function is registered under a
 route name with an instance count (its concurrency limit) and a private flag.
 Handlers take ``(headers: dict[str, str], body)`` — the same two-part input as a
 TypedLambdaFunction — and return the reply body (or an EventEnvelope for full
-control of status and reply headers). Both ``async def`` and plain ``def``
-handlers are supported; synchronous handlers run in the default executor so
-they never block the event loop.
+control of status and reply headers).
+
+Both ``async def`` and plain ``def`` handlers are first-class, because Python
+has two library ecosystems: plain ``def`` wraps the synchronous world
+(``requests``, NumPy/pandas and most ML inference stacks, database drivers)
+and runs in the default executor so a blocking call never stalls the event
+loop — the Python analog of the Java engine's virtual threads; ``async def``
+serves asyncio-native I/O and function composition. Detection is automatic
+(``inspect.iscoroutinefunction``); sync handlers compose siblings via
+``PostOffice.request_sync`` / ``send_sync`` (the sync bridge in client.py).
 """
 
 from __future__ import annotations
