@@ -39,6 +39,7 @@ functions, so the ``type=info`` lookup costs nothing).
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import platform as runtime_platform
 import re
@@ -61,6 +62,38 @@ log = get_logger("mercury.actuator")
 INFO_TIMEOUT_MS = 3000  # engine value for the advisory type=info lookup
 HEALTH_TIMEOUT_MS = 10000  # engine value for the type=health probe
 UNHEALTHY = "Unhealthy. Please check '/health' endpoint."
+
+# The engines' minimal landing page (platform-core public/index.html style);
+# the wrappers embed it - no static file service by design.
+INDEX_HTML = """<!DOCTYPE html>
+<html>
+<body>
+
+<h2>Welcome</h2>
+
+<p><a href="/info">INFO endpoint</a></p>
+<p><a href="/info/routes">Service list</a></p>
+<p><a href="/env">Environment endpoint</a></p>
+<p><a href="/health">Health endpoint</a></p>
+<p><a href="/livenessprobe">Liveness probe</a></p>
+
+</body>
+</html>"""
+
+
+def _pretty(payload: Any) -> str:
+    """The engines' default serializer presentation: pretty-printed JSON."""
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _json_response(payload: dict[str, Any], status: int = 200) -> web.Response:
+    return web.json_response(payload, status=status, dumps=_pretty)
+
+
+def _error_response(status: int, message: str) -> web.Response:
+    """The engines' host-level error shape (SimpleHttpUtility signature)."""
+    return _json_response({"status": status, "message": message, "type": "error"},
+                          status=status)
 
 _SPLIT = re.compile(r"[,\s]+")
 
@@ -138,9 +171,14 @@ class Actuator:
                 "description": self.description}
 
     async def handle(self, request: web.Request) -> web.Response:
-        """The single GET dispatcher (aiohttp handlers must be coroutines):
-        /health awaits its dependency probes; the rest render synchronously."""
+        """The single dispatcher (aiohttp handlers must be coroutines):
+        /health awaits its dependency probes; the rest render synchronously.
+        Unknown paths and non-GET methods answer the engines' error shape."""
+        if request.method != "GET":
+            return _error_response(404, "Resource not found")
         match request.path:
+            case "/":
+                return web.Response(text=INDEX_HTML, content_type="text/html")
             case "/info":
                 return self._info()
             case "/info/routes":
@@ -151,12 +189,12 @@ class Actuator:
                 return await self._health()
             case "/livenessprobe":
                 return self._liveness_probe()
-            case _:  # the router only maps the five paths above here
-                return web.Response(status=404, text="Not found")
+            case _:
+                return _error_response(404, "Resource not found")
 
     def _info(self) -> web.Response:
         now = datetime.now(timezone.utc)
-        return web.json_response({
+        return _json_response({
             "app": self._app_block(),
             "runtime": {
                 "language": "python",
@@ -174,7 +212,7 @@ class Actuator:
         for route, service in sorted(self.registry.routes().items()):
             target = private if service.private else public
             target[route] = service.instances
-        return web.json_response({
+        return _json_response({
             "app": self._app_block(),
             "routing": {"public": public, "private": private},
         })
@@ -185,7 +223,7 @@ class Actuator:
                        for name in _as_list(config.get("show.env.variables"))}
         properties = {name: config.get_property(name) or ""
                       for name in _as_list(config.get("show.application.properties"))}
-        return web.json_response({
+        return _json_response({
             "app": self._app_block(),
             "env": {"environment": environment, "properties": properties},
         })
@@ -204,7 +242,7 @@ class Actuator:
         result["status"] = "UP" if up else "DOWN"
         result["origin"] = app_origin()
         result["name"] = self.app_name
-        return web.json_response(result, status=200 if up else 400)
+        return _json_response(result, status=200 if up else 400)
 
     def _liveness_probe(self) -> web.Response:
         if self.healthy:
