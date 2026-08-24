@@ -20,6 +20,10 @@ Orchestration deliberately stays in the engines. Functions written here are addr
 route name through the engines' declarative `yaml.event.over.http` map, so a flow or a
 graph task calls a Python function exactly as if it were local.
 
+**Documentation:** <https://accenture.github.io/mercury-python/> — including the
+[AI Agent Guide](https://accenture.github.io/mercury-python/guides/ai-agent-guide/)
+for deterministic function generation.
+
 > **Status: pre-release.** This repository was repurposed in August 2026 for the polyglot
 > initiative. The legacy Mercury language-pack implementation remains available in the git
 > history.

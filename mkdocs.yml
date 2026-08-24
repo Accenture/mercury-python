@@ -1,0 +1,126 @@
+site_name: Composable for Python
+site_description: >-
+  Mercury Composable polyglot functions for Python — a lightweight
+  Event-over-HTTP function host and client: write functions here, let the
+  Java/Rust engines orchestrate them from Event Script flows and MiniGraph
+  knowledge graphs.
+site_url: https://accenture.github.io/mercury-python/
+docs_dir: docs
+
+repo_name: Accenture/mercury-python
+repo_url: https://github.com/Accenture/mercury-python
+edit_uri: edit/main/docs/
+
+copyright: >-
+  Apache-2.0 &middot; a Mercury Composable polyglot wrapper — engines:
+  <a href="https://accenture.github.io/mercury-composable/">Java</a> and
+  <a href="https://github.com/Accenture/mercury">Rust</a>.
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/language-python
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  # NOTE: pymdownx.emoji is deliberately NOT enabled (engine convention) -
+  # colon-delimited technical patterns would render as emoji.
+
+plugins:
+  - search:
+      lang: en
+      separator: '[\s\-\.]+'
+
+# Machine-readable artifacts linked from the AI docs, not part of the nav.
+not_in_nav: |
+  llms.txt
+
+validation:
+  nav:
+    omitted_files: info
+  links:
+    not_found: warn
+    absolute_links: ignore
+
+extra_css:
+  - css/extra.css
+
+nav:
+  - Home: index.md
+
+  - Orientation:
+    - Getting Started: guides/getting-started.md
+
+  - Foundations:
+    - Rationale — Externalized Functions: guides/rationale.md
+    - Design — The Wrapper Anatomy: guides/design.md
+
+  - Write functions:
+    - Function Writing Patterns: guides/function-patterns.md
+    - Configuration, Logging & Actuators: guides/config-logging-actuators.md
+    - Testing Your Functions: guides/testing.md
+
+  - Join the engines:
+    - Join an Event Script Flow: guides/join-event-script.md
+    - Join a Knowledge Graph: guides/join-knowledge-graph.md
+
+  - AI:
+    - AI Agent Guide: guides/ai-agent-guide.md
+
+  - Reference:
+    - Configuration Reference: guides/configuration-reference.md
+    - HTTP Surface Reference: guides/http-surface-reference.md
+    - Release Notes: https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md
+    - Contributing: https://github.com/Accenture/mercury-python/blob/main/CONTRIBUTING.md

@@ -1,0 +1,64 @@
+name: ci
+
+# The wrapper's quality gates (pytest, ruff, basedpyright) plus the strict
+# documentation build, then gh-pages publication on push to main - the same
+# verify/deploy split as the engine repo's docs workflow.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'   # the supported floor
+      - name: Install package with dev extras
+        run: pip install -e '.[dev]' basedpyright
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Type check (basedpyright)
+        run: basedpyright
+      - name: Unit tests
+        run: pytest -q
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install MkDocs
+        run: pip install mkdocs-material
+      - name: Build docs (strict)
+        run: mkdocs build --strict
+
+  deploy-docs:
+    # Publish to gh-pages only on push to main or manual dispatch, after both gates pass.
+    if: github.event_name != 'pull_request'
+    needs: [test, docs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: docs-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install MkDocs
+        run: pip install mkdocs-material
+      - name: Build (strict) and deploy to gh-pages
+        run: mkdocs gh-deploy --force --strict
