@@ -154,6 +154,7 @@ Kubernetes probes and dashboards treat a Python app exactly like a Java or Rust 
 
 | Endpoint | Purpose |
 |----------|---------|
+| `GET /` | minimal index page linking the endpoints below |
 | `GET /info` | app identity, runtime, origin id, start time, uptime |
 | `GET /info/routes` | registered routes split by visibility, with instance counts |
 | `GET /env` | selected environment variables and configuration parameters |
@@ -174,6 +175,10 @@ async def health(headers: dict[str, str], _body: Body) -> Body:
         return {"service": "demo.service", "href": "http://127.0.0.1"}
     return "demo.service is running fine"   # a non-200 reply marks it down
 ```
+
+JSON responses are pretty-printed — the engines' default-serializer presentation — and
+unknown paths answer the engines' error shape
+(`{"status": 404, "message": "Resource not found", "type": "error"}`).
 
 Kubernetes wiring: point `livenessProbe` at `/livenessprobe` and `readinessProbe` at
 `/health`.

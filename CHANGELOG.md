@@ -2,6 +2,11 @@
 
 ## 0.1.0 (unreleased)
 
+- Host polish for engine parity: `GET /` serves the engines' minimal index page linking
+  the actuator endpoints (embedded - no static file service by design); actuator JSON
+  responses are pretty-printed (the engines' default-serializer presentation); unknown
+  paths and non-GET methods answer the engines' error shape
+  `{"status": 404, "message": "Resource not found", "type": "error"}`.
 - Sync bridge: `PostOffice.request_sync()` / `send_sync()` let a plain `def` handler
   (the synchronous ecosystem - `requests`, NumPy/ML inference, database drivers) call
   sibling or remote functions - the call runs on the host event loop while only the

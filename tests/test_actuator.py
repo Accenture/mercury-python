@@ -196,3 +196,39 @@ def test_origin_is_stable_and_engine_shaped():
     minted = app_origin()
     assert minted == app_origin()  # minted once per process
     assert re.fullmatch(ORIGIN_SHAPE, minted)
+
+async def test_index_page_lists_actuator_endpoints():
+    async with (
+        actuator_server(FunctionRegistry()) as url,
+        aiohttp.ClientSession() as session,
+        session.get(f"{url}/") as response,
+    ):
+        assert response.status == 200
+        assert response.content_type == "text/html"
+        page = await response.text()
+    for link in ("/info", "/info/routes", "/env", "/health", "/livenessprobe"):
+        assert f'href="{link}"' in page
+
+
+async def test_unknown_path_answers_engine_error_shape():
+    async with actuator_server(FunctionRegistry()) as url:
+        status, body = await get_json(f"{url}/no/such/page")
+        # non-GET on a known path is equally not a resource (engine semantics)
+        async with aiohttp.ClientSession() as session, session.post(f"{url}/info") as response:
+            post_status = response.status
+            post_body = await response.json()
+    assert status == 404
+    assert body == {"status": 404, "message": "Resource not found", "type": "error"}
+    assert post_status == 404
+    assert post_body == {"status": 404, "message": "Resource not found", "type": "error"}
+
+
+async def test_json_responses_are_pretty_printed():
+    # the engines' default serializer presentation (SimpleMapper pretty Gson)
+    async with (
+        actuator_server(FunctionRegistry()) as url,
+        aiohttp.ClientSession() as session,
+        session.get(f"{url}/info") as response,
+    ):
+        text = await response.text()
+    assert text.startswith('{\n  "app": {\n')
