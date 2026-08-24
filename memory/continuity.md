@@ -17,7 +17,7 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-24 | agent: Claude Code (2026-08-24-015208)
+- **last_session:** 2026-08-24 | agent: Claude Code (2026-08-24-152125)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -92,6 +92,17 @@
   <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 
 ## Open Threads
+
+- [x] (P4 docs — **SHIPPED and LIVE 2026-08-24**, same day as plan ratification)
+  **Documentation site "Composable for Python"** — engine Material theme, 13 files
+  incl. the one-page AI agent guide + llms.txt; live at accenture.github.io/mercury-python.
+  [PR #20](https://github.com/Accenture/mercury-python/pull/20) merge `0bc97f7` carrying
+  `a8ebde2` (tree verified, branches deleted); ci.yml maiden run green — the wrapper-CI
+  gap is closed. Lesson: mermaid on a new site verifies structurally against the
+  engine's live pages when the sandbox can't render CDN JS. Remaining P4 = engine
+  repos (polyglot chapter, ADR-0016, interop extension). Relates
+  [[bp-publish-interop-gate]]. origin: 2026-08-24-152125
+  <!-- id: thread-docs-site | created: 2026-08-24 | last_used: 2026-08-24 | uses: 1 | tier: working | origin: 2026-08-24-152125 -->
 
 - [x] (feature — Eric's three loose ends 2026-08-24; **MERGED same day as
   [PR #19](https://github.com/Accenture/mercury-python/pull/19), true merge `035b636`
