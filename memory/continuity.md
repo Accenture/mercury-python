@@ -17,7 +17,7 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-23 | agent: Claude Code (2026-08-23-031558)
+- **last_session:** 2026-08-24 | agent: Claude Code (2026-08-24-015208)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -41,9 +41,11 @@
 
 > Hard constraints that must never change. These never decay (treated as `core`).
 
-- **Wrapper only — no orchestration.** This package intentionally contains no event bus,
-  no flows, no graphs and no orchestration; those live in the Mercury engines. It provides
-  functions plus minimalist foundation utilities (README "Scope").
+- **Wrapper only — no orchestration.** This package intentionally contains no flows, no
+  graphs, no persistence and no pub/sub broadcast; orchestration lives in the Mercury
+  engines. It provides functions, the primitive in-process event bus (route mailboxes +
+  workers — dispatch, not orchestration; ratified 2026-08-23), and minimalist foundation
+  utilities (README "Scope", amended with the bus).
   <!-- id: scope-wrapper-no-orchestration | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: core | origin: 2026-08-22-171555 -->
 - **Standard wire format, proven by shared vectors.** The codec implements the standard
   event-envelope wire format, verified against the golden conformance vectors shared with
@@ -90,6 +92,32 @@
   <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 
 ## Open Threads
+
+- [x] (feature — Eric's three loose ends 2026-08-24; **MERGED same day as
+  [PR #19](https://github.com/Accenture/mercury-python/pull/19), true merge `035b636`
+  carrying `da60593` (tree verified, branches deleted both ends); node twin merged in
+  its quality PR #88**) **Actuator polish: engine-parity index page, pretty
+  JSON, host error shape.** `GET /` = the engines' minimal Welcome page (embedded — no
+  static file service by design); actuator JSON pretty-printed (SimpleMapper default);
+  unknown paths/non-GET → `{"status", "message", "type": "error"}` with
+  `Resource not found` (SimpleHttpUtility signature, Java insertion order). Live-proven
+  byte-symmetric with node. Relates [[thread-actuator-endpoints]].
+  <!-- id: thread-actuator-polish | created: 2026-08-24 | last_used: 2026-08-24 | uses: 1 | tier: working | origin: 2026-08-24-015208 -->
+
+- [x] (feature — Eric's directive 2026-08-24 after ratifying the sync-vs-async design;
+  **MERGED same day as [PR #18](https://github.com/Accenture/mercury-python/pull/18),
+  true merge `1888a48` carrying branch head `af039db` (4 commits: bridge + import hoist
+  + static _run_sync + unshadow); tree verified identical, branches deleted both
+  ends**) **Sync bridge: `PostOffice.request_sync()/send_sync()` from plain-def
+  handlers.** The bus stamps the host loop into a contextvar before dispatching sync
+  handlers; the bridge submits the same coroutines via `run_coroutine_threadsafe`,
+  blocking only the worker thread. Durable subtlety: **contextvars do not cross
+  run_coroutine_threadsafe** — the bridge re-establishes the caller's TraceInfo inside
+  the submitted task (same object), keeping the trace chain unbroken. Teaching errors:
+  on-loop call → "await request() instead"; off-host → use asyncio.run. Rationale docs
+  (requests/NumPy named, virtual-threads analog) in README + registry.py per Eric.
+  4 pins + hello.sync.chain wire proof. Relates [[thread-primitive-event-bus]].
+  <!-- id: thread-sync-bridge | created: 2026-08-24 | last_used: 2026-08-24 | uses: 1 | tier: working | origin: 2026-08-24-004715 -->
 
 - [x] (feature — RATIFIED + IMPLEMENTED + **MERGED 2026-08-23 as
   [PR #17](https://github.com/Accenture/mercury-python/pull/17), true merge `f38ac17`
