@@ -1,8 +1,10 @@
 """Primitive event bus pins: local RPC (public+private), FIFO, workers, deadlines."""
 
 import asyncio
+import threading
 from collections.abc import AsyncIterator
 
+import pytest
 import pytest_asyncio
 
 from mercury_composable import Body, EventEnvelope, FunctionRegistry, PostOffice, trace_context
@@ -153,4 +155,75 @@ async def test_local_send_returns_ack_envelope(registry: FunctionRegistry):
     assert isinstance(ack, EventEnvelope)
     assert ack.get_status() == 202
     assert ack.body["type"] == "async"
+    await asyncio.wait_for(seen.wait(), timeout=5)
+
+
+async def test_sync_handler_composes_via_request_sync(registry: FunctionRegistry):
+    async def helper(_headers: dict[str, str], _body: Body):
+        info = get_trace()
+        assert info is not None
+        return {"helper_trace": info.trace_id, "helper_cid": info.cid}
+
+    def entry(_headers: dict[str, str], body: Body):  # plain def - executor thread
+        entry_po = PostOffice(registry=registry)
+        inner = entry_po.request_sync("bus.sync.helper", body=body, timeout_ms=5000)
+        assert isinstance(inner.body, dict)
+        return {"entry": "sync", **inner.body}
+
+    registry.register("bus.sync.helper", helper, private=True)
+    registry.register("bus.sync.entry", entry)
+    po = PostOffice(registry=registry)
+    with trace_context("trace-sync-1", "TEST /sync", cid="cid-sync-1"):
+        reply = await po.request("bus.sync.entry", body={}, timeout_ms=5000)
+    assert reply.get_status() == 200
+    # the trace chain crosses the executor thread and the bridge unbroken
+    assert reply.body == {"entry": "sync", "helper_trace": "trace-sync-1",
+                          "helper_cid": "cid-sync-1"}
+
+
+async def test_request_sync_refused_on_the_event_loop(registry: FunctionRegistry):
+    po = PostOffice(registry=registry)
+    with pytest.raises(RuntimeError, match="must not be called on the event loop"):
+        po.request_sync("bus.any.where", body={})
+
+
+async def test_request_sync_off_host_teaches(registry: FunctionRegistry):
+    po = PostOffice(registry=registry)
+    caught: list[str] = []
+
+    def bare_thread() -> None:  # no host loop in this thread's context
+        try:
+            po.request_sync("bus.any.where", body={})
+        except RuntimeError as e:
+            caught.append(str(e))
+
+    thread = threading.Thread(target=bare_thread)
+    thread.start()
+    thread.join()
+    assert len(caught) == 1
+    assert caught[0].startswith("No Mercury host event loop in context")
+
+
+async def test_sync_bridge_shapes_envelope_errors_and_ack(registry: FunctionRegistry):
+    seen = asyncio.Event()
+
+    async def sink(_headers: dict[str, str], _body: Body):
+        seen.set()
+
+    def entry(_headers: dict[str, str], _body: Body):
+        entry_po = PostOffice(registry=registry)
+        missing = entry_po.request_sync("bus.no.where", body={}, timeout_ms=1000)
+        ack = entry_po.send_sync("bus.sync.sink", body={"n": 1})
+        return {"missing_status": missing.get_status(), "missing_body": missing.body,
+                "ack_status": ack.get_status()}
+
+    registry.register("bus.sync.sink", sink, private=True)
+    registry.register("bus.sync.errors", entry)
+    po = PostOffice(registry=registry)
+    reply = await po.request("bus.sync.errors", body={}, timeout_ms=5000)
+    assert reply.get_status() == 200
+    # error/ack shaping is identical through the bridge (envelopes, not exceptions)
+    assert reply.body == {"missing_status": 404,
+                          "missing_body": "Route bus.no.where not found",
+                          "ack_status": 202}
     await asyncio.wait_for(seen.wait(), timeout=5)

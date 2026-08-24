@@ -2,6 +2,13 @@
 
 ## 0.1.0 (unreleased)
 
+- Sync bridge: `PostOffice.request_sync()` / `send_sync()` let a plain `def` handler
+  (the synchronous ecosystem - `requests`, NumPy/ML inference, database drivers) call
+  sibling or remote functions - the call runs on the host event loop while only the
+  handler's worker thread blocks; the trace chain rides across unbroken. Calling the
+  bridge from async code, or outside a hosted function, is refused with a teaching
+  error. The sync-vs-async handler rationale is now documented (README and the
+  registry module).
 - Actuator endpoints `/info`, `/info/routes`, `/env`, `/health` and `/livenessprobe` -
   the engines' operational surface, for Kubernetes probes and one-dashboard monitoring
   of polyglot installations. Health check functions are normal registered functions

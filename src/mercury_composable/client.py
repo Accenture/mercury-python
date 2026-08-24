@@ -20,20 +20,31 @@ processing belongs in Event Script and Knowledge Graph on the engines.
 
 The decoded reply envelope is authoritative in both modes: an error rides
 back as a normal envelope with status >= 400 — inspect ``reply.get_status()``.
+
+**Sync bridge**: a plain ``def`` handler runs on an executor thread with no
+event loop of its own, so it cannot ``await``. :meth:`PostOffice.request_sync`
+and :meth:`PostOffice.send_sync` submit the same calls onto the host loop and
+block only the handler's worker thread — never the event loop. The caller's
+trace context rides across the bridge, so the trace chain is unbroken. Calling
+the sync bridge from async code is refused with a teaching error (``await
+request()`` is the async way).
 """
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import re
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 import aiohttp
 
-from .bus import DeliveryTimeout
+from .bus import DeliveryTimeout, get_host_loop
 from .envelope import EventEnvelope
 from .exceptions import AppException
 from .registry import FunctionRegistry, default_registry
-from .trace import get_trace
+from .trace import _reset_trace, _set_trace, get_trace
 
 _W3C_TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
 _W3C_SPAN_ID = re.compile(r"^[0-9a-f]{16}$")
@@ -165,3 +176,67 @@ class PostOffice:
         """Drop-n-forget: returns the peer's 202 delivery acknowledgement envelope."""
         return await self._call(route, body, headers, timeout_ms, endpoint,
                                 True, from_route, cid)
+
+    @staticmethod
+    def _run_sync(factory: Callable[[], Coroutine[Any, Any, EventEnvelope]],
+                  timeout_ms: int) -> EventEnvelope:
+        """Run a PostOffice coroutine from a sync handler's thread on the host loop."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # no loop in this thread - the sync bridge is applicable
+        else:
+            raise RuntimeError(
+                "request_sync()/send_sync() must not be called on the event loop - "
+                "await request()/send() instead")
+        loop = get_host_loop()
+        if loop is None:
+            raise RuntimeError(
+                "No Mercury host event loop in context - the sync bridge works inside "
+                "a hosted sync function; elsewhere use asyncio.run(po.request(...))")
+        info = get_trace()  # carried into this thread by the bus dispatch
+
+        async def bridged() -> EventEnvelope:
+            if info is None:
+                return await factory()
+            # a submitted Task runs in its own context - re-establish the caller's
+            # trace there (the SAME TraceInfo object, so the chain is unbroken)
+            token = _set_trace(info)
+            try:
+                return await factory()
+            finally:
+                _reset_trace(token)
+
+        future = asyncio.run_coroutine_threadsafe(bridged(), loop)
+        try:
+            # inner deadlines already shape 408 envelopes; this outer margin only
+            # guards a wedged path so an executor thread can never hang forever
+            return future.result(timeout=max(100, timeout_ms) / 1000 + 10)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            return EventEnvelope().set_status(408).set_body(f"Timeout for {timeout_ms} ms")
+
+    def request_sync(self, route: str, body: Any = None, *,
+                     headers: dict[str, str] | None = None,
+                     timeout_ms: int = 30000,
+                     endpoint: str | None = None,
+                     from_route: str | None = None,
+                     cid: str | None = None) -> EventEnvelope:
+        """RPC from a plain ``def`` handler: blocks this worker thread only,
+        never the event loop, while the call runs on the host loop."""
+        return self._run_sync(
+            lambda: self.request(route, body, headers=headers, timeout_ms=timeout_ms,
+                                 endpoint=endpoint, from_route=from_route, cid=cid),
+            timeout_ms)
+
+    def send_sync(self, route: str, body: Any = None, *,
+                  headers: dict[str, str] | None = None,
+                  timeout_ms: int = 30000,
+                  endpoint: str | None = None,
+                  from_route: str | None = None,
+                  cid: str | None = None) -> EventEnvelope:
+        """Drop-n-forget from a plain ``def`` handler (see :meth:`request_sync`)."""
+        return self._run_sync(
+            lambda: self.send(route, body, headers=headers, timeout_ms=timeout_ms,
+                              endpoint=endpoint, from_route=from_route, cid=cid),
+            timeout_ms)

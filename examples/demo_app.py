@@ -17,6 +17,7 @@ Then map a route from a Mercury engine application (event-over-http.yaml):
 from mercury_composable import (
     AppException,
     Body,
+    PostOffice,
     annotate_trace,
     get_logger,
     platform,
@@ -57,9 +58,16 @@ async def suffix_helper(_headers: dict[str, str], body: Body):
 @preload(route="hello.chain", instances=10)
 async def chain(_headers: dict[str, str], body: Body):
     """Local composition: a public function calls a private sibling through the bus."""
-    from mercury_composable import PostOffice
-
     reply = await PostOffice().request("demo.suffix.helper", body=body, timeout_ms=5000)
+    return reply.body
+
+
+@preload(route="hello.sync.chain", instances=10)
+def sync_chain(_headers: dict[str, str], body: Body):
+    """Sync composition: a plain-def handler (the requests/NumPy world) calls a
+    sibling through the sync bridge - blocking its own worker thread only,
+    never the event loop."""
+    reply = PostOffice().request_sync("demo.suffix.helper", body=body, timeout_ms=5000)
     return reply.body
 
 

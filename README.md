@@ -69,8 +69,21 @@ now executes the Python function, with trace context carried end to end.
 
 A handler receives the same two-part input as an engine `TypedLambdaFunction` —
 `(headers: dict[str, str], body: Body)` — `Body` is any MsgPack value — and returns the reply body (or an `EventEnvelope` for full
-control of status and reply headers). `async def` and plain `def` are both supported;
-synchronous handlers run in a thread-pool executor so the event loop never blocks.
+control of status and reply headers). **Both `async def` and plain `def` handlers are
+first-class**, because Python has two library ecosystems and a polyglot function must be
+able to wrap either:
+
+- **plain `def`** — for the synchronous world: `requests` (one of the most popular HTTP
+  clients), NumPy/pandas and most ML inference stacks, database drivers. These handlers
+  run in a thread-pool executor, so a blocking call can never stall the event loop that
+  hosts every other function. This is the Python analog of the Java engine's virtual
+  threads: write sequential blocking-style code and the platform makes it safe.
+- **`async def`** — for asyncio-native I/O and for composing sibling functions with
+  `await po.request(...)`.
+
+The style is detected automatically (no flag to set), and trace context, `instances`,
+envelopes and telemetry behave identically in both. Rule of thumb: wrapping a blocking
+library → plain `def`; composing functions or async I/O → `async def`.
 
 - Raise `AppException(status, message)` for intentional errors — it becomes the portable
   error contract on the wire (envelope status + message), handled by the calling flow's
@@ -93,6 +106,11 @@ the engines' semantics for an in-app `po` call:
 - `instances` is faithful: each route has one FIFO mailbox consumed by that many worker
   tasks. RPC waits are bounded by `timeout_ms` (the standard 408 envelope on breach), and
   a queued call whose caller already timed out is skipped, never wastefully executed.
+- **Sync handlers compose too**: `po.request_sync(...)` / `po.send_sync(...)` run the
+  same call on the host loop while blocking only the handler's own worker thread — the
+  trace chain rides across the bridge unbroken. Calling the sync bridge from async code
+  is refused with a teaching error (`await po.request(...)` is the async way), and using
+  it outside a hosted function tells you to use `asyncio.run(po.request(...))` instead.
 - There is **no spill tier and no queue cap** by design: back-pressure belongs to the tier
   that owns recovery — the engines' flows and graphs. A leaf host fails fast by deadline
   instead of hoarding work.
