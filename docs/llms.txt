@@ -1,0 +1,33 @@
+# Composable for Python (mercury-python)
+
+> A lightweight Event-over-HTTP function host and client: write decoupled functions in
+> Python and let Mercury Composable engines (Java, Rust) orchestrate them from Event
+> Script flows and MiniGraph knowledge graphs. Orchestration stays in the engines; this
+> package provides functions plus the engines' operational conventions (configuration,
+> logging, trace, actuators). The engines' documentation lives at
+> https://accenture.github.io/mercury-composable/ (its llms.txt maps the three layers).
+
+> This file is the machine-readable map of this documentation site.
+
+## Start here
+- [Home](https://accenture.github.io/mercury-python/): the three-layer theme and where a Python function sits (a leaf peer over Event-over-HTTP).
+- [AI Agent Guide](https://accenture.github.io/mercury-python/guides/ai-agent-guide/): **start here if you are an AI agent** — the complete authoring grammar on one page: contract, registration, composition, config keys, error rules.
+- [Getting Started](https://accenture.github.io/mercury-python/guides/getting-started/): a running function in five minutes, called from an engine flow.
+
+## Foundations
+- [Rationale](https://accenture.github.io/mercury-python/guides/rationale/): why externalized functions — ecosystem gravity, the Event-over-HTTP seam, why the wrapper owns nothing but functions.
+- [Design](https://accenture.github.io/mercury-python/guides/design/): the anatomy — envelope codec, Event API host, primitive anycast bus (faithful instances/private), PostOffice, actuators — and the minimalist rulings.
+
+## Write functions
+- [Function Writing Patterns](https://accenture.github.io/mercury-python/guides/function-patterns/): the (headers, body) contract, plain-def vs async-def, AppException, trace context, private functions, composition incl. the sync bridge.
+- [Configuration, Logging & Actuators](https://accenture.github.io/mercury-python/guides/config-logging-actuators/): resources convention, -D overrides, three log formats, actuator endpoints, health-function contract, Kubernetes probes.
+- [Testing Your Functions](https://accenture.github.io/mercury-python/guides/testing/): handler tests, fresh-registry bus tests, real-HTTP host tests, golden wire vectors.
+
+## Join the engines
+- [Join an Event Script Flow](https://accenture.github.io/mercury-python/guides/join-event-script/): yaml.event.over.http, the flow task, what the function sees, the exception path.
+- [Join a Knowledge Graph](https://accenture.github.io/mercury-python/guides/join-knowledge-graph/): graph.task to a declarative target (engines >= v4.11.11), deadlines, the error.* contract.
+
+## Reference
+- [Configuration Reference](https://accenture.github.io/mercury-python/guides/configuration-reference/): every well-known key, resolution order, substitution syntax.
+- [HTTP Surface Reference](https://accenture.github.io/mercury-python/guides/http-surface-reference/): /api/event protocol, actuator shapes, error signature, content types.
+- [Release Notes](https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md)

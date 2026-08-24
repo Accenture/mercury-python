@@ -2,6 +2,12 @@
 
 ## 0.1.0 (unreleased)
 
+- Documentation site (mkdocs-material, the engine repo's theme): the three-layer theme
+  reference, rationale/design foundations, function-writing patterns, flow and
+  knowledge-graph join chapters, a one-page AI agent guide with llms.txt, and
+  configuration/HTTP references - published to
+  https://accenture.github.io/mercury-python/ by the new CI workflow, which also runs
+  the three quality gates (pytest, ruff, basedpyright) on every push and pull request.
 - Host polish for engine parity: `GET /` serves the engines' minimal index page linking
   the actuator endpoints (embedded - no static file service by design); actuator JSON
   responses are pretty-printed (the engines' default-serializer presentation); unknown

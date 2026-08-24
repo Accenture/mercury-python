@@ -43,3 +43,6 @@ uv.lock
 .aider.tags.cache*
 review-scratch/
 *.py[cod]
+
+# mkdocs build output
+site/
