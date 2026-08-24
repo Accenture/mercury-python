@@ -165,10 +165,10 @@ async def test_sync_handler_composes_via_request_sync(registry: FunctionRegistry
         return {"helper_trace": info.trace_id, "helper_cid": info.cid}
 
     def entry(_headers: dict[str, str], body: Body):  # plain def - executor thread
-        po = PostOffice(registry=registry)
-        reply = po.request_sync("bus.sync.helper", body=body, timeout_ms=5000)
-        assert isinstance(reply.body, dict)
-        return {"entry": "sync", **reply.body}
+        entry_po = PostOffice(registry=registry)
+        inner = entry_po.request_sync("bus.sync.helper", body=body, timeout_ms=5000)
+        assert isinstance(inner.body, dict)
+        return {"entry": "sync", **inner.body}
 
     registry.register("bus.sync.helper", helper, private=True)
     registry.register("bus.sync.entry", entry)
@@ -204,16 +204,16 @@ async def test_request_sync_off_host_teaches(registry: FunctionRegistry):
     assert caught[0].startswith("No Mercury host event loop in context")
 
 
-async def test_sync_bridge_shapes_envelope_errors_and_acks(registry: FunctionRegistry):
+async def test_sync_bridge_shapes_envelope_errors_and_ack(registry: FunctionRegistry):
     seen = asyncio.Event()
 
     async def sink(_headers: dict[str, str], _body: Body):
         seen.set()
 
     def entry(_headers: dict[str, str], _body: Body):
-        po = PostOffice(registry=registry)
-        missing = po.request_sync("bus.no.where", body={}, timeout_ms=1000)
-        ack = po.send_sync("bus.sync.sink", body={"n": 1})
+        entry_po = PostOffice(registry=registry)
+        missing = entry_po.request_sync("bus.no.where", body={}, timeout_ms=1000)
+        ack = entry_po.send_sync("bus.sync.sink", body={"n": 1})
         return {"missing_status": missing.get_status(), "missing_body": missing.body,
                 "ack_status": ack.get_status()}
 
