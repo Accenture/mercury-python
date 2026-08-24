@@ -177,7 +177,8 @@ class PostOffice:
         return await self._call(route, body, headers, timeout_ms, endpoint,
                                 True, from_route, cid)
 
-    def _run_sync(self, factory: Callable[[], Coroutine[Any, Any, EventEnvelope]],
+    @staticmethod
+    def _run_sync(factory: Callable[[], Coroutine[Any, Any, EventEnvelope]],
                   timeout_ms: int) -> EventEnvelope:
         """Run a PostOffice coroutine from a sync handler's thread on the host loop."""
         try:
