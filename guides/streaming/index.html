@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://accenture.github.io/mercury-python/guides/getting-started/">
+        <link rel="canonical" href="https://accenture.github.io/mercury-python/guides/streaming/">
       
       
-        <link rel="prev" href="../..">
+        <link rel="prev" href="../function-patterns/">
       
       
-        <link rel="next" href="../rationale/">
+        <link rel="next" href="../config-logging-actuators/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Getting Started - Composable for Python</title>
+        <title>Event Streaming - Composable for Python</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#getting-started" class="md-skip">
+        <a href="#event-streaming" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Getting Started
+              Event Streaming
             
           </span>
         </div>
@@ -254,13 +254,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../getting-started/" class="md-tabs__link">
           
   
   
@@ -300,10 +298,12 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../function-patterns/" class="md-tabs__link">
           
   
@@ -460,10 +460,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -473,22 +471,19 @@
     
     
       
-        
-        
-      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   
@@ -506,7 +501,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -521,37 +516,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Getting Started
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
@@ -567,103 +535,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#1-install" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. Install
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-write-a-function" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Write a function
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-configure-the-engines-convention" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Configure (the engines' convention)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-serve-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Serve it
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-call-it-from-an-engine" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        5. Call it from an engine
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#6-or-just-curl-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        6. Or just curl it
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Next
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -801,8 +672,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -818,19 +691,22 @@
     
     
       
+        
+        
+      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
@@ -848,7 +724,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -891,10 +767,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../streaming/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Streaming
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -910,6 +813,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#write-a-streaming-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write a streaming function
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-crosses-the-wire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it crosses the wire
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consume-a-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consume a stream
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compose-a-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compose a relay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1428,10 +1406,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-install" class="md-nav__link">
+  <a href="#write-a-streaming-function" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Install
+        Write a streaming function
       
     </span>
   </a>
@@ -1439,10 +1417,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-write-a-function" class="md-nav__link">
+  <a href="#how-it-crosses-the-wire" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Write a function
+        How it crosses the wire
       
     </span>
   </a>
@@ -1450,10 +1428,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-configure-the-engines-convention" class="md-nav__link">
+  <a href="#consume-a-stream" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Configure (the engines' convention)
+        Consume a stream
       
     </span>
   </a>
@@ -1461,10 +1439,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-serve-it" class="md-nav__link">
+  <a href="#compose-a-relay" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Serve it
+        Compose a relay
       
     </span>
   </a>
@@ -1472,32 +1450,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-call-it-from-an-engine" class="md-nav__link">
+  <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Call it from an engine
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#6-or-just-curl-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        6. Or just curl it
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Next
+        See also
       
     </span>
   </a>
@@ -1524,91 +1480,114 @@
   
 
 
-<h1 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h1>
-<p><em>Guide: from zero to a Python function an engine can orchestrate.</em></p>
+<h1 id="event-streaming">Event Streaming<a class="headerlink" href="#event-streaming" title="Permanent link">&para;</a></h1>
+<p>A function that produces its result progressively — an LLM relay emitting tokens, a
+long-running job reporting progress — should not make its caller wait for the whole
+answer. This chapter is the wrapper's half of the platform-wide streaming contract:
+the same paradigm on all four runtimes (Java, Rust, Python, Node.js):</p>
 <blockquote>
-<p><strong>At a glance</strong></p>
-<ul>
-<li><strong>What</strong> — install the package, write one function, serve it, call it — first with
-  <code>curl</code>, then from a real engine flow.</li>
-<li><strong>Time</strong> — about five minutes.</li>
-</ul>
+<p><strong>The caller provides a reply address; the callee streams events to it until a
+terminal signal.</strong></p>
 </blockquote>
-<h2 id="1-install">1. Install<a class="headerlink" href="#1-install" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Accenture/mercury-python.git
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>mercury-python
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.[dev]'</span>
+<p>Each segment is one event to the caller's <code>reply_to</code>, marked with the reserved
+envelope header <code>x-event-stream: data | eof | exception</code>. A calling engine renders
+the segments out its HTTP edge, hands them to a flow, or relays them onward — your
+Python function neither knows nor cares.</p>
+<h2 id="write-a-streaming-function">Write a streaming function<a class="headerlink" href="#write-a-streaming-function" title="Permanent link">&para;</a></h2>
+<p>A streaming producer is an <strong>interceptor</strong>: it receives the raw <code>EventEnvelope</code>
+(so the caller's reply address travels the engines' way) and replies through
+<code>EventStreamWriter</code> instead of a return value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mercury_composable</span><span class="w"> </span><span class="kn">import</span> <span class="n">EventEnvelope</span><span class="p">,</span> <span class="n">EventStreamWriter</span><span class="p">,</span> <span class="n">preload</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nd">@preload</span><span class="p">(</span><span class="n">route</span><span class="o">=</span><span class="s2">"hello.tokens"</span><span class="p">,</span> <span class="n">instances</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">interceptor</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">stream_tokens</span><span class="p">(</span><span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">event</span><span class="p">:</span> <span class="n">EventEnvelope</span><span class="p">):</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">out</span> <span class="o">=</span> <span class="n">EventStreamWriter</span><span class="o">.</span><span class="n">from_request</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">out</span><span class="o">.</span><span class="n">first</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="s2">"text/event-stream"</span><span class="p">)</span>      <span class="c1"># head control rides the first event</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">out</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"The answer is"</span><span class="p">)</span>               <span class="c1"># data segment</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">out</span><span class="o">.</span><span class="n">write_named</span><span class="p">(</span><span class="s2">"tokens"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="mi">2</span><span class="p">})</span>      <span class="c1"># named (typed) SSE event</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">out</span><span class="o">.</span><span class="n">close</span><span class="p">({</span><span class="s2">"usage"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"tokens"</span><span class="p">:</span> <span class="mi">2</span><span class="p">}})</span>      <span class="c1"># end of transmission + trailing metadata</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="c1"># or out.fail(e)                         # in-band failure</span>
 </code></pre></div>
-<p><em>(Pre-release: the package installs from source until the PyPI release.)</em></p>
-<h2 id="2-write-a-function">2. Write a function<a class="headerlink" href="#2-write-a-function" title="Permanent link">&para;</a></h2>
-<p>A function is a plain handler registered under a <strong>route name</strong> — the only address the
-rest of the system will ever know it by.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># app.py</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mercury_composable</span><span class="w"> </span><span class="kn">import</span> <span class="n">AppException</span><span class="p">,</span> <span class="n">Body</span><span class="p">,</span> <span class="n">platform</span><span class="p">,</span> <span class="n">preload</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nd">@preload</span><span class="p">(</span><span class="n">route</span><span class="o">=</span><span class="s2">"hello.python"</span><span class="p">,</span> <span class="n">instances</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">handle_event</span><span class="p">(</span><span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">body</span><span class="p">:</span> <span class="n">Body</span><span class="p">):</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">body</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">body</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"text"</span><span class="p">),</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="k">raise</span> <span class="n">AppException</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="s2">"missing 'text'"</span><span class="p">)</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">"text"</span><span class="p">:</span> <span class="n">body</span><span class="p">[</span><span class="s2">"text"</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">(),</span> <span class="s2">"language"</span><span class="p">:</span> <span class="s2">"python"</span><span class="p">}</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">platform</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
-</code></pre></div>
-<p>Plain <code>def</code> is fine — blocking code (a <code>requests</code> call, a NumPy computation) runs in a
-thread pool and can never stall the host. <code>async def</code> works too. The
-<a href="../function-patterns/">Function Writing Patterns</a> guide covers when to use which.</p>
-<h2 id="3-configure-the-engines-convention">3. Configure (the engines' convention)<a class="headerlink" href="#3-configure-the-engines-convention" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># resources/application.yml</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">application.name</span><span class="p">:</span><span class="w"> </span><span class="s">'hello-app'</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">rest.server.port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8086</span>
-</code></pre></div>
-<p>Configuration lives in a <code>resources</code> folder, exactly like the engines, and any key can
-be overridden at run time with the engines' <code>-D</code> syntax.</p>
-<h2 id="4-serve-it">4. Serve it<a class="headerlink" href="#4-serve-it" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>mercury-serve<span class="w"> </span>app.py
-</code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>2026-08-24 10:15:30.123 INFO  mercury.server:124 - Loaded PUBLIC hello.python, instances=10
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>2026-08-24 10:15:30.124 INFO  mercury.server:126 - hello-app - Event API service started on port 8086
-</code></pre></div>
-<p>Open <a href="http://127.0.0.1:8086/">http://127.0.0.1:8086/</a> — the host serves the engines' familiar index page, and
-the same actuator endpoints (<code>/info</code>, <code>/health</code>, <code>/livenessprobe</code>, …) your operations
-team already monitors on engine apps.</p>
-<h2 id="5-call-it-from-an-engine">5. Call it from an engine<a class="headerlink" href="#5-call-it-from-an-engine" title="Permanent link">&para;</a></h2>
-<p>One declarative entry in the engine application tells it where the route lives —
-<code>application.properties</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="na">yaml.event.over.http</span><span class="o">=</span><span class="s">classpath:/event-over-http.yaml</span>
-</code></pre></div>
-<p><code>event-over-http.yaml</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">event.http</span><span class="p">:</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">route</span><span class="p">:</span><span class="w"> </span><span class="s">'hello.python'</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">'http://127.0.0.1:8086/api/event'</span>
-</code></pre></div>
-<p>Any Event Script task or MiniGraph <code>graph.task</code> node that names <code>hello.python</code> now
-executes your Python function — trace context, correlation id and error contract
-carried end to end. <a href="../join-event-script/">Join an Event Script Flow</a> walks through a
-complete flow; <a href="../join-knowledge-graph/">Join a Knowledge Graph</a> does the same for a
-graph.</p>
-<h2 id="6-or-just-curl-it">6. Or just curl it<a class="headerlink" href="#6-or-just-curl-it" title="Permanent link">&para;</a></h2>
-<p>The host speaks the engines' Event API protocol (envelope bytes over
-<code>POST /api/event</code>), so the natural ad-hoc client is the package itself:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mercury_composable</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostOffice</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">PostOffice</span><span class="p">(</span><span class="n">endpoint</span><span class="o">=</span><span class="s2">"http://127.0.0.1:8086/api/event"</span><span class="p">)</span> <span class="k">as</span> <span class="n">po</span><span class="p">:</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>        <span class="n">reply</span> <span class="o">=</span> <span class="k">await</span> <span class="n">po</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="s2">"hello.python"</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="p">{</span><span class="s2">"text"</span><span class="p">:</span> <span class="s2">"polyglot"</span><span class="p">},</span> <span class="n">timeout_ms</span><span class="o">=</span><span class="mi">5000</span><span class="p">)</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">reply</span><span class="o">.</span><span class="n">get_status</span><span class="p">(),</span> <span class="n">reply</span><span class="o">.</span><span class="n">body</span><span class="p">)</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>200 {'text': 'POLYGLOT', 'language': 'python'}
-</code></pre></div>
-<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<p>The writer is the engines' exact API. <code>first(status, content_type, ttl_seconds=None)</code>
+declares the response head and, optionally, the idle allowance between segments;
+<code>fail(e)</code> carries the standard error key-values
+<code>'{"type": "error", "status": n, "message": text}'</code>; writes after <code>close()</code>/<code>fail()</code>
+are dropped. Plain-<code>def</code> handlers can stream too — the writer bridges from the
+executor thread back to the host loop.</p>
+<p>An interceptor's return value is never auto-replied. To answer single-shot from an
+interceptor (a relay that sometimes buffers, for example), send a plain envelope to
+<code>event.reply_to</code> yourself. An uncaught exception becomes the standard error envelope
+to the caller — single-shot before the stream starts, in-band after.</p>
+<h2 id="how-it-crosses-the-wire">How it crosses the wire<a class="headerlink" href="#how-it-crosses-the-wire" title="Permanent link">&para;</a></h2>
+<p>When a calling engine (or <code>curl</code>) invokes your streaming function through
+<code>POST /api/event</code> with <code>Accept: text/event-stream</code>, the host answers the same call
+with a Server-Sent Events response in the platform's hybrid dialect:</p>
 <ul>
-<li>The <strong>why</strong>: <a href="../rationale/">Rationale — Externalized Functions</a></li>
-<li>The <strong>how, in depth</strong>: <a href="../function-patterns/">Function Writing Patterns</a></li>
-<li>The <strong>wiring</strong>: <a href="../join-event-script/">Join an Event Script Flow</a></li>
+<li><strong>envelope frames</strong> — the reserved SSE event name <code>envelope</code>, one base64-encoded
+  serialized envelope per frame — carry everything with envelope semantics: the
+  first event (head control), the <code>eof</code>/<code>exception</code> terminals, and any segment that
+  cannot round-trip as plain text (a dict or bytes body, text containing a carriage
+  return, an event name colliding with the reserved word);</li>
+<li><strong>raw SSE frames</strong> carry plain text segments, so token relays stay near-zero
+  overhead.</li>
+</ul>
+<p>Everything degrades explicitly: a caller that did not opt in receives
+<code>406 Streaming function requires a caller that accepts text/event-stream</code> instead of
+a truncated reply; a non-streaming (single-shot) answer over the capable path is
+byte-identical to a normal RPC reply; idle expiry fails the stream in-band with the
+standard 408 error body. The <code>x-ttl</code> request header (ms) is the idle allowance
+between segments — your <code>first(..., ttl_seconds=...)</code> can extend it for the whole
+stream. While the producer is quiet, the host emits <code>: ping</code> keep-alive comments
+(<code>event.stream.keep.alive</code>, the engines' config key — default 30s, <code>0</code> disables).</p>
+<h2 id="consume-a-stream">Consume a stream<a class="headerlink" href="#consume-a-stream" title="Permanent link">&para;</a></h2>
+<p><code>PostOffice.stream()</code> is the consumer surface — an async iterator yielding the same
+decoded envelopes an engine reply route receives: <code>data</code> segments, then the terminal.
+It works against a remote peer's <code>/api/event</code> (an engine or another function host)
+and against local functions alike, and opting in is always safe — a non-streaming
+target simply yields its one classic reply:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mercury_composable</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostOffice</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">async</span> <span class="k">with</span> <span class="n">PostOffice</span><span class="p">()</span> <span class="k">as</span> <span class="n">po</span><span class="p">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="k">async</span> <span class="k">for</span> <span class="n">segment</span> <span class="ow">in</span> <span class="n">po</span><span class="o">.</span><span class="n">stream</span><span class="p">(</span><span class="s2">"hello.tokens"</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>                                   <span class="n">endpoint</span><span class="o">=</span><span class="s2">"http://127.0.0.1:8100/api/event"</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>                                   <span class="n">timeout_ms</span><span class="o">=</span><span class="mi">30000</span><span class="p">):</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="n">marker</span> <span class="o">=</span> <span class="n">segment</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"x-event-stream"</span><span class="p">)</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>        <span class="k">if</span> <span class="n">marker</span> <span class="o">==</span> <span class="s2">"data"</span><span class="p">:</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>            <span class="nb">print</span><span class="p">(</span><span class="n">segment</span><span class="o">.</span><span class="n">body</span><span class="p">)</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="k">elif</span> <span class="n">marker</span> <span class="o">==</span> <span class="s2">"exception"</span><span class="p">:</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">segment</span><span class="o">.</span><span class="n">body</span><span class="p">[</span><span class="s2">"message"</span><span class="p">])</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>        <span class="c1"># eof: segment.body carries the trailing metadata, if any</span>
+</code></pre></div>
+<p><code>timeout_ms</code> is the idle allowance between segments. The consumer guards the dialect
+for you: a malformed frame, a stream that ends without a terminal, or idle expiry
+each yield the standard in-band exception envelope, then the iterator ends.</p>
+<h2 id="compose-a-relay">Compose a relay<a class="headerlink" href="#compose-a-relay" title="Permanent link">&para;</a></h2>
+<p>The pattern the whole streaming program is built on: forward <strong>your own caller's</strong>
+reply address into a call against a remote streaming function, and the segments flow
+<code>engine → your function → remote peer → back to the original caller</code> with no
+buffering anywhere:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nd">@preload</span><span class="p">(</span><span class="n">route</span><span class="o">=</span><span class="s2">"llm.relay"</span><span class="p">,</span> <span class="n">instances</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">interceptor</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">relay</span><span class="p">(</span><span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">event</span><span class="p">:</span> <span class="n">EventEnvelope</span><span class="p">):</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">PostOffice</span><span class="p">()</span> <span class="k">as</span> <span class="n">po</span><span class="p">:</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        <span class="k">await</span> <span class="n">po</span><span class="o">.</span><span class="n">stream_to</span><span class="p">(</span><span class="s2">"remote.tokens"</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>                           <span class="n">reply_to</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">reply_to</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>                           <span class="n">endpoint</span><span class="o">=</span><span class="s2">"http://peer:8085/api/event"</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>                           <span class="n">cid</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">cid</span><span class="p">,</span> <span class="n">timeout_ms</span><span class="o">=</span><span class="mi">30000</span><span class="p">)</span>
+</code></pre></div>
+<p><code>stream_to()</code> forwards every decoded envelope verbatim to the named LOCAL route
+(here, the reply sink the host opened for your caller) and returns the terminal.
+Combined with a calling engine's <code>stream: true</code> endpoint, this streams a remote
+peer's tokens progressively out that engine's HTTP edge — with zero imperative
+streaming code in between.</p>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The engines' HTTP Response Streaming guides (the same contract at the HTTP edge):
+  <a href="https://accenture.github.io/mercury-composable/guides/http-streaming/">Java</a> ·
+  <a href="https://accenture.github.io/mercury/guides/http-streaming/">Rust</a></li>
+<li><a href="../../test-reports/progressive-rendering-interop/">Interop Test Report — Progressive Rendering</a> —
+  the live four-runtime validation of this contract</li>
+<li><a href="../http-surface-reference/">HTTP Surface Reference</a> — the <code>/api/event</code> contract</li>
+<li><a href="../function-patterns/">Function Writing Patterns</a></li>
 </ul>
 
 
@@ -1616,9 +1595,6 @@ graph.</p>
 
 
 
-
-  
-  
 
 
 
@@ -1650,7 +1626,7 @@ graph.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../.." class="md-footer__link md-footer__link--prev" aria-label="Previous: Home">
+          <a href="../function-patterns/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Function Writing Patterns">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1660,20 +1636,20 @@ graph.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Home
+                Function Writing Patterns
               </div>
             </div>
           </a>
         
         
           
-          <a href="../rationale/" class="md-footer__link md-footer__link--next" aria-label="Next: Rationale — Externalized Functions">
+          <a href="../config-logging-actuators/" class="md-footer__link md-footer__link--next" aria-label="Next: Configuration, Logging &amp; Actuators">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Rationale — Externalized Functions
+                Configuration, Logging & Actuators
               </div>
             </div>
             <div class="md-footer__button md-icon">

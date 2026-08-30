@@ -16,7 +16,7 @@
         <link rel="prev" href="../design/">
       
       
-        <link rel="next" href="../config-logging-actuators/">
+        <link rel="next" href="../streaming/">
       
       
         
@@ -685,6 +685,8 @@
       
         
       
+        
+      
     
     
     
@@ -833,10 +835,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#trace-context" class="md-nav__link">
+  <a href="#trace-context-and-span-lineage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Trace context
+        Trace context and span lineage
       
     </span>
   </a>
@@ -869,6 +871,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1166,6 +1196,8 @@
       
         
       
+        
+      
     
     
     
@@ -1254,6 +1286,34 @@
     
   
     HTTP Surface Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-reports/progressive-rendering-interop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interop Test Report — Progressive Rendering
   
 
     
@@ -1390,10 +1450,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#trace-context" class="md-nav__link">
+  <a href="#trace-context-and-span-lineage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Trace context
+        Trace context and span lineage
       
     </span>
   </a>
@@ -1518,18 +1578,43 @@ it would from an engine function. An unexpected exception becomes status 500 wit
 message and a stack trace, mirroring the engines. Handler-level errors always ride
 HTTP 200; only transport-level failures (unknown route, private target, timeout,
 undecodable envelope) surface as HTTP status codes.</p>
-<h2 id="trace-context">Trace context<a class="headerlink" href="#trace-context" title="Permanent link">&para;</a></h2>
-<p>Every delivery runs under its caller's trace:</p>
+<h2 id="trace-context-and-span-lineage">Trace context and span lineage<a class="headerlink" href="#trace-context-and-span-lineage" title="Permanent link">&para;</a></h2>
+<p>Every delivery runs under its caller's trace, and every traced execution mints
+its own <strong>span</strong> with the caller's span as its parent - the engines' exact
+OpenTelemetry lineage model, so a chain like <em>user → engine flow → wrapper
+function (agent, MCP tool) → engine</em> stays one connected trace tree:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mercury_composable</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotate_trace</span><span class="p">,</span> <span class="n">get_trace</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">info</span> <span class="o">=</span> <span class="n">get_trace</span><span class="p">()</span>            <span class="c1"># trace_id, trace_path, cid - or None</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">annotate_trace</span><span class="p">(</span><span class="s2">"model"</span><span class="p">,</span> <span class="s2">"v3"</span><span class="p">)</span> <span class="c1"># rides back on the reply envelope</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">info</span> <span class="o">=</span> <span class="n">get_trace</span><span class="p">()</span>            <span class="c1"># trace_id, trace_path, cid, my_correlation_id,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>                              <span class="c1"># span_id, parent_span_id - or None</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">annotate_trace</span><span class="p">(</span><span class="s2">"model"</span><span class="p">,</span> <span class="s2">"v3"</span><span class="p">)</span> <span class="c1"># rides back on the reply envelope AND the trace record</span>
 </code></pre></div>
-<p>Outside a hosted function (batch jobs, tests), establish context explicitly:</p>
+<p>Outbound calls carry the current span (the receiver's parent), the business
+correlation-id (<code>my_cid</code> tag), and a W3C <code>traceparent</code> header when the trace id
+is W3C-shaped. Non-RPC executions emit the engines' distributed-trace dataset
+on the <code>distributed.tracing</code> log stream - the same
+<code>{"trace": {...}, "annotations": {...}}</code> record the Java engine logs - so a
+stdout log-ingest agent (Dynatrace-style) or any log aggregation stitches the
+span tree across all four runtimes. RPC round-trips fold into the caller's
+view, exactly like the engines.</p>
+<p><strong>Application log context</strong>: with <code>log.format</code> json/compact, every log line a
+function writes inside a traced request carries a <code>context</code> block (the
+engines' app-log-context feature, on by default) - the standard trace context
+(<code>cid</code> = the business correlation-id, <code>traceId</code>, <code>tracePath</code>, <code>spanId</code>,
+<code>parentSpanId</code>, <code>service</code>, <code>timestamp</code>) - so application logs and the
+distributed-trace records correlate in one aggregation. Customize with your
+own <code>resources/app-log-context.yaml</code> (<code>context:</code> section mapping output keys
+to reserved <code>$tokens</code> or constants, <code>${ENV:default}</code> supported), opt out with
+<code>app.log.context=false</code>, and add per-request key-values from a handler with
+<code>update_context("tenant", "acme")</code> (a logging-only sink; reserved keys are
+guarded; <code>None</code> removes).</p>
+<p>Outside a hosted function (batch jobs, tests), establish context explicitly -
+including an external OpenTelemetry span to parent onto:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mercury_composable</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace_context</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">with</span> <span class="n">trace_context</span><span class="p">(</span><span class="s2">"trace-1"</span><span class="p">,</span> <span class="s2">"BATCH /nightly"</span><span class="p">,</span> <span class="n">cid</span><span class="o">=</span><span class="s2">"order-42"</span><span class="p">):</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">reply</span> <span class="o">=</span> <span class="k">await</span> <span class="n">po</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="s2">"my.function"</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">with</span> <span class="n">trace_context</span><span class="p">(</span><span class="s2">"4bf92f3577b34da6a3ce929d0e0e4736"</span><span class="p">,</span> <span class="s2">"BATCH /nightly"</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>                   <span class="n">cid</span><span class="o">=</span><span class="s2">"order-42"</span><span class="p">,</span> <span class="n">span_id</span><span class="o">=</span><span class="s2">"00f067aa0ba902b7"</span><span class="p">):</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">reply</span> <span class="o">=</span> <span class="k">await</span> <span class="n">po</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="s2">"my.function"</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
 </code></pre></div>
 <h2 id="private-functions-and-composition">Private functions and composition<a class="headerlink" href="#private-functions-and-composition" title="Permanent link">&para;</a></h2>
 <p><code>private=True</code> marks a function callable <strong>in-app only</strong> — the HTTP host answers 403
@@ -1616,13 +1701,13 @@ engines' relay contract (octet-stream envelope, <code>x-ttl</code>, trace header
         
         
           
-          <a href="../config-logging-actuators/" class="md-footer__link md-footer__link--next" aria-label="Next: Configuration, Logging &amp; Actuators">
+          <a href="../streaming/" class="md-footer__link md-footer__link--next" aria-label="Next: Event Streaming">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Configuration, Logging & Actuators
+                Event Streaming
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -16,6 +16,8 @@
         <link rel="prev" href="../configuration-reference/">
       
       
+        <link rel="next" href="../../test-reports/progressive-rendering-interop/">
+      
       
         
       
@@ -681,6 +683,8 @@
       
         
       
+        
+      
     
     
     
@@ -741,6 +745,34 @@
     
   
     Function Writing Patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Streaming
   
 
     
@@ -1048,6 +1080,8 @@
       
         
       
+        
+      
     
     
     
@@ -1239,6 +1273,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../test-reports/progressive-rendering-interop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interop Test Report — Progressive Rendering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md" class="md-nav__link">
         
   
@@ -1412,7 +1474,11 @@
 </tr>
 <tr>
 <td>Header hygiene</td>
-<td>inbound <code>x-event-api</code> and <code>my_*</code> removed; the <code>my_cid</code> tag becomes the read-only <code>my_correlation_id</code> header</td>
+<td>inbound <code>x-event-api</code> and <code>my_*</code> removed; the <code>my_cid</code> tag becomes the read-only <code>my_correlation_id</code> header (local bus deliveries inject the same view). Outbound, the client stamps the current context's business correlation-id back onto the event as the <code>my_cid</code> tag — the engines' PostOffice parity, so the business correlation-id continues across every hop</td>
+</tr>
+<tr>
+<td><code>accept: text/event-stream</code></td>
+<td>streaming-capable call to an interceptor target: a streamed reply rides the same call as SSE in the envelope-mode dialect; a single-shot reply stays byte-identical; a streaming reply to a NON-accepting caller → 406 <code>Streaming function requires a caller that accepts text/event-stream</code>. See <a href="../streaming/">Event Streaming</a></td>
 </tr>
 </tbody>
 </table>
@@ -1533,6 +1599,22 @@ pretty-printed JSON:</p>
             </div>
           </a>
         
+        
+          
+          <a href="../../test-reports/progressive-rendering-interop/" class="md-footer__link md-footer__link--next" aria-label="Next: Interop Test Report — Progressive Rendering">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Interop Test Report — Progressive Rendering
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
         
       </nav>
     

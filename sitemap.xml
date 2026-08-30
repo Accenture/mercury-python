@@ -2,50 +2,58 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://accenture.github.io/mercury-python/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/ai-agent-guide/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/config-logging-actuators/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/configuration-reference/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/design/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/function-patterns/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/getting-started/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/http-surface-reference/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/join-event-script/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/join-knowledge-graph/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/rationale/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
+    </url>
+    <url>
+         <loc>https://accenture.github.io/mercury-python/guides/streaming/</loc>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://accenture.github.io/mercury-python/guides/testing/</loc>
-         <lastmod>2026-08-26</lastmod>
+         <lastmod>2026-08-30</lastmod>
+    </url>
+    <url>
+         <loc>https://accenture.github.io/mercury-python/test-reports/progressive-rendering-interop/</loc>
+         <lastmod>2026-08-30</lastmod>
     </url>
 </urlset>
