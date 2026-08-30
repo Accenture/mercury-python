@@ -22,7 +22,8 @@ Mirrors the engines' `event.api.service`:
 | Reply | always envelope bytes, `content-type: application/octet-stream` |
 | Handler outcome | rides **HTTP 200** with the status inside the envelope (including AppException and unexpected errors) |
 | Transport failures | set the HTTP status too: 400 undecodable / missing route field, 403 private target, 404 unknown route (`Route X not found`), 408 timeout (`Timeout for N ms`) |
-| Header hygiene | inbound `x-event-api` and `my_*` removed; the `my_cid` tag becomes the read-only `my_correlation_id` header |
+| Header hygiene | inbound `x-event-api` and `my_*` removed; the `my_cid` tag becomes the read-only `my_correlation_id` header (local bus deliveries inject the same view). Outbound, the client stamps the current context's business correlation-id back onto the event as the `my_cid` tag — the engines' PostOffice parity, so the business correlation-id continues across every hop |
+| `accept: text/event-stream` | streaming-capable call to an interceptor target: a streamed reply rides the same call as SSE in the envelope-mode dialect; a single-shot reply stays byte-identical; a streaming reply to a NON-accepting caller → 406 `Streaming function requires a caller that accepts text/event-stream`. See [Event Streaming](streaming.md) |
 
 ## Actuator endpoints
 

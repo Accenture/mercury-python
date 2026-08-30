@@ -14,12 +14,17 @@ Then map a route from a Mercury engine application (event-over-http.yaml):
         target: 'http://127.0.0.1:8086/api/event'
 """
 
+import asyncio
+
 from mercury_composable import (
     AppException,
     Body,
+    EventEnvelope,
+    EventStreamWriter,
     PostOffice,
     annotate_trace,
     get_logger,
+    get_trace,
     platform,
     preload,
 )
@@ -69,6 +74,36 @@ def sync_chain(_headers: dict[str, str], body: Body):
     never the event loop."""
     reply = PostOffice().request_sync("demo.suffix.helper", body=body, timeout_ms=5000)
     return reply.body
+
+
+@preload(route="hello.tokens", instances=10, interceptor=True)
+async def stream_tokens(headers: dict[str, str], event: EventEnvelope):
+    """Streaming demo: paced test messages over the multi-shot reply contract.
+
+    A calling engine consumes this progressively through Event-over-HTTP
+    (accept: text/event-stream on the outbound event) and can render it out
+    its own HTTP edge - engine-to-wrapper token streaming. Optional headers:
+    "delay" ms between messages (default 500, clamped 50-5000) and "count"
+    messages (default 5, clamped 1-100).
+    """
+    delay = min(5000, max(50, int(headers.get("delay", "500") or 500))) / 1000
+    count = min(100, max(1, int(headers.get("count", "5") or 5)))
+    # with log.format=json/compact, this line carries the application log
+    # "context" block (trace ids, business cid) - see the streaming guide
+    log.info("Streaming %d messages", count)
+    out = EventStreamWriter.from_request(event)
+    out.first(200, "text/event-stream")
+    out.write("The following messages are rendered slowly to demonstrate streaming:")
+    for n in range(1, count + 1):
+        await asyncio.sleep(delay)
+        out.write(f"test message {n} (python)")
+    # the trailing metadata echoes the distributed trace id and the business
+    # correlation-id, so a calling engine's edge shows both continuity
+    # dimensions end to end
+    info = get_trace()
+    out.close({"count": count, "language": "python",
+               "trace_id": info.trace_id if info else None,
+               "my_correlation_id": headers.get("my_correlation_id")})
 
 
 @preload(route="demo.health", instances=5, private=True)

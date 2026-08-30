@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mercury-composable"
-version = "0.1.0"
+version = "4.12.0"
 description = "Lightweight Event-over-HTTP function host and client for Mercury Composable"
 readme = "README.md"
 license = { file = "LICENSE.txt" }

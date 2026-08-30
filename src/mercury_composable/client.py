@@ -33,18 +33,33 @@ request()`` is the async way).
 from __future__ import annotations
 
 import asyncio
+import base64
 import concurrent.futures
+import json
 import re
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 
 import aiohttp
 
 from .bus import DeliveryTimeout, get_host_loop
 from .envelope import EventEnvelope
+from .event_stream import (
+    DATA,
+    ENVELOPE,
+    EOF,
+    EXCEPTION,
+    STREAM_CALLER_REQUIRED,
+    TEXT_EVENT_STREAM,
+    X_EVENT_NAME,
+    X_EVENT_STREAM,
+    SseParser,
+    exception_envelope,
+    stream_signal,
+)
 from .exceptions import AppException
 from .registry import FunctionRegistry, default_registry
-from .trace import _reset_trace, _set_trace, get_trace
+from .trace import MY_CID_TAG, RPC_TAG, _reset_trace, _set_trace, get_trace
 
 _W3C_TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
 _W3C_SPAN_ID = re.compile(r"^[0-9a-f]{16}$")
@@ -57,11 +72,23 @@ def _build_event(route: str, body: Any, headers: dict[str, str] | None,
     if from_route:
         event.set_from(from_route)
     info = get_trace()
+    # fill the sender with the executing function's route (touch parity)
+    if info and info.route and not event.sender:
+        event.set_from(info.route)
     if info and info.trace_id:
         event.set_trace(info.trace_id, info.trace_path or route)
     effective_cid = cid or (info.cid if info else None)
     if effective_cid:
         event.set_correlation_id(effective_cid)
+    # propagate the business correlation-id to the next touch point as the
+    # engine-managed my_cid tag (the engines' PostOffice.touch parity) - the
+    # receiving host injects it as the read-only my_correlation_id header
+    if info and info.my_correlation_id and MY_CID_TAG not in event.tags:
+        event.tags[MY_CID_TAG] = info.my_correlation_id
+    # carry this execution's span so the receiver stores it as its
+    # parent_span_id (touch parity) - also lights up the traceparent header
+    if info and info.span_id:
+        event.set_span_id(info.span_id)
     return event
 
 
@@ -124,14 +151,40 @@ class PostOffice:
         if service is None:
             return EventEnvelope().set_status(404).set_body(f"Route {route} not found")
         event = _build_event(route, body, headers, from_route, cid)
+        if not is_async:
+            # the engines' RPC round-trip marker: an RPC leg emits no trace
+            # dataset - its metrics fold into the caller's view
+            event.tags.setdefault(RPC_TAG, str(timeout_ms))
         bus = self._registry.bus
+        if service.interceptor:
+            if is_async:
+                bus.publish_envelope(service, event)
+                from .bus import async_ack
+                return async_ack()
+            # RPC to an interceptor: a per-request reply sink is the reply
+            # address; the first envelope classifies exactly like the engines -
+            # unmarked = the reply; marked = a streaming target refusing a
+            # single-shot caller (the pinned 406)
+            sink_route, queue = bus.open_sink()
+            try:
+                bus.publish_envelope(service, event.set_reply_to(sink_route))
+                try:
+                    first = await asyncio.wait_for(queue.get(), max(100, timeout_ms) / 1000)
+                except asyncio.TimeoutError:
+                    return EventEnvelope().set_status(408).set_body(
+                        f"Timeout for {timeout_ms} ms")
+                if stream_signal(first) is not None:
+                    return EventEnvelope().set_status(406).set_body(STREAM_CALLER_REQUIRED)
+                return first
+            finally:
+                bus.close_sink(sink_route)
         if is_async:
             return bus.publish(service, event.headers, event.body, trace_id=event.trace_id,
-                               trace_path=event.trace_path, cid=event.cid)
+                               trace_path=event.trace_path, cid=event.cid, envelope=event)
         try:
             return await bus.deliver(service, event.headers, event.body, timeout_ms,
                                      trace_id=event.trace_id, trace_path=event.trace_path,
-                                     cid=event.cid)
+                                     cid=event.cid, envelope=event)
         except DeliveryTimeout:
             return EventEnvelope().set_status(408).set_body(f"Timeout for {timeout_ms} ms")
 
@@ -144,6 +197,9 @@ class PostOffice:
             return await self._call_local(route, body, headers, timeout_ms,
                                           is_async, from_route, cid)
         event = _build_event(route, body, headers, from_route, cid)
+        if not is_async:
+            # the engines' RPC round-trip marker (see _call_local)
+            event.tags.setdefault(RPC_TAG, str(timeout_ms))
         session = self._get_session()
         # +100 ms cushion so the HTTP client does not time out before the target
         client_timeout = aiohttp.ClientTimeout(total=(max(100, timeout_ms) + 100) / 1000)
@@ -176,6 +232,130 @@ class PostOffice:
         """Drop-n-forget: returns the peer's 202 delivery acknowledgement envelope."""
         return await self._call(route, body, headers, timeout_ms, endpoint,
                                 True, from_route, cid)
+
+    async def stream(self, route: str, body: Any = None, *,
+                     headers: dict[str, str] | None = None,
+                     timeout_ms: int = 30000,
+                     endpoint: str | None = None,
+                     from_route: str | None = None,
+                     cid: str | None = None) -> AsyncIterator[EventEnvelope]:
+        """Consume a streaming function progressively - the same decoded
+        envelopes an engine reply route receives: ``data`` segments, then the
+        ``eof`` or ``exception`` terminal. A non-streaming target yields its
+        one classic reply (opting in is always safe). ``timeout_ms`` is the
+        idle allowance between segments; expiry, a truncated stream and a
+        malformed dialect yield the in-band exception envelope, then end.
+
+        Remote (an endpoint is given, or set on the constructor): the peer's
+        ``/api/event`` answers the one POST with the envelope-mode SSE dialect.
+        Local (no endpoint): the same first-envelope classification through a
+        per-request reply sink on the primitive bus.
+        """
+        url = endpoint or self.endpoint
+        event = _build_event(route, body, headers, from_route, cid)
+        if not url:
+            async for reply in self._stream_local(route, event, timeout_ms):
+                yield reply
+            return
+        async for reply in self._stream_remote(url, event, timeout_ms):
+            yield reply
+
+    async def stream_to(self, route: str, body: Any = None, *,
+                        reply_to: str,
+                        headers: dict[str, str] | None = None,
+                        timeout_ms: int = 30000,
+                        endpoint: str | None = None,
+                        from_route: str | None = None,
+                        cid: str | None = None) -> EventEnvelope:
+        """The relay form of :meth:`stream` for composition: every decoded
+        envelope forwards verbatim to the LOCAL ``reply_to`` route (typically
+        the caller's own reply address, handed through by an interceptor), so
+        segments flow remote peer -> this application -> the original caller
+        with no buffering. Awaits and returns the last envelope (normally the
+        terminal)."""
+        last = EventEnvelope().set_status(500).set_body("Stream produced no events")
+        async for segment in self.stream(route, body, headers=headers,
+                                         timeout_ms=timeout_ms, endpoint=endpoint,
+                                         from_route=from_route, cid=cid):
+            last = segment
+            forward = EventEnvelope.from_map(segment.to_map()).set_to(reply_to)
+            if not self._registry.send_event(forward):
+                # the local consumer is gone - late segments are no-op drops
+                break
+        return last
+
+    async def _stream_local(self, route: str, event: EventEnvelope,
+                            timeout_ms: int) -> AsyncIterator[EventEnvelope]:
+        service = self._registry.get(route)
+        if service is None:
+            yield EventEnvelope().set_status(404).set_body(f"Route {route} not found")
+            return
+        if not service.interceptor:
+            # a plain function cannot stream - its single reply is the stream
+            yield await self._call_local(route, event.body, event.headers,
+                                         timeout_ms, False, event.sender, event.cid)
+            return
+        bus = self._registry.bus
+        sink_route, queue = bus.open_sink()
+        try:
+            bus.publish_envelope(service, event.set_reply_to(sink_route))
+            idle = max(100, timeout_ms) / 1000
+            streaming = False
+            while True:
+                try:
+                    reply = await asyncio.wait_for(queue.get(), idle)
+                except asyncio.TimeoutError:
+                    seconds = max(100, timeout_ms) // 1000
+                    yield exception_envelope(408, f"Timeout for {seconds} seconds")
+                    return
+                out, done = _classify_sink_reply(reply, streaming)
+                streaming = True
+                yield out
+                if done:
+                    return
+        finally:
+            bus.close_sink(sink_route)
+
+    async def _stream_remote(self, url: str, event: EventEnvelope,
+                             timeout_ms: int) -> AsyncIterator[EventEnvelope]:
+        effective_cid = event.cid
+        http_headers = self._http_headers(timeout_ms, False, event)
+        http_headers["accept"] = TEXT_EVENT_STREAM
+        idle_seconds = max(1.0, timeout_ms / 1000)
+        # no total limit - a healthy stream may outlive any fixed total; the
+        # per-read socket timeout is the idle allowance between segments
+        client_timeout = aiohttp.ClientTimeout(total=None, sock_connect=10,
+                                               sock_read=idle_seconds)
+        session = self._get_session()
+        async with session.post(url, data=event.to_bytes(), headers=http_headers,
+                                timeout=client_timeout) as response:
+            content_type = response.headers.get("content-type", "")
+            if not content_type.startswith(TEXT_EVENT_STREAM):
+                # the peer answered single-shot (a non-streaming target, or an
+                # edge error) - the classic reply, decoded tolerantly
+                yield _decode_single_shot(await response.read(), response.status)
+                return
+            parser = SseParser()
+            head_seen = False
+            try:
+                async for chunk in response.content.iter_any():
+                    for name, text in parser.feed(chunk):
+                        reply, terminal = _decode_frame(name, text, head_seen,
+                                                        effective_cid)
+                        if reply is None:
+                            continue
+                        head_seen = True
+                        yield reply
+                        if terminal:
+                            return  # frames after the terminal are discarded
+                # the dialect ends with a decoded terminal - a bare transport
+                # end is a truncation
+                yield _relay_guard(500, "Event stream ended without eof", effective_cid)
+            except asyncio.TimeoutError:
+                yield _relay_guard(408, f"Timeout for {int(idle_seconds)} seconds",
+                                   effective_cid)
+            except aiohttp.ClientError as e:
+                yield _relay_guard(500, str(e) or type(e).__name__, effective_cid)
 
     @staticmethod
     def _run_sync(factory: Callable[[], Coroutine[Any, Any, EventEnvelope]],
@@ -240,3 +420,82 @@ class PostOffice:
             lambda: self.send(route, body, headers=headers, timeout_ms=timeout_ms,
                               endpoint=endpoint, from_route=from_route, cid=cid),
             timeout_ms)
+
+
+def _classify_sink_reply(reply: EventEnvelope,
+                         streaming: bool) -> tuple[EventEnvelope, bool]:
+    """Classify one reply-sink envelope exactly like the engines: unmarked
+    before any segment = the classic single-shot answer; unmarked mid-stream =
+    the bus's error contract for an uncaught interceptor exception (fails
+    in-band); marked = a stream segment, terminal on eof/exception."""
+    marker = stream_signal(reply)
+    if marker is None:
+        if streaming:
+            message = str(reply.body) if reply.body is not None else "Stream failed"
+            return exception_envelope(reply.get_status(), message), True
+        return reply, True
+    return reply, marker in (EOF, EXCEPTION)
+
+
+def _relay_guard(status: int, message: str, cid: str | None) -> EventEnvelope:
+    """An in-band exception envelope synthesized by the consuming relay."""
+    event = exception_envelope(status, message)
+    if cid:
+        event.set_correlation_id(cid)
+    return event
+
+
+def _decode_frame(name: str | None, text: str, head_seen: bool,
+                  cid: str | None) -> tuple[EventEnvelope | None, bool]:
+    """Decode one SSE frame of the envelope-mode dialect: an ``envelope`` frame
+    is one base64-encoded serialized envelope (the head, the terminals and
+    non-text segments); any other frame is a raw text segment. Returns
+    (envelope-or-None, terminal). Dialect guards fail in-band: the first frame
+    must be an envelope frame, and a malformed frame ends the stream."""
+    if name == ENVELOPE:
+        try:
+            # binascii.Error is a ValueError subclass - one catch covers both
+            decoded = EventEnvelope.from_bytes(base64.b64decode(text, validate=True))
+        except ValueError:
+            return _relay_guard(500, "Invalid event stream - malformed envelope frame",
+                                cid), True
+        decoded.to = None
+        decoded.reply_to = None
+        if cid:
+            decoded.set_correlation_id(cid)
+        marker = stream_signal(decoded)
+        return decoded, marker in (EOF, EXCEPTION)
+    if not head_seen:
+        # the dialect guarantees an envelope frame first (conformance guard)
+        return _relay_guard(500, "Invalid event stream - missing envelope head",
+                            cid), True
+    segment = EventEnvelope(body=text).set_header(X_EVENT_STREAM, DATA)
+    if name:
+        segment.set_header(X_EVENT_NAME, name)
+    if cid:
+        segment.set_correlation_id(cid)
+    return segment, False
+
+
+def _decode_single_shot(payload: bytes, http_status: int) -> EventEnvelope:
+    """Decode a single-shot Event-over-HTTP reply: a serialized envelope
+    normally, with the classic tolerant handling of an edge-level REST error
+    body ('{"type": "error", "status": n, "message": text}' JSON) and of a
+    payload that is not a serialized envelope at all."""
+    if not payload:
+        return EventEnvelope().set_status(http_status)
+    try:
+        reply = EventEnvelope.from_bytes(payload)
+    except ValueError as e:
+        if http_status >= 400:
+            try:
+                data = json.loads(payload.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                data = None
+            if isinstance(data, dict) and data.get("type") == "error" \
+                    and isinstance(data.get("message"), str):
+                return EventEnvelope().set_status(http_status).set_body(data["message"])
+        return EventEnvelope().set_status(400).set_body(
+            f"Invalid event-over-http response - {e}")
+    reply.reply_to = None
+    return reply
