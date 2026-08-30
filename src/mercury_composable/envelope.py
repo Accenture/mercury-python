@@ -117,6 +117,10 @@ class EventEnvelope:
         self.trace_path = trace_path
         return self
 
+    def set_span_id(self, span_id: str) -> EventEnvelope:
+        self.span_id = span_id
+        return self
+
     def set_reply_to(self, route: str | None) -> EventEnvelope:
         self.reply_to = route
         return self

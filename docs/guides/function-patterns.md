@@ -95,23 +95,50 @@ message and a stack trace, mirroring the engines. Handler-level errors always ri
 HTTP 200; only transport-level failures (unknown route, private target, timeout,
 undecodable envelope) surface as HTTP status codes.
 
-## Trace context
+## Trace context and span lineage
 
-Every delivery runs under its caller's trace:
+Every delivery runs under its caller's trace, and every traced execution mints
+its own **span** with the caller's span as its parent - the engines' exact
+OpenTelemetry lineage model, so a chain like *user → engine flow → wrapper
+function (agent, MCP tool) → engine* stays one connected trace tree:
 
 ```python
 from mercury_composable import annotate_trace, get_trace
 
-info = get_trace()            # trace_id, trace_path, cid - or None
-annotate_trace("model", "v3") # rides back on the reply envelope
+info = get_trace()            # trace_id, trace_path, cid, my_correlation_id,
+                              # span_id, parent_span_id - or None
+annotate_trace("model", "v3") # rides back on the reply envelope AND the trace record
 ```
 
-Outside a hosted function (batch jobs, tests), establish context explicitly:
+Outbound calls carry the current span (the receiver's parent), the business
+correlation-id (`my_cid` tag), and a W3C `traceparent` header when the trace id
+is W3C-shaped. Non-RPC executions emit the engines' distributed-trace dataset
+on the `distributed.tracing` log stream - the same
+`{"trace": {...}, "annotations": {...}}` record the Java engine logs - so a
+stdout log-ingest agent (Dynatrace-style) or any log aggregation stitches the
+span tree across all four runtimes. RPC round-trips fold into the caller's
+view, exactly like the engines.
+
+**Application log context**: with `log.format` json/compact, every log line a
+function writes inside a traced request carries a `context` block (the
+engines' app-log-context feature, on by default) - the standard trace context
+(`cid` = the business correlation-id, `traceId`, `tracePath`, `spanId`,
+`parentSpanId`, `service`, `timestamp`) - so application logs and the
+distributed-trace records correlate in one aggregation. Customize with your
+own `resources/app-log-context.yaml` (`context:` section mapping output keys
+to reserved `$tokens` or constants, `${ENV:default}` supported), opt out with
+`app.log.context=false`, and add per-request key-values from a handler with
+`update_context("tenant", "acme")` (a logging-only sink; reserved keys are
+guarded; `None` removes).
+
+Outside a hosted function (batch jobs, tests), establish context explicitly -
+including an external OpenTelemetry span to parent onto:
 
 ```python
 from mercury_composable import trace_context
 
-with trace_context("trace-1", "BATCH /nightly", cid="order-42"):
+with trace_context("4bf92f3577b34da6a3ce929d0e0e4736", "BATCH /nightly",
+                   cid="order-42", span_id="00f067aa0ba902b7"):
     reply = await po.request("my.function", body={...})
 ```
 

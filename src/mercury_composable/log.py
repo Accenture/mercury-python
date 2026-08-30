@@ -14,9 +14,10 @@ Example::
   (mirroring the engines), else the ``log.level`` configuration key,
   else INFO.
 - ``log.format`` carries the engines' three presentations: ``text``
-  (default), ``json`` (pretty-printed JSON with time, level, logger,
-  message, and trace_id when a trace context is active) and ``compact``
-  (the same object on a single line - JSONL - for log aggregators).
+  (default), ``json`` (pretty-printed) and ``compact`` (the same object on a
+  single line - JSONL - for log aggregators). Inside a traced request, the
+  JSON presentations add the application log ``context`` block (the engines'
+  app-log-context feature - see :mod:`mercury_composable.log_context`).
 """
 
 from __future__ import annotations
@@ -32,12 +33,24 @@ from .config import app_config
 _configured = False
 
 
+def _message_of(record: logging.LogRecord) -> str | dict:
+    """A structured (dict) message stays structural in the JSON presentations
+    and renders as compact JSON in text mode - used by the distributed-trace
+    dataset records, which stdout log-ingest agents parse."""
+    if isinstance(record.msg, dict) and not record.args:
+        return record.msg
+    return record.getMessage()
+
+
 class EngineTextFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.created))
         ms = int(record.msecs)
         level = f"{record.levelname:<5}"
-        line = f"{ts}.{ms:03d} {level} {record.name}:{record.lineno} - {record.getMessage()}"
+        message = _message_of(record)
+        if isinstance(message, dict):
+            message = json.dumps(message, ensure_ascii=False)
+        line = f"{ts}.{ms:03d} {level} {record.name}:{record.lineno} - {message}"
         if record.exc_info:
             line += "\n" + self.formatException(record.exc_info)
         return line
@@ -56,13 +69,20 @@ class EngineJsonFormatter(logging.Formatter):
             "time": f"{ts}.{int(record.msecs):03d}",
             "level": record.levelname,
             "logger": f"{record.name}:{record.lineno}",
-            "message": record.getMessage(),
+            "message": _message_of(record),
         }
-        from .trace import get_trace  # late import to avoid a cycle
+        # late imports to avoid a cycle (this module bootstraps logging)
+        from .log_context import log_context_config
+        from .trace import get_trace
 
+        # the application log context (the engines' app-log-context feature):
+        # a "context" block on every structured line inside a traced request,
+        # correlating app logs with the distributed-trace telemetry stream
         info = get_trace()
         if info and info.trace_id:
-            entry["trace_id"] = info.trace_id
+            context_config = log_context_config()
+            if context_config.enabled:
+                entry["context"] = context_config.render(info)
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
         return json.dumps(entry, ensure_ascii=False, indent=self._indent)

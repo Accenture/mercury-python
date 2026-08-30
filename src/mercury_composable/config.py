@@ -130,6 +130,12 @@ class AppConfig:
         value = self.get(key, default)
         return None if value is None else str(value)
 
+    def resolve_text(self, value: str) -> Any:
+        """Resolve ``${ENV:default}`` substitution in a text value - the same
+        rules as configuration values (used by companion config files such as
+        app-log-context.yaml)."""
+        return self._substitute(value)
+
     def exists(self, key: str) -> bool:
         return key in self._overrides or key in self._store
 

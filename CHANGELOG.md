@@ -1,7 +1,62 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 4.12.0 (2026-08-30)
 
+The progressive-rendering milestone release. The version aligns with the Mercury
+Composable engine lock-step line (Java and Rust engines, Python and Node.js
+language packs all at v4.12.0): token/event streaming end to end with full
+OpenTelemetry lineage, business-correlation continuity and application log
+context across all four runtimes - useful on its own, and the foundation for
+the AI SDLC (agent, MCP and tool adapters as wrapper-side functions with
+complete observability).
+
+- **Event streaming** - the platform-wide multi-shot reply contract, both halves.
+  Producer: `@preload(..., interceptor=True)` handlers receive the raw envelope
+  and stream through `EventStreamWriter` (the engines' exact API - `first`,
+  `write`, `write_named`, `close` with trailing metadata, `fail` with the standard
+  error key-values); the `/api/event` host answers a caller that accepts
+  `text/event-stream` with the platform's hybrid SSE dialect (envelope frames for
+  the head, the terminals and non-text segments; raw frames for text tokens),
+  refuses a non-accepting caller of a streaming function with the pinned 406, and
+  keeps single-shot replies over the capable path byte-identical. Consumer:
+  `PostOffice.stream()` (an async iterator yielding the same decoded envelopes an
+  engine reply route receives, with the dialect conformance guards) and
+  `PostOffice.stream_to()` (the relay form: forward your caller's reply address
+  and segments flow through verbatim - engine-parity composition). Under it all,
+  the primitive event bus gained the engines' reply_to mechanism: envelope-routed
+  delivery to a LOCAL function or per-request reply sink - simple routing, no
+  orchestration. Same keep-alive config key as the engines
+  (`event.stream.keep.alive`). Engine-identical wire and messages
+  (Java PR #299-#301 / Rust PR #216-#218 lineage).
+- **Business correlation-id continuity** (the engines' PostOffice parity): the
+  client stamps the current context's business correlation-id onto outbound
+  events as the engine-managed `my_cid` tag, local bus deliveries inject the
+  read-only `my_correlation_id` header view exactly like the HTTP host, and
+  `get_trace()` / `trace_context()` carry `my_correlation_id` - so the business
+  correlation-id continues across engine⇄wrapper and wrapper⇄wrapper hops.
+- **Span lineage** (the engines' telemetry model): every traced execution mints
+  a 16-hex span with the caller's span (from the inbound envelope) as its
+  parent, outbound events carry the current span so the next hop parents onto
+  it (`PostOffice.touch` parity, W3C `traceparent` included), streaming
+  segments carry the producer's span, and non-RPC executions emit the engines'
+  distributed-trace dataset record on the `distributed.tracing` log stream -
+  the same `{"trace": {...}, "annotations": {...}}` shape the Java engine
+  logs, so stdout log-ingest agents stitch spans across all four runtimes.
+  RPC round-trips are suppressed exactly like the engines (the new `rpc`
+  envelope tag rides `request()` calls). `trace_context()` accepts `span_id`
+  to parent onto an external OpenTelemetry span. Outbound events and stream
+  segments also fill their sender with the executing function's route, and
+  the `/api/event` host fills `event.api.service` for an anonymous caller -
+  the engines' sender-attribution rules.
+- **Application log context** (the engines' app-log-context feature, on by
+  default via the packaged `default-log-context.yaml` - the engines' resource
+  twin): with `log.format` json/compact, every log line inside a traced
+  request carries a `context` block - cid (the business correlation-id),
+  traceId, tracePath, spanId, parentSpanId, service, timestamp - so app logs
+  and the distributed-trace records correlate end to end. Customize with
+  `resources/app-log-context.yaml` (reserved `$tokens` or constants with
+  `${ENV:default}`), opt out with `app.log.context=false`, and add
+  per-request key-values with `update_context()` (reserved keys guarded).
 - Documentation site (mkdocs-material, the engine repo's theme): the three-layer theme
   reference, rationale/design foundations, function-writing patterns, flow and
   knowledge-graph join chapters, a one-page AI agent guide with llms.txt, and

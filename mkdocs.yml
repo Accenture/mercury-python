@@ -109,6 +109,7 @@ nav:
 
   - Write functions:
     - Function Writing Patterns: guides/function-patterns.md
+    - Event Streaming: guides/streaming.md
     - Configuration, Logging & Actuators: guides/config-logging-actuators.md
     - Testing Your Functions: guides/testing.md
 
@@ -122,5 +123,6 @@ nav:
   - Reference:
     - Configuration Reference: guides/configuration-reference.md
     - HTTP Surface Reference: guides/http-surface-reference.md
+    - Interop Test Report — Progressive Rendering: test-reports/progressive-rendering-interop.md
     - Release Notes: https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md
     - Contributing: https://github.com/Accenture/mercury-python/blob/main/CONTRIBUTING.md
