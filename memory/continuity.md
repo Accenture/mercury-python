@@ -14,11 +14,11 @@
 
 - **project:** mercury-python (PyPI: `mercury-composable`)
 - **status:** v4.12.0 merged to main (the progressive-rendering milestone, engine lock-step
-  version line; PyPI publish still pending) — the Python member of the Mercury Composable
+  version line; GitHub release v4.12.0 published 2026-08-30; PyPI package publish still pending) — the Python member of the Mercury Composable
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-30 | agent: Claude Code (2026-08-30-045556)
+- **last_session:** 2026-08-30 | agent: Claude Code (2026-08-30-053006)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
