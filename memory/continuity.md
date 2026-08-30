@@ -13,11 +13,12 @@
 ## Project State
 
 - **project:** mercury-python (PyPI: `mercury-composable`)
-- **status:** pre-release 0.1.0 (unreleased) — the Python member of the Mercury Composable
+- **status:** v4.12.0 merged to main (the progressive-rendering milestone, engine lock-step
+  version line; PyPI publish still pending) — the Python member of the Mercury Composable
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-26 | agent: Claude Code (2026-08-26-003023)
+- **last_session:** 2026-08-30 | agent: Claude Code (2026-08-30-045556)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -27,8 +28,9 @@
 > Canonical live home for the current stack — language version, dependencies, tool
 > versions. `instructions.md` keeps only a high-level descriptor and points here.
 
-- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v0.1.0
-  (unreleased), wheel from `src/mercury_composable`
+- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.0
+  (merged 2026-08-30, engine lock-step version line; PyPI publish pending), wheel from
+  `src/mercury_composable`
   <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`)
@@ -93,6 +95,18 @@
 
 ## Open Threads
 
+- [x] (feature — **MERGED 2026-08-30 as
+  [PR #21](https://github.com/Accenture/mercury-python/pull/21) true merge `bfca7e4`
+  carrying `d50986a`; tree verified; v4.12.0 milestone, all four repos lock-step)
+  **The progressive-rendering round: event streaming (engines' envelope-mode SSE
+  contract, reply_to bus mechanism, stream/stream_to consumers), business
+  correlation-id continuity, full span lineage with the engines' distributed-trace
+  dataset on stdout, app-log-context with the packaged default template, sender
+  attribution.** Lessons: detach long-lived workers from the creating task's
+  contextvars; install the log-context config before its own warning logs; RPC legs
+  emit no dataset (engine parity). origin: 2026-08-30-045556.
+  <!-- id: ot-streaming-telemetry-round-20260830 | created: 2026-08-30 | last_used: 2026-08-30 | uses: 1 | tier: working | origin: 2026-08-30-045556 -->
+
 - [x] (P4 docs — **SHIPPED and LIVE 2026-08-24**, same day as plan ratification)
   **Documentation site "Composable for Python"** — engine Material theme, 13 files
   incl. the one-page AI agent guide + llms.txt; live at accenture.github.io/mercury-python.
@@ -153,11 +167,11 @@
 > the archive once older than `archive_window` sessions. Don't archive them by hand.
 
 - [ ] **(blueprint) Publish behind the interop gate.** The wrapper is complete and green
-  (tests incl. the shared golden vectors; cross-wrapper interop proven; the
-  composable-example flow executed a Python function unchanged) but **unreleased** — the
-  Vision's "releasable on its own cadence" is unmet until 0.1.0 ships to PyPI with
-  protocol-compat versioning and the interop gate green per release (design P5/D6).
-  Publishing itself is Eric-gated (ownership, cadence, supply-chain posture).
+  and now versioned **v4.12.0 on main** (the milestone merge, 2026-08-30 — the version
+  aligns with the engine lock-step line, superseding the 0.1.0 plan), with the interop
+  gate green (the progressive-rendering interop report). The Vision's "releasable on its
+  own cadence" is unmet until it ships to PyPI; publishing itself stays Eric-gated
+  (ownership, cadence, supply-chain posture; design P5/D6).
   → serves: vision-mercury-python
   <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-173136 -->
 
