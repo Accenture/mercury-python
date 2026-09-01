@@ -18,7 +18,7 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-08-30 | agent: Claude Code (2026-08-30-053006)
+- **last_session:** 2026-09-01 | agent: Claude Code (2026-09-01-022620)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -33,7 +33,9 @@
   `src/mercury_composable`
   <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
-  `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`)
+  `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`);
+  optional extras: `llm` = `anthropic` >=1,<2 + `google-genai` >=2,<3 (the AI-node provider
+  SDKs — `pip install 'mercury-composable[llm]'`, added 2026-09-01)
   <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 - Developer runner: `mercury-serve` console script (`mercury_composable.cli:main`);
   examples run via `mercury-serve app.py --port <n>` with `-D` overrides
@@ -94,6 +96,18 @@
   <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 
 ## Open Threads
+
+- [x] (feature — **MERGED 2026-09-01 as
+  [PR #22](https://github.com/Accenture/mercury-python/pull/22) true merge `44caf9a6`
+  carrying `1fa5f70`; tree verified; branches deleted both ends) **AI nodes llm.chat +
+  llm.stream — provider-neutral LLM adapters (agent-orchestration E0).** One contract, two
+  editions (Anthropic + Gemini as optional extras `mercury-composable[llm]`);
+  schema-constrained verdicts for graph decision routing; token streams over the
+  multi-shot reply contract; Gemini AFC opted out (no tool surface — the graph decides,
+  the model advises). Live-proven from the engine's support-triage graph (its PR #304).
+  Lesson: PyCharm validates monkeypatch attr-name literals regardless of target typing —
+  route the name through a helper parameter. origin: 2026-09-01-022620.
+  <!-- id: ot-llm-ai-nodes | created: 2026-09-01 | last_used: 2026-09-01 | uses: 1 | tier: working | origin: 2026-09-01-022620 -->
 
 - [x] (feature — **MERGED 2026-08-30 as
   [PR #21](https://github.com/Accenture/mercury-python/pull/21) true merge `bfca7e4`
