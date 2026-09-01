@@ -4,10 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mercury-composable"
-version = "4.12.0"
+version = "4.12.1"
 description = "Lightweight Event-over-HTTP function host and client for Mercury Composable"
 readme = "README.md"
-license = { file = "LICENSE.txt" }
+license = "Apache-2.0"
+license-files = ["LICENSE.txt"]
 authors = [{ name = "Accenture Technology" }]
 requires-python = ">=3.10"
 dependencies = [
@@ -15,16 +16,26 @@ dependencies = [
     "msgpack>=1.0,<2",
     "PyYAML>=6.0,<7",
 ]
+keywords = ["event-driven", "composable", "microservices", "event-over-http", "mercury"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Framework :: AsyncIO",
+    "Topic :: Software Development :: Libraries",
+    "Operating System :: OS Independent",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Accenture/mercury-python"
-Documentation = "https://accenture.github.io/mercury-composable"
+Documentation = "https://accenture.github.io/mercury-python"
+Repository = "https://github.com/Accenture/mercury-python"
+Changelog = "https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # the llm.chat demo function (examples/demo_app.py) - the package itself stays SDK-free
@@ -36,6 +47,18 @@ mercury-serve = "mercury_composable.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mercury_composable"]
+
+[tool.hatch.build.targets.sdist]
+# the sdist ships the package plus its teaching surfaces - never the repo's
+# agent-memory layer, skills, or CI plumbing
+only-include = [
+    "src/mercury_composable",
+    "tests",
+    "examples",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE.txt",
+]
 
 [tool.ruff]
 line-length = 100

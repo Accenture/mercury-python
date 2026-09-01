@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## Version 4.12.1, 9/1/2026
+
+The first PyPI release: `pip install mercury-composable`. The v4.12.0 lock-step line
+plus the AI-node demo functions below.
 
 ### Added
 
@@ -18,6 +21,9 @@
   progressively out its own HTTP edge as SSE. Terminal metadata carries model,
   stop_reason, usage and the trace/business correlation ids; provider errors fail the
   stream in-band. Live-proven end to end with real Gemini tokens (2026-08-31).
+- PyPI publication metadata: SPDX license expression (PEP 639), trove classifiers,
+  keywords, project URLs, and a constrained sdist (package sources, tests, examples
+  and top-level docs only - repo-internal layers never ship).
 
 ## 4.12.0 (2026-08-30)
 
