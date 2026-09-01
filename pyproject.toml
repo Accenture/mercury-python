@@ -27,7 +27,9 @@ Homepage = "https://github.com/Accenture/mercury-python"
 Documentation = "https://accenture.github.io/mercury-composable"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.9"]
+# the llm.chat demo function (examples/demo_app.py) - the package itself stays SDK-free
+llm = ["anthropic>=1,<2", "google-genai>=2,<3"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.9", "anthropic>=1,<2", "google-genai>=2,<3"]
 
 [project.scripts]
 mercury-serve = "mercury_composable.cli:main"
