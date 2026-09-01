@@ -18,7 +18,6 @@
   polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
   August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_session:** 2026-09-01 | agent: Claude Code (2026-09-01-022620)
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -31,15 +30,15 @@
 - Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.0
   (merged 2026-08-30, engine lock-step version line; PyPI publish pending), wheel from
   `src/mercury_composable`
-  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
+  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-09-01 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`);
   optional extras: `llm` = `anthropic` >=1,<2 + `google-genai` >=2,<3 (the AI-node provider
   SDKs — `pip install 'mercury-composable[llm]'`, added 2026-09-01)
-  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
+  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-09-01 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
 - Developer runner: `mercury-serve` console script (`mercury_composable.cli:main`);
   examples run via `mercury-serve app.py --port <n>` with `-D` overrides
-  <!-- id: stack-mercury-serve-cli | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
+  <!-- id: stack-mercury-serve-cli | created: 2026-08-22 | last_used: 2026-09-01 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
 
@@ -72,12 +71,12 @@
 - **Polyglot reboot (August 2026):** instead of re-porting the full composable foundation,
   this repo restarts as a lightweight Event-over-HTTP wrapper; the pre-composable
   websocket-based language pack remains in git history only (CHANGELOG 0.1.0).
-  <!-- id: decision-polyglot-reboot | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
+  <!-- id: decision-polyglot-reboot | created: 2026-08-22 | last_used: 2026-08-22 | uses: 2 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 - **Two-audience root fork (Eric, 2026-08-22):** root `AGENTS.md` routes contributors to
   `memory/PROTOCOL.md` and consumers (developers writing polyglot functions — the "AI
   grammar" path) to `README.md`, which carries the quick start, function contract, and
   wire-format guide.
-  <!-- id: decision-consumer-fork-readme | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
+  <!-- id: decision-consumer-fork-readme | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 
 ## Conventions
 
@@ -89,118 +88,21 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-08-23 | uses: 1 | tier: working | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-08-24 | uses: 3 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-24 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Open Threads
 
-- [x] (feature — **MERGED 2026-09-01 as
-  [PR #22](https://github.com/Accenture/mercury-python/pull/22) true merge `44caf9a6`
-  carrying `1fa5f70`; tree verified; branches deleted both ends) **AI nodes llm.chat +
-  llm.stream — provider-neutral LLM adapters (agent-orchestration E0).** One contract, two
-  editions (Anthropic + Gemini as optional extras `mercury-composable[llm]`);
-  schema-constrained verdicts for graph decision routing; token streams over the
-  multi-shot reply contract; Gemini AFC opted out (no tool surface — the graph decides,
-  the model advises). Live-proven from the engine's support-triage graph (its PR #304).
-  Lesson: PyCharm validates monkeypatch attr-name literals regardless of target typing —
-  route the name through a helper parameter. origin: 2026-09-01-022620.
-  <!-- id: ot-llm-ai-nodes | created: 2026-09-01 | last_used: 2026-09-01 | uses: 1 | tier: working | origin: 2026-09-01-022620 -->
+> Open Threads live **one per file** in `memory/open-threads/` (`thread-<id>.md`;
+> filename = the thread's fact id) so concurrent thread work never merge-conflicts
+> (v4.39.0). List that directory to see them; unchecked `- [ ]` threads are the live
+> workstreams and never decay. Mark a completed thread `- [x]` in its file and leave
+> it — the review sweeps it to the archive once older than `archive_window` sessions.
+> Don't archive by hand. See `.agent/schema.md`.
 
-- [x] (feature — **MERGED 2026-08-30 as
-  [PR #21](https://github.com/Accenture/mercury-python/pull/21) true merge `bfca7e4`
-  carrying `d50986a`; tree verified; v4.12.0 milestone, all four repos lock-step)
-  **The progressive-rendering round: event streaming (engines' envelope-mode SSE
-  contract, reply_to bus mechanism, stream/stream_to consumers), business
-  correlation-id continuity, full span lineage with the engines' distributed-trace
-  dataset on stdout, app-log-context with the packaged default template, sender
-  attribution.** Lessons: detach long-lived workers from the creating task's
-  contextvars; install the log-context config before its own warning logs; RPC legs
-  emit no dataset (engine parity). origin: 2026-08-30-045556.
-  <!-- id: ot-streaming-telemetry-round-20260830 | created: 2026-08-30 | last_used: 2026-08-30 | uses: 1 | tier: working | origin: 2026-08-30-045556 -->
-
-- [x] (P4 docs — **SHIPPED and LIVE 2026-08-24**, same day as plan ratification)
-  **Documentation site "Composable for Python"** — engine Material theme, 13 files
-  incl. the one-page AI agent guide + llms.txt; live at accenture.github.io/mercury-python.
-  [PR #20](https://github.com/Accenture/mercury-python/pull/20) merge `0bc97f7` carrying
-  `a8ebde2` (tree verified, branches deleted); ci.yml maiden run green — the wrapper-CI
-  gap is closed. Lesson: mermaid on a new site verifies structurally against the
-  engine's live pages when the sandbox can't render CDN JS. Remaining P4 = engine
-  repos (polyglot chapter, ADR-0016, interop extension). Relates
-  [[bp-publish-interop-gate]]. origin: 2026-08-24-152125
-  <!-- id: thread-docs-site | created: 2026-08-24 | last_used: 2026-08-24 | uses: 1 | tier: working | origin: 2026-08-24-152125 -->
-
-- [x] (feature — Eric's three loose ends 2026-08-24; **MERGED same day as
-  [PR #19](https://github.com/Accenture/mercury-python/pull/19), true merge `035b636`
-  carrying `da60593` (tree verified, branches deleted both ends); node twin merged in
-  its quality PR #88**) **Actuator polish: engine-parity index page, pretty
-  JSON, host error shape.** `GET /` = the engines' minimal Welcome page (embedded — no
-  static file service by design); actuator JSON pretty-printed (SimpleMapper default);
-  unknown paths/non-GET → `{"status", "message", "type": "error"}` with
-  `Resource not found` (SimpleHttpUtility signature, Java insertion order). Live-proven
-  byte-symmetric with node. Relates [[thread-actuator-endpoints]].
-  <!-- id: thread-actuator-polish | created: 2026-08-24 | last_used: 2026-08-24 | uses: 1 | tier: working | origin: 2026-08-24-015208 -->
-
-- [x] (feature — Eric's directive 2026-08-24 after ratifying the sync-vs-async design;
-  **MERGED same day as [PR #18](https://github.com/Accenture/mercury-python/pull/18),
-  true merge `1888a48` carrying branch head `af039db` (4 commits: bridge + import hoist
-  + static _run_sync + unshadow); tree verified identical, branches deleted both
-  ends**) **Sync bridge: `PostOffice.request_sync()/send_sync()` from plain-def
-  handlers.** The bus stamps the host loop into a contextvar before dispatching sync
-  handlers; the bridge submits the same coroutines via `run_coroutine_threadsafe`,
-  blocking only the worker thread. Durable subtlety: **contextvars do not cross
-  run_coroutine_threadsafe** — the bridge re-establishes the caller's TraceInfo inside
-  the submitted task (same object), keeping the trace chain unbroken. Teaching errors:
-  on-loop call → "await request() instead"; off-host → use asyncio.run. Rationale docs
-  (requests/NumPy named, virtual-threads analog) in README + registry.py per Eric.
-  4 pins + hello.sync.chain wire proof. Relates [[thread-primitive-event-bus]].
-  <!-- id: thread-sync-bridge | created: 2026-08-24 | last_used: 2026-08-24 | uses: 1 | tier: working | origin: 2026-08-24-004715 -->
-
-- [x] (feature — RATIFIED + IMPLEMENTED + **MERGED 2026-08-23 as
-  [PR #17](https://github.com/Accenture/mercury-python/pull/17), true merge `f38ac17`
-  carrying branch head `1931f01`; tree verified identical, branches deleted both ends;
-  one PR with [[thread-actuator-endpoints]]**) **Primitive in-process event bus — the
-  single dispatch pipeline.** `instances`/`private` faithful; deliver + publish only; the
-  HTTP host and local PostOffice = thin ingress adapters. Durable ruling: NO spill tier /
-  NO queue cap — back-pressure belongs to the engines' flows/graphs (scope fence:
-  instructions.md). Full design, pins and wire proofs: origin log.
-  <!-- id: thread-primitive-event-bus | created: 2026-08-23 | last_used: 2026-08-23 | uses: 1 | tier: working | origin: 2026-08-23-005709 -->
-
-- [x] (feature — Eric's directive, IMPLEMENTED + **MERGED 2026-08-23 in the same
-  [PR #17](https://github.com/Accenture/mercury-python/pull/17) as the bus**)
-  **Actuator endpoints — the engines' operational surface for Kubernetes PODs.**
-  /info, /info/routes, /env, /health, /livenessprobe; health check functions speak the
-  engines' `type=info`/`type=health` contract through the bus; UP 200 / DOWN 400;
-  liveness follows the last health outcome. Durable lesson: engine `log.format` json =
-  PRETTY-printed, compact = single-line JSONL (the JsonAppender/CompactAppender pair).
-  Detail: origin log. Relates [[thread-primitive-event-bus]].
-  <!-- id: thread-actuator-endpoints | created: 2026-08-23 | last_used: 2026-08-23 | uses: 1 | tier: working | origin: 2026-08-23-031558 -->
-> Mark completed items `- [x]` and leave them in place — the review sweeps them to
-> the archive once older than `archive_window` sessions. Don't archive them by hand.
-
-- [ ] **(blueprint) Publish behind the interop gate.** The wrapper is complete and green
-  and now versioned **v4.12.0 on main** (the milestone merge, 2026-08-30 — the version
-  aligns with the engine lock-step line, superseding the 0.1.0 plan), with the interop
-  gate green (the progressive-rendering interop report). The Vision's "releasable on its
-  own cadence" is unmet until it ships to PyPI; publishing is SEQUENCED (Eric,
-  2026-08-30): after the first iteration of the AI SDLC feature completes; it stays
-  Eric-gated (ownership, cadence, supply-chain posture; design P5/D6).
-  → serves: vision-mercury-python
-  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-173136 -->
-
-- [x] **(vision-bootstrap)** Vision ratified by Eric, 2026-08-22 — drafted from the
-  ratified polyglot design (D0–D8 + same-day refinements): tiny Event-over-HTTP wrapper,
-  engines own orchestration, protocol-compat releases, the scope fence as non-goals.
-  First Blueprint gap derived (publish behind the interop gate). Detail:
-  2026-08-22-173136.
-  <!-- id: ot-vision-bootstrap | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
-- [ ] **Dedicated consumer AI surface (optional).** The root fork points consumers at
-  `README.md` for now (Eric, 2026-08-22). If the team wants a dedicated version-matched
-  surface later (family pattern: mercury-composable's `system/AGENTS.md`), author it and
-  retarget the fork's consumer link.
-  <!-- id: ot-consumer-surface | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: working | origin: 2026-08-22-171555 -->
 
 ## User Preferences
 
