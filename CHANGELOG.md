@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `llm.chat` demo function (examples/demo_app.py) - the AI node of the agent-orchestration
+  experiment E0: a provider-neutral LLM adapter (Anthropic and Gemini backends behind one
+  contract; select with `llm.provider` config / `-Dllm.provider=...` / `params.provider`)
+  with structured output (`schema` -> JSON verdicts for graph decision routing;
+  additionalProperties defaults closed), usage/stop_reason surfacing, provider-error
+  mapping onto the envelope status, and the params.timeout_ms time-budget mapping.
+  The SDKs are an optional extra (`pip install "mercury-composable[llm]"`); the package
+  itself stays SDK-free (scope fence intact).
+- `llm.stream` demo function - the STREAMING AI node: pulls the provider's real token
+  stream (Anthropic `messages.stream` or Gemini `generate_content_stream`) and relays
+  each token batch over the multi-shot reply contract, so a calling engine renders it
+  progressively out its own HTTP edge as SSE. Terminal metadata carries model,
+  stop_reason, usage and the trace/business correlation ids; provider errors fail the
+  stream in-band. Live-proven end to end with real Gemini tokens (2026-08-31).
+
 ## 4.12.0 (2026-08-30)
 
 The progressive-rendering milestone release. The version aligns with the Mercury
