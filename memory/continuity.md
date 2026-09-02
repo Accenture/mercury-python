@@ -13,10 +13,11 @@
 ## Project State
 
 - **project:** mercury-python (PyPI: `mercury-composable`)
-- **status:** v4.12.0 merged to main (the progressive-rendering milestone, engine lock-step
-  version line; GitHub release v4.12.0 published 2026-08-30; PyPI package publish still pending) — the Python member of the Mercury Composable
-  polyglot initiative: a lightweight Event-over-HTTP function host + thin client, repurposed
-  August 2026 (legacy language pack in git history only)
+- **status:** **v4.12.1 PUBLISHED to PyPI 2026-09-01** (`pip install mercury-composable` —
+  the first public package; tag v4.12.1; the 4.12.1 line carries the llm.chat/llm.stream
+  AI nodes and the publication metadata incl. the constrained sdist) — the Python member
+  of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function
+  host + thin client, repurposed August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
 - **last_review:** (none yet)
 - **last_invariant_check:** (none yet)
