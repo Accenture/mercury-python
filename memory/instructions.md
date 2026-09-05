@@ -80,8 +80,9 @@ they are the cross-engine compatibility contract, not ordinary fixtures.
 
 ## CI / CD
 
-No package build/test workflow yet (pre-release). The agent-memory advisory CI floor
-(`.github/workflows/agent-memory.yml`) is installed; it checks the memory layer only.
+No package build/test GitHub workflow yet (PyPI v4.12.1 is published). The agent-memory
+advisory CI floor (`.github/workflows/agent-memory.yml`) is installed; it checks the
+memory layer only.
 
 ## Editing These Instructions
 

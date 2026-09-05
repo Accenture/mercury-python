@@ -1,9 +1,8 @@
-- [ ] **(blueprint) Publish behind the interop gate.** The wrapper is complete and green
-  and now versioned **v4.12.0 on main** (the milestone merge, 2026-08-30 — the version
-  aligns with the engine lock-step line, superseding the 0.1.0 plan), with the interop
-  gate green (the progressive-rendering interop report). The Vision's "releasable on its
-  own cadence" is unmet until it ships to PyPI; publishing is SEQUENCED (Eric,
-  2026-08-30): after the first iteration of the AI SDLC feature completes; it stays
-  Eric-gated (ownership, cadence, supply-chain posture; design P5/D6).
+- [ ] **(blueprint) Recurring interop gate on every release.** First PyPI publication is
+  done (v4.12.1, 2026-09-01 — `pip install mercury-composable`; constrained sdist). The
+  v4.12.0 progressive-rendering interop report was green once. Remaining Vision success
+  criterion: live interop against both engines **on every release**, plus a package
+  build/test GitHub workflow (today only the agent-memory advisory floor runs in CI).
+  Cadence and supply-chain posture stay Eric-gated (design P5/D6).
   → serves: vision-mercury-python
-  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-08-30 | uses: 6 | tier: working | origin: 2026-08-22-173136 -->
+  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-09-05 | uses: 7 | tier: working | origin: 2026-08-22-173136 -->

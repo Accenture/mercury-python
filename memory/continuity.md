@@ -19,7 +19,7 @@
   of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function
   host + thin client, repurposed August 2026 (legacy language pack in git history only)
 - **last_enabled:** 2026-08-22
-- **last_review:** (none yet)
+- **last_review:** 2026-09-05 | through 2026-09-05-211409
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
 
@@ -28,10 +28,10 @@
 > Canonical live home for the current stack — language version, dependencies, tool
 > versions. `instructions.md` keeps only a high-level descriptor and points here.
 
-- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.0
-  (merged 2026-08-30, engine lock-step version line; PyPI publish pending), wheel from
+- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.1
+  (PyPI 2026-09-01; engine lock-step line from the v4.12.0 milestone), wheel from
   `src/mercury_composable`
-  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-09-01 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-09-05 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`);
   optional extras: `llm` = `anthropic` >=1,<2 + `google-genai` >=2,<3 (the AI-node provider
@@ -77,7 +77,7 @@
   `memory/PROTOCOL.md` and consumers (developers writing polyglot functions — the "AI
   grammar" path) to `README.md`, which carries the quick start, function contract, and
   wire-format guide.
-  <!-- id: decision-consumer-fork-readme | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: archive-candidate | origin: 2026-08-22-171555 -->
+  <!-- id: decision-consumer-fork-readme | created: 2026-08-22 | last_used: 2026-09-05 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Conventions
 
@@ -89,11 +89,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-08-24 | uses: 3 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-08-24 | uses: 3 | tier: archive-candidate | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-24 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-24 | uses: 2 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 
 ## Open Threads
 

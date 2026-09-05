@@ -46,3 +46,4 @@ review. Don't edit the questions to make them pass.
 |---|---|---|---|
 | 2026-08-22 | (enable) | — | baseline — run the test to populate |
 | 2026-08-22 | 2026-08-22-173136 | 11/12 | Q9: engine-side wiring (`yaml.event.over.http` route→URL map) was only in README, not memory → added "How an engine calls a function here" to instructions.md. Fresh-context agent, memory files only. |
+| 2026-09-05 | 2026-09-05-211409 | 12/12 | First full review. Q5 live workstreams live in `memory/open-threads/` (PROTOCOL list), not duplicated in continuity. |

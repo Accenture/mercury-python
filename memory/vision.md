@@ -20,21 +20,25 @@ place — while the engines own all orchestration.
 
 The Python member of the Mercury Composable polyglot initiative (August 2026): an Event
 API host (`POST /api/event`), a thin `PostOffice` client, the standard event-envelope
-codec (verified against the engines' shared golden vectors), and engine-consistent
-minimalist utilities. Pre-release (0.1.0, unreleased); tests green including the golden
-vectors; cross-wrapper interop proven; the composable-example declarative flow executed a
-Python function unchanged. The legacy language pack lives in git history only.
+codec (verified against the engines' shared golden vectors), the primitive in-process
+event bus (route mailboxes + workers — dispatch, not orchestration), and engine-consistent
+minimalist utilities. **v4.12.1 is on PyPI** (`pip install mercury-composable`, published
+2026-09-01) — first public package; the 4.12.1 line carries the `llm.chat` / `llm.stream`
+AI nodes and a constrained sdist. Tests green including the golden vectors; cross-wrapper
+interop proven at the v4.12.0 progressive-rendering milestone. The legacy language pack
+lives in git history only.
 
 **Type:** Python library — polyglot function host + client
 
 ## What it should become
 
 - The **reference-quality wrapper** of the engines' documented wire format and
-  `/api/event` contract — releasable on its own cadence (PyPI), versioned by **protocol
-  compatibility** ("implements the standard wire format"), never coupled to engine
-  releases.
-- The **rapid-prototyping path**: `pip install` plus the `mercury-serve` one-liner; heavy
-  libraries (pandas, ML) load once in a long-lived service.
+  `/api/event` contract — already on PyPI, versioned by **protocol compatibility**
+  ("implements the standard wire format"), never coupled to engine releases; keep that
+  independent cadence.
+- The **rapid-prototyping path**: `pip install mercury-composable` plus the
+  `mercury-serve` one-liner; heavy libraries (pandas, ML) load once in a long-lived
+  service.
 - **Bidirectional and invisible in the architecture**: functions addressed from Event
   Script flows and MiniGraph tasks as if local (declarative map, zero caller code); the
   thin client calls engine or peer functions over the same protocol.
@@ -60,8 +64,15 @@ teams, who gain polyglot reach with zero engine coupling.
 
 ## Non-goals (what it must never become)
 
-- **Never a composable foundation or full SDK** — no event bus, no flows, no graphs, no
-  orchestration (the ratified scope fence).
+- **Never a composable foundation or full SDK** — no flows, no graphs, no persistence, no
+  pub/sub broadcast, no orchestration. Those live in the engines (the ratified scope
+  fence). This is **not** a ban on an in-process dispatch bus.
+- **The primitive in-process event bus is in scope** (ratified 2026-08-23, implemented):
+  the single dispatch pipeline — one FIFO mailbox per route, `instances` worker tasks,
+  `deliver` (RPC) and `publish` (drop-n-forget) only. HTTP and local `PostOffice` are thin
+  ingress over it. Non-goals *of the bus*: no spill tier, no queue cap (back-pressure
+  belongs to engine flows/graphs), not an application API (apps use `@preload` and
+  `PostOffice` only).
 - **Never subprocess or embedded-interpreter execution** (Option A shelved; helper-style
   embedding explicitly not planned).
 - **Never coupled to engine release cadence** or versioned beyond protocol compatibility.
