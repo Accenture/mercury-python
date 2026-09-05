@@ -24,9 +24,9 @@ graph task calls a Python function exactly as if it were local.
 [AI Agent Guide](https://accenture.github.io/mercury-python/guides/ai-agent-guide/)
 for deterministic function generation.
 
-> **Status: pre-release.** This repository was repurposed in August 2026 for the polyglot
-> initiative. The legacy Mercury language-pack implementation remains available in the git
-> history.
+> **Status:** v4.12.1 is on PyPI — `pip install mercury-composable`. This repository was
+> repurposed in August 2026 for the polyglot initiative. The legacy Mercury language-pack
+> implementation remains in git history.
 
 ## Quick start
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 Run it:
 
 ```bash
-pip install -e '.[dev]'
+pip install mercury-composable
 mercury-serve app.py -Drest.server.port=8086
 ```
 

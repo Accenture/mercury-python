@@ -19,12 +19,16 @@ keywords: [quick start, preload, mercury-serve, event over http]
 ## 1. Install
 
 ```bash
+pip install mercury-composable
+```
+
+To develop this repository from source:
+
+```bash
 git clone https://github.com/Accenture/mercury-python.git
 cd mercury-python
 pip install -e '.[dev]'
 ```
-
-*(Pre-release: the package installs from source until the PyPI release.)*
 
 ## 2. Write a function
 

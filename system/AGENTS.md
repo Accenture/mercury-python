@@ -32,7 +32,7 @@ wrapper's docs cover only the Python function surface.
 
 | Path | Role |
 |------|------|
-| `src/` | the `mercury` package — `Platform`, `PostOffice`, `EventEnvelope`, actuator routes |
+| `src/` | the `mercury_composable` package — Event API host, `PostOffice`, envelope codec, actuators |
 | `examples/` | runnable reference functions |
 | `docs/` | the MkDocs guide site source |
 | `tests/` | unit and integration tests |
