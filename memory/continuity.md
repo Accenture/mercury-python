@@ -77,7 +77,12 @@
   `memory/PROTOCOL.md` and consumers (developers writing polyglot functions — the "AI
   grammar" path) to `README.md`, which carries the quick start, function contract, and
   wire-format guide.
-  <!-- id: decision-consumer-fork-readme | created: 2026-08-22 | last_used: 2026-09-05 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: decision-consumer-fork-readme | created: 2026-08-22 | last_used: 2026-09-05 | uses: 2 | tier: superseded | superseded-by: decision-consumer-fork-system-agents | origin: 2026-08-22-171555 -->
+- **Dedicated consumer surface (PR #23, merged `a12c56b6`, 2026-09-01):** root `AGENTS.md`'s
+  consumer path now points to `system/AGENTS.md` — a version-matched guide index, key
+  references, and efficient lookup strategy — instead of `README.md` directly; mirrors the
+  `system/AGENTS.md` convention from the mercury-composable and mercury (Rust) siblings.
+  <!-- id: decision-consumer-fork-system-agents | created: 2026-09-05 | last_used: 2026-09-05 | uses: 1 | tier: working | supersedes: decision-consumer-fork-readme | origin: 2026-09-05-212856 -->
 
 ## Conventions
 
