@@ -102,6 +102,7 @@ nav:
 
   - Orientation:
     - Getting Started: guides/getting-started.md
+    - The Mercury Family: mercury-family.md
 
   - Foundations:
     - Rationale — Externalized Functions: guides/rationale.md
