@@ -4,11 +4,16 @@ summary: Externalized functions for Mercury Composable - write decoupled functio
   and let the Java/Rust engines orchestrate them from Event Script flows and knowledge graphs.
 audience: [developer, architect, ai-agent]
 keywords: [polyglot, python, event over http, composable, minigraph, externalized functions]
+hide:
+  - navigation
 ---
 
 # Externalized functions for Mercury Composable
 
 *Write the function in Python. Let the engine orchestrate it.*
+
+Part of the **[Mercury family](mercury-family.md)** — Accenture's open-source foundations
+for human–AI collaboration.
 
 > **At a glance**
 >
