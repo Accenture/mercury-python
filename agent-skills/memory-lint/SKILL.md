@@ -37,8 +37,9 @@ script, so the riskiest operation is verified against observable evidence.
    arbitrary config files: token shapes, credential-key assignments, Authorization headers, private
    keys — no PII classes, since config files legitimately carry contact emails and paths; exit 1 on
    findings, values never echoed. This mode powers the `.githooks/pre-commit` secret guard and the
-   CI floor's changed-config scan; the committed `.agent/secret-scan-ignore` handles JSON/properties
-   exemptions at the caller level).
+   CI floor's changed-config scan. A fixture that trips it is restructured — placeholder or env var —
+   because even dummy test values are false positives in field security scanners; the callers honor a
+   committed `.agent/secret-scan-ignore` only as a last-resort escape hatch, not seeded since v4.40.1).
    *Run the test suite (the cross-runtime contract — both implementations pass the same fixtures):*
    ```bash
    python3 -m unittest agent-skills/memory-lint/scripts/test_memory_lint.py
@@ -83,6 +84,16 @@ script, so the riskiest operation is verified against observable evidence.
      the reference log (review steps 2–3 — apply events / re-tier — were skipped), excluding `core`,
      `superseded`, never-referenced facts, and **pinned `- [ ]` open threads** (their tier label isn't
      enforced — pinned-ness protects them; v4.26.1). Clear it with the **`refresh-metadata`** skill (or a review).
+   - *advisory* — **`[thread-stale]`** (v4.40.0): an unchecked `- [ ]` open thread not referenced for
+     more than `thread_stale_window` sessions (default 40 — the invariant re-check cadence; a
+     never-referenced thread counts from `created`). Its pin still protects it from decay and
+     archival — this check never touches that. It says "a human should decide": a stalled thread is
+     a **closure signal**, and the review lists every stalled thread in one human closure gate
+     (`REVIEW.md` step 8) where the owner closes it (undelivered items recorded as *deliberately
+     dropped*) or re-affirms it by naming it under `## Memory References` — the only reset. The tool
+     never closes a thread itself, and inspecting a stalled thread is not a use. (Field report,
+     mercury-composable 2026-09-16: a pinned thread's "still open" items had all shipped, unnoticed
+     for 184 sessions — pinned had come to mean unexamined.)
    - *advisory* — **`[secret-material]`**: credential or PII shapes in any committed memory surface —
      `memory/*.md`, `memory/sessions/`, **and** `memory/archive/` (where pasted output lives): known
      token formats (AWS / GitHub / GitLab / Slack / Google keys, private-key blocks, JWTs),
