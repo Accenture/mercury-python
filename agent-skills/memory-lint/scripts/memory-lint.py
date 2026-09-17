@@ -116,6 +116,7 @@ def load_windows(root):
         "continuity_max_facts": 30,
         "continuity_max_lines": 600,
         "closed_narrative_max_lines": 150,
+        "thread_stale_window": 40,
     }
     p = os.path.join(root, "memory", "decay-policy.md")
     if os.path.isfile(p):
@@ -538,6 +539,35 @@ def check_closed_thread_bloat(cont_text, cap, threads=()):
     ]
 
 
+def check_thread_stale(cont, pinned, refs, stems, tsw):
+    # (15) advisory: an unchecked `- [ ]` Open Thread not referenced for more than
+    #      thread_stale_window sessions is STALLED (v4.40.0). Its pin still protects it from
+    #      decay and archival — this check never touches that. It only says "a human should
+    #      decide": a stalled thread is a *closure signal*, and the review lists every stalled
+    #      thread in ONE human closure gate (REVIEW.md step 8) where the owner closes it or
+    #      re-affirms it (a `## Memory References` entry — the only reset). The tool never
+    #      closes a thread on its own. Field origin (mercury-composable, 2026-09-16): a pinned
+    #      thread's "still open" items had all shipped, unnoticed for 184 sessions — pinned had
+    #      come to mean unexamined. The count is refs-based like [overdue]; a never-referenced
+    #      thread counts from `created` (its seeded first use), so no pinned thread is invisible.
+    out = []
+    sslu = make_sslu(refs)
+    for fid in sorted(pinned):
+        fields = cont.get(fid, {})
+        s = sslu(fid)
+        note = ""
+        if s is None:
+            s = created_sessions_ago(fields.get("created"), stems)
+            note = " (never referenced; counted from created)"
+        if s is not None and s > tsw:
+            out.append(
+                f"[thread-stale] {fid} sslu {s}{note} > thread_stale_window {tsw} — stalled open "
+                f"thread: a closure signal. The review lists it in the human closure gate "
+                f"(REVIEW.md step 8) — the owner closes it, or re-affirms it under Memory References"
+            )
+    return out
+
+
 # (10) [secret-material] — committed memory surfaces must not carry credentials or PII.
 # Field incident (reported 2026-08-13, a client repo's DLP scanner): smoke-test output pasted into a
 # session log leaked a live OAuth client secret — session logs are committed & shared, so
@@ -620,8 +650,9 @@ HOME_PATH_RE = re.compile(r"(?:/Users/|/home/|[A-Za-z]:\\Users\\)([A-Za-z0-9._-]
 _HOME_OK = {"runner", "user", "username", "vsts_azpcontainer"}  # well-known CI users, not PII
 
 
-def _is_placeholder_value(key, v):
-    """Values that are templates, redactions, or number/date/version shapes — not secrets."""
+def _placeholder_core(key, v):
+    """Values that are templates, redactions, or number/date/version shapes — not secrets
+    (the as-is pass; `_is_placeholder_value` adds the trailing-punctuation retry)."""
     # The tool's own opt-down knob is knob vocabulary, not a credential: the pre-commit guard's
     # blocking message itself prints "AGENT_MEMORY_SECRET_GUARD=advisory", so a memory file
     # documenting that guidance would otherwise self-flag (field report, 2026-08-19).
@@ -646,6 +677,23 @@ def _is_placeholder_value(key, v):
     if ENUM_KEY_RE.search(key) and re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", v):
         return True
     return bool(PLACEHOLDER_VALUE_RE.fullmatch(v))
+
+
+_TRAILING_PUNCT_RE = re.compile(r"[).,]+$")
+
+
+def _is_placeholder_value(key, v):
+    # Prose rides trailing sentence punctuation into the captured value — the assignment capture
+    # stops only at whitespace, quotes, backticks and `;`, so `…=OAUTHBEARER,` / `…=changeme.` /
+    # `…=${VAR}).` reached the exemptions with the punctuation attached, and every class except
+    # the knob's fell through to a finding (field note, mercury-composable 2026-09-17; v4.40.1).
+    # Retry once with the punctuation stripped — AFTER the as-is pass, so exemptions that
+    # legitimately end in `)` (`$(vault_read …)`, `(REDACTED)`) keep matching unchanged. A real
+    # secret with trailing punctuation still matches nothing on either pass.
+    if _placeholder_core(key, v):
+        return True
+    stripped = _TRAILING_PUNCT_RE.sub("", v)
+    return stripped != v and _placeholder_core(key, stripped)
 
 
 def _is_public_email(local, domain):
@@ -834,6 +882,7 @@ def main():
         )
         + check_closed_thread_bloat(cont_text, w["closed_narrative_max_lines"], threads)
         + check_stale_metadata(cont, pinned, refs, stems, w["working_window"], acw, aw)
+        + check_thread_stale(cont, pinned, refs, stems, w["thread_stale_window"])
         + check_secret_material(root)
     )
 
