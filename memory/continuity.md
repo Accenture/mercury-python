@@ -17,7 +17,8 @@
   the first public package; tag v4.12.1; the 4.12.1 line carries the llm.chat/llm.stream
   AI nodes and the publication metadata incl. the constrained sdist) — the Python member
   of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function
-  host + thin client, repurposed August 2026 (legacy language pack in git history only)
+  host + thin client, repurposed August 2026 (legacy language pack in git history only). **2026-09-22: the OpenTelemetry forwarder implemented on
+  `feat/otel-forwarder` (PR pending) for Eric's v4.12.15 lock-step milestone.**
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-09-05 | through 2026-09-05-211409
 - **last_invariant_check:** (none yet)
@@ -83,6 +84,18 @@
   references, and efficient lookup strategy — instead of `README.md` directly; mirrors the
   `system/AGENTS.md` convention from the mercury-composable and mercury (Rust) siblings.
   <!-- id: decision-consumer-fork-system-agents | created: 2026-09-05 | last_used: 2026-09-05 | uses: 1 | tier: working | supersedes: decision-consumer-fork-readme | origin: 2026-09-05-212856 -->
+
+- **The OpenTelemetry forwarder is a zero-dependency port of the Rust engine's hand-written OTLP encoder, attached
+  at the engines' extension route (Eric, 2026-09-22).** `mercury_composable.otel`: with `otel.forwarding=true` the
+  bus hands every emitted trace dataset to `distributed.trace.forwarder` — delivered WITHOUT a trace, so the
+  forwarder's own execution emits none (the engines' zero-tracing forwarder without a new flag) — and the built-in
+  forwarder (private, two workers; an application's own function on the route wins) maps it to one span with the
+  host's exact W3C ids and exports it over OTLP/HTTP protobuf, retrying transport failures and 408/429/502/503/504
+  on the SDK backoff and re-reading the credential headers per export. Same `otel.*` keys as Java/Rust; deltas:
+  `otel.exporter.otlp.connect.timeout` is honoured, scope `mercury-composable-python`. Rejected: the OTel SDKs as an
+  optional extra (~ten packages against this package's three dependencies; Dynatrace takes protobuf only, so JSON
+  was never an option). Branch `feat/otel-forwarder` (`876d438`); Node twin next.
+  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-09-22 | uses: 1 | tier: working | origin: 2026-09-22-164128 -->
 
 ## Conventions
 
