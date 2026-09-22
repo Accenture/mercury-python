@@ -32,6 +32,13 @@ keywords: [configuration, reference, keys, substitution, overrides]
 | `show.application.properties` | opt-in list of configuration keys shown by `/env` | (empty) |
 | `mandatory.health.dependencies` | routes of health check functions that decide `/health` | (empty) |
 | `optional.health.dependencies` | health check routes reported but never affecting status | (empty) |
+| `otel.forwarding` | the OpenTelemetry forwarder's master switch ([guide](config-logging-actuators.md#distributed-tracing-the-opentelemetry-forwarder-opt-in)) | `false` |
+| `otel.exporter.otlp.endpoint` | the OTLP/HTTP traces URL including the signal path | `http://localhost:4318/v1/traces` |
+| `otel.exporter.otlp.headers` | request headers, `k=v` or `k: v`, comma-separated (re-read per export) | (none) |
+| `otel.exporter.otlp.timeout` | per-export timeout in milliseconds | `10000` |
+| `otel.exporter.otlp.connect.timeout` | connect timeout in milliseconds | the client default |
+| `otel.exporter.otlp.compression` | only `none` is honoured (a warning otherwise) | `none` |
+| `otel.service.name` | the `service.name` resource attribute of exported spans | `application.name` |
 
 List-valued keys accept a comma/space-separated string (engine syntax) or a YAML list.
 

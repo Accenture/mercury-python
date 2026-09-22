@@ -45,6 +45,45 @@ one way in the aggregator:
 (pretty-printed) and `compact` (single-line JSONL for log aggregators). The level
 comes from the `LOG_LEVEL` environment variable when set, else `log.level`.
 
+## Distributed tracing — the OpenTelemetry forwarder (opt-in)
+
+Every traced, non-RPC execution emits the engines' distributed-trace dataset on the
+`distributed.tracing` log stream — `{"trace": {...}, "annotations": {...}}`, the record the
+Java engine logs — so a log aggregation already stitches the span tree across all four
+runtimes. The forwarder is the second sink, for backends that take spans directly:
+Dynatrace, Splunk, an OpenTelemetry Collector.
+
+```yaml
+otel.forwarding: true
+otel.exporter.otlp.endpoint: 'https://<tenant>.live.dynatrace.com/api/v2/otlp/v1/traces'
+otel.exporter.otlp.headers: 'Authorization=Api-Token ${DT_TOKEN}'
+otel.service.name: 'my-python-functions'
+```
+
+With `otel.forwarding=true` (the switch is the only thing that turns it on — `false` by
+default, and `-Dotel.forwarding=true` at run time is enough), the host also hands each
+dataset to the engines' extension route `distributed.trace.forwarder`, where the built-in
+forwarder registers itself at start-up (private, two workers; an application that registers
+its own function on that route wins). Each dataset becomes **one OpenTelemetry span carrying
+the host's exact W3C trace, span and parent-span ids** — the same mapping as the engines'
+forwarders, so one trace spans the engine that called and the function here — and is
+exported over OTLP/HTTP as protobuf, one span per request. There is no OpenTelemetry SDK
+and no new dependency: the encoder is the engines' own hand-written OTLP writer, ported.
+
+Request headers are re-read on every export, so a credential a start-up bootstrap publishes
+with `config.set(...)` after the forwarder started takes effect without a restart; header
+**names** appear in the log, never values. A transport failure or a 408/429/502/503/504
+answer is retried five times on the OpenTelemetry SDK's backoff (1 s growing by 1.5×);
+any other rejection is logged once with the status, the backend's message and a hint
+(`HTTP 401 ... | the backend rejected the credential itself - check otel.exporter.otlp.headers`).
+The start-up line confirms the configuration:
+`OpenTelemetry trace forwarder ready - service=..., OTLP endpoint=..., compression=none, credential headers=[...]`.
+
+Differences from the engines: only `none` compression is honoured (a warning otherwise);
+`otel.exporter.otlp.connect.timeout` **is** honoured here (aiohttp's connect timeout); the
+instrumentation scope is `mercury-composable-python`, so a backend shows which runtime
+produced a span. The keys are listed in the [configuration reference](configuration-reference.md).
+
 ## Actuators — the engines' operational surface
 
 The host serves the engines' endpoints on the same port as `/api/event`:

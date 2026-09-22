@@ -14,7 +14,9 @@ This package is a deliberately **lightweight wrapper of the Event-over-HTTP prot
 - a **primitive in-process event bus** — the single dispatch pipeline: one FIFO mailbox
   per route consumed by `instances` worker tasks, and
 - the **minimalist utilities** shared with the engines for consistency: configuration
-  management, logging in the engines' presentation format, and distributed-trace context.
+  management, logging in the engines' presentation format, and distributed-trace context, and
+- the **OpenTelemetry forwarder** (opt-in, `otel.forwarding=true`): the host's trace spans
+  exported over OTLP/HTTP to Dynatrace, Splunk or a collector — no SDK, no new dependency.
 
 Orchestration deliberately stays in the engines. Functions written here are addressed by
 route name through the engines' declarative `yaml.event.over.http` map, so a flow or a
