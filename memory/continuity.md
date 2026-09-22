@@ -17,8 +17,8 @@
   the first public package; tag v4.12.1; the 4.12.1 line carries the llm.chat/llm.stream
   AI nodes and the publication metadata incl. the constrained sdist) — the Python member
   of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function
-  host + thin client, repurposed August 2026 (legacy language pack in git history only). **2026-09-22: the OpenTelemetry forwarder implemented on
-  `feat/otel-forwarder` (PR pending) for Eric's v4.12.15 lock-step milestone.**
+  host + thin client, repurposed August 2026 (legacy language pack in git history only). **2026-09-22: the OpenTelemetry forwarder MERGED (PR #33, `697f5df4`) on main for Eric's
+  v4.12.15 lock-step milestone; unreleased until the 4.12.15 cut.**
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-09-05 | through 2026-09-05-211409
 - **last_invariant_check:** (none yet)
@@ -94,7 +94,7 @@
   on the SDK backoff and re-reading the credential headers per export. Same `otel.*` keys as Java/Rust; deltas:
   `otel.exporter.otlp.connect.timeout` is honoured, scope `mercury-composable-python`. Rejected: the OTel SDKs as an
   optional extra (~ten packages against this package's three dependencies; Dynatrace takes protobuf only, so JSON
-  was never an option). Branch `feat/otel-forwarder` (`876d438`); Node twin next.
+  was never an option). Shipped: PR #33, merge `697f5df4` (2026-09-22); Node twin next.
   <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-09-22 | uses: 1 | tier: working | origin: 2026-09-22-164128 -->
 
 ## Conventions
