@@ -125,5 +125,6 @@ nav:
     - Configuration Reference: guides/configuration-reference.md
     - HTTP Surface Reference: guides/http-surface-reference.md
     - Interop Test Report — Progressive Rendering: test-reports/progressive-rendering-interop.md
+    - Test Report — OpenTelemetry Certification: test-reports/otel-dynatrace-certification.md
     - Release Notes: https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md
     - Contributing: https://github.com/Accenture/mercury-python/blob/main/CONTRIBUTING.md
