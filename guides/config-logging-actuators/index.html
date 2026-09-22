@@ -910,6 +910,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#distributed-tracing-the-opentelemetry-forwarder-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distributed tracing — the OpenTelemetry forwarder (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#actuators-the-engines-operational-surface" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1464,6 +1475,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#distributed-tracing-the-opentelemetry-forwarder-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distributed tracing — the OpenTelemetry forwarder (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#actuators-the-engines-operational-surface" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1551,6 +1573,38 @@ one way in the aggregator:</p>
 <p><code>log.format</code> carries the engines' three presentations: <code>text</code> (default), <code>json</code>
 (pretty-printed) and <code>compact</code> (single-line JSONL for log aggregators). The level
 comes from the <code>LOG_LEVEL</code> environment variable when set, else <code>log.level</code>.</p>
+<h2 id="distributed-tracing-the-opentelemetry-forwarder-opt-in">Distributed tracing — the OpenTelemetry forwarder (opt-in)<a class="headerlink" href="#distributed-tracing-the-opentelemetry-forwarder-opt-in" title="Permanent link">&para;</a></h2>
+<p>Every traced, non-RPC execution emits the engines' distributed-trace dataset on the
+<code>distributed.tracing</code> log stream — <code>{"trace": {...}, "annotations": {...}}</code>, the record the
+Java engine logs — so a log aggregation already stitches the span tree across all four
+runtimes. The forwarder is the second sink, for backends that take spans directly:
+Dynatrace, Splunk, an OpenTelemetry Collector.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">otel.forwarding</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">otel.exporter.otlp.endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">'https://&lt;tenant&gt;.live.dynatrace.com/api/v2/otlp/v1/traces'</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">otel.exporter.otlp.headers</span><span class="p">:</span><span class="w"> </span><span class="s">'Authorization=Api-Token</span><span class="nv"> </span><span class="s">${DT_TOKEN}'</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nt">otel.service.name</span><span class="p">:</span><span class="w"> </span><span class="s">'my-python-functions'</span>
+</code></pre></div>
+<p>With <code>otel.forwarding=true</code> (the switch is the only thing that turns it on — <code>false</code> by
+default, and <code>-Dotel.forwarding=true</code> at run time is enough), the host also hands each
+dataset to the engines' extension route <code>distributed.trace.forwarder</code>, where the built-in
+forwarder registers itself at start-up (private, two workers; an application that registers
+its own function on that route wins). Each dataset becomes <strong>one OpenTelemetry span carrying
+the host's exact W3C trace, span and parent-span ids</strong> — the same mapping as the engines'
+forwarders, so one trace spans the engine that called and the function here — and is
+exported over OTLP/HTTP as protobuf, one span per request. There is no OpenTelemetry SDK
+and no new dependency: the encoder is the engines' own hand-written OTLP writer, ported.</p>
+<p>Request headers are re-read on every export, so a credential a start-up bootstrap publishes
+with <code>config.set(...)</code> after the forwarder started takes effect without a restart; header
+<strong>names</strong> appear in the log, never values. A transport failure or a 408/429/502/503/504
+answer is retried five times on the OpenTelemetry SDK's backoff (1 s growing by 1.5×);
+any other rejection is logged once with the status, the backend's message and a hint
+(<code>HTTP 401 ... | the backend rejected the credential itself - check otel.exporter.otlp.headers</code>).
+The start-up line confirms the configuration:
+<code>OpenTelemetry trace forwarder ready - service=..., OTLP endpoint=..., compression=none, credential headers=[...]</code>.</p>
+<p>Differences from the engines: only <code>none</code> compression is honoured (a warning otherwise);
+<code>otel.exporter.otlp.connect.timeout</code> <strong>is</strong> honoured here (aiohttp's connect timeout); the
+instrumentation scope is <code>mercury-composable-python</code>, so a backend shows which runtime
+produced a span. The keys are listed in the <a href="../configuration-reference/">configuration reference</a>.</p>
 <h2 id="actuators-the-engines-operational-surface">Actuators — the engines' operational surface<a class="headerlink" href="#actuators-the-engines-operational-surface" title="Permanent link">&para;</a></h2>
 <p>The host serves the engines' endpoints on the same port as <code>/api/event</code>:</p>
 <table>
@@ -1596,19 +1650,19 @@ see the <a href="../http-surface-reference/">HTTP Surface Reference</a>.</p>
 it through the event bus, first with header <code>type=info</code> (an advisory identity map
 merged into its dependency entry), then with <code>type=health</code> (a status text or map; a
 non-200 reply marks the dependency down):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nd">@preload</span><span class="p">(</span><span class="n">route</span><span class="o">=</span><span class="s2">"demo.health"</span><span class="p">,</span> <span class="n">instances</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">private</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">health_check</span><span class="p">(</span><span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">_body</span><span class="p">:</span> <span class="n">Body</span><span class="p">):</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="k">if</span> <span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"type"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"info"</span><span class="p">:</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"service"</span><span class="p">:</span> <span class="s2">"demo.service"</span><span class="p">,</span> <span class="s2">"href"</span><span class="p">:</span> <span class="s2">"http://127.0.0.1"</span><span class="p">}</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="k">return</span> <span class="s2">"demo.service is running fine"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nd">@preload</span><span class="p">(</span><span class="n">route</span><span class="o">=</span><span class="s2">"demo.health"</span><span class="p">,</span> <span class="n">instances</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">private</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">health_check</span><span class="p">(</span><span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">_body</span><span class="p">:</span> <span class="n">Body</span><span class="p">):</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="k">if</span> <span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"type"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"info"</span><span class="p">:</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"service"</span><span class="p">:</span> <span class="s2">"demo.service"</span><span class="p">,</span> <span class="s2">"href"</span><span class="p">:</span> <span class="s2">"http://127.0.0.1"</span><span class="p">}</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="k">return</span> <span class="s2">"demo.service is running fine"</span>
 </code></pre></div>
 <p>Optional dependencies never change the overall status; mandatory ones decide
 <code>UP</code>/<code>DOWN</code>, and the most recent outcome drives <code>/livenessprobe</code>.</p>
 <h2 id="kubernetes-wiring">Kubernetes wiring<a class="headerlink" href="#kubernetes-wiring" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">livenessProbe</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/livenessprobe</span><span class="p p-Indicator">,</span><span class="nt"> port</span><span class="p">:</span><span class="w"> </span><span class="nv">8086</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">readinessProbe</span><span class="p">:</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/health</span><span class="p p-Indicator">,</span><span class="nt"> port</span><span class="p">:</span><span class="w"> </span><span class="nv">8086</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">livenessProbe</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/livenessprobe</span><span class="p p-Indicator">,</span><span class="nt"> port</span><span class="p">:</span><span class="w"> </span><span class="nv">8086</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">readinessProbe</span><span class="p">:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/health</span><span class="p p-Indicator">,</span><span class="nt"> port</span><span class="p">:</span><span class="w"> </span><span class="nv">8086</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>The pod presents exactly like an engine pod — one dashboard shape for the whole
 polyglot estate.</p>

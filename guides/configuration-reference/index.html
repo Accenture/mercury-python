@@ -1537,6 +1537,41 @@
 <td>health check routes reported but never affecting status</td>
 <td>(empty)</td>
 </tr>
+<tr>
+<td><code>otel.forwarding</code></td>
+<td>the OpenTelemetry forwarder's master switch (<a href="../config-logging-actuators/#distributed-tracing-the-opentelemetry-forwarder-opt-in">guide</a>)</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>otel.exporter.otlp.endpoint</code></td>
+<td>the OTLP/HTTP traces URL including the signal path</td>
+<td><code>http://localhost:4318/v1/traces</code></td>
+</tr>
+<tr>
+<td><code>otel.exporter.otlp.headers</code></td>
+<td>request headers, <code>k=v</code> or <code>k: v</code>, comma-separated (re-read per export)</td>
+<td>(none)</td>
+</tr>
+<tr>
+<td><code>otel.exporter.otlp.timeout</code></td>
+<td>per-export timeout in milliseconds</td>
+<td><code>10000</code></td>
+</tr>
+<tr>
+<td><code>otel.exporter.otlp.connect.timeout</code></td>
+<td>connect timeout in milliseconds</td>
+<td>the client default</td>
+</tr>
+<tr>
+<td><code>otel.exporter.otlp.compression</code></td>
+<td>only <code>none</code> is honoured (a warning otherwise)</td>
+<td><code>none</code></td>
+</tr>
+<tr>
+<td><code>otel.service.name</code></td>
+<td>the <code>service.name</code> resource attribute of exported spans</td>
+<td><code>application.name</code></td>
+</tr>
 </tbody>
 </table>
 <p>List-valued keys accept a comma/space-separated string (engine syntax) or a YAML list.</p>
