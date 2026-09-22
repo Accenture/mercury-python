@@ -2,6 +2,14 @@
 
 ## Unreleased (4.12.15 in preparation)
 
+### Changed
+
+- The forwarder's span kind now follows the engines' connected-span-tree rule: the record whose
+  `service` is `http.request` - an engine edge's round-trip record - is the `SERVER` span, and every
+  function execution is `INTERNAL` (a record's `from` no longer decides the kind). A host's own
+  records are function executions, so a backend now shows them as `INTERNAL` hops under the
+  calling engine's edge span.
+
 ### Added
 
 - The **OpenTelemetry trace forwarder** (`mercury_composable.otel`), the lock-step twin of the
