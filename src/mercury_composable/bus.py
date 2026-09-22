@@ -38,6 +38,7 @@ from .envelope import EventEnvelope, iso_utc
 from .exceptions import AppException
 from .log import get_logger
 from .trace import (
+    DISTRIBUTED_TRACE_FORWARDER,
     MY_CID_TAG,
     MY_CORRELATION_ID,
     RPC_TAG,
@@ -132,13 +133,14 @@ def _is_rpc(delivery: _Delivery) -> bool:
 
 def _emit_trace(delivery: _Delivery, info: TraceInfo, start: str,
                 exec_time: float, status: int, success: bool,
-                exception: str | None) -> None:
+                exception: str | None) -> dict[str, Any] | None:
     """Emit the engines' distributed-trace dataset for a traced, non-RPC
     execution - the same record shape the Java reference engine logs
     (message = {"trace": {...}, "annotations": {...}}), so polyglot log
-    aggregation stitches spans across all runtimes."""
+    aggregation stitches spans across all runtimes. Returns the dataset (for
+    the extension route), or None when the execution emits none."""
     if not info.trace_id or _is_rpc(delivery):
-        return
+        return None
     from .actuator import app_origin  # late: actuator imports the registry chain
     trace: dict[str, Any] = {
         "origin": app_origin(), "id": info.trace_id, "path": info.trace_path,
@@ -156,6 +158,7 @@ def _emit_trace(delivery: _Delivery, info: TraceInfo, start: str,
     if info.annotations:
         dataset["annotations"] = dict(info.annotations)
     telemetry_log.info(dataset)
+    return dataset
 
 
 class EventBus:
@@ -319,9 +322,9 @@ class EventBus:
         reply.exec_time = round((time.perf_counter() - start) * 1000, 3)
         if info.annotations:
             reply.annotations.update(info.annotations)
-        _emit_trace(delivery, info, start_iso, reply.exec_time,
-                    reply.get_status(), not reply.has_error(),
-                    str(reply.body) if reply.has_error() else None)
+        self._forward(_emit_trace(delivery, info, start_iso, reply.exec_time,
+                                  reply.get_status(), not reply.has_error(),
+                                  str(reply.body) if reply.has_error() else None))
         return reply
 
     async def _execute_interceptor(self, delivery: _Delivery) -> EventEnvelope:
@@ -362,11 +365,23 @@ class EventBus:
             _reset_trace(token)
         status = error.status if isinstance(error, AppException) \
             else (500 if error else 200)
-        _emit_trace(delivery, info, start_iso,
-                    round((time.perf_counter() - start) * 1000, 3),
-                    status, error is None, str(error) if error else None)
+        self._forward(_emit_trace(delivery, info, start_iso,
+                                  round((time.perf_counter() - start) * 1000, 3),
+                                  status, error is None, str(error) if error else None))
         # an interceptor's own outcome is never auto-replied
         return EventEnvelope()
+
+    def _forward(self, dataset: dict[str, Any] | None) -> None:
+        """Hand an emitted dataset to the engines' extension route when a
+        function is registered there (the OpenTelemetry forwarder, or an
+        application's own). Delivered without a trace, so the forwarder's own
+        execution emits no dataset - the engines' zero-tracing forwarder."""
+        if dataset is None or self._registry is None:
+            return
+        service = self._registry.get(DISTRIBUTED_TRACE_FORWARDER)
+        if service is None or service.interceptor:
+            return
+        self.publish(service, {}, dataset)
 
     def _reply_interceptor_error(self, route: str, event: EventEnvelope,
                                  e: Exception) -> None:

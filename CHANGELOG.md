@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased (4.12.15 in preparation)
+
+### Added
+
+- The **OpenTelemetry trace forwarder** (`mercury_composable.otel`), the lock-step twin of the
+  engines' `opentelemetry-forwarder` extension: with `otel.forwarding=true` the host hands
+  every distributed-trace dataset it emits to the engines' extension route
+  `distributed.trace.forwarder`, where the built-in forwarder maps it to one OpenTelemetry
+  span carrying the host's exact W3C ids and exports it over OTLP/HTTP (protobuf) - the same
+  `otel.*` keys, span mapping, per-export credential headers, retry policy and failure
+  diagnostics as the Java and Rust forwarders. No OpenTelemetry SDK and no new dependency:
+  the encoder is the Rust port's hand-written OTLP writer, ported. Off by default.
+- The `distributed.trace.forwarder` extension route itself: a function an application
+  registers under that name receives every emitted dataset (delivered without a trace, so
+  the forwarder's own execution emits none) - the engines' zero-tracing forwarder contract.
+
+### Changed
+
+- The demo `application.yml` carries the `otel.*` keys switched off, wired to the
+  `OTLP_API_ENDPOINT`, `OTLP_AUTH_HEADER` and `OTLP_TOKEN` environment variables, so
+  `-Dotel.forwarding=true` at run time is enough to export to a backend.
+
 ## Version 4.12.1, 9/1/2026
 
 The first PyPI release: `pip install mercury-composable`. The v4.12.0 lock-step line

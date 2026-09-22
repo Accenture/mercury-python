@@ -28,6 +28,7 @@ import contextlib
 
 from aiohttp import web
 
+from . import otel
 from .actuator import Actuator
 from .bus import DeliveryTimeout
 from .config import app_config
@@ -281,13 +282,20 @@ class Platform:
         config = app_config()
         app_name = config.get_property("application.name", "application")
         actual_port = int(port if port is not None else config.get("rest.server.port", 8085))
+        # the opt-in OpenTelemetry forwarder registers on the extension route
+        # before the route list is announced; its HTTP client closes with the app
+        exporter = otel.activate(config, self.registry)
         server = EventApiServer(self.registry)
         for route, service in sorted(self.registry.routes().items()):
             visibility = "PRIVATE" if service.private else "PUBLIC"
             log.info("Loaded %s %s, instances=%d", visibility, route, service.instances)
         log.info("%s - Event API service started on port %d", app_name, actual_port)
-        web.run_app(server.create_app(), host=host, port=actual_port,
-                    print=None, handle_signals=True)
+        app = server.create_app()
+        if exporter is not None:
+            async def _close_exporter(_app: web.Application) -> None:
+                await exporter.close()
+            app.on_cleanup.append(_close_exporter)
+        web.run_app(app, host=host, port=actual_port, print=None, handle_signals=True)
 
 
 platform = Platform()

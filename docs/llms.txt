@@ -20,7 +20,7 @@
 
 ## Write functions
 - [Function Writing Patterns](https://accenture.github.io/mercury-python/guides/function-patterns/): the (headers, body) contract, plain-def vs async-def, AppException, trace context, private functions, composition incl. the sync bridge.
-- [Configuration, Logging & Actuators](https://accenture.github.io/mercury-python/guides/config-logging-actuators/): resources convention, -D overrides, three log formats, actuator endpoints, health-function contract, Kubernetes probes.
+- [Configuration, Logging & Actuators](https://accenture.github.io/mercury-python/guides/config-logging-actuators/): resources convention, -D overrides, three log formats, actuator endpoints, health-function contract, Kubernetes probes, and the opt-in OpenTelemetry forwarder (`otel.forwarding=true`).
 - [Testing Your Functions](https://accenture.github.io/mercury-python/guides/testing/): handler tests, fresh-registry bus tests, real-HTTP host tests, golden wire vectors.
 
 ## Join the engines

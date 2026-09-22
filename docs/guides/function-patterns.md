@@ -117,7 +117,9 @@ on the `distributed.tracing` log stream - the same
 `{"trace": {...}, "annotations": {...}}` record the Java engine logs - so a
 stdout log-ingest agent (Dynatrace-style) or any log aggregation stitches the
 span tree across all four runtimes. RPC round-trips fold into the caller's
-view, exactly like the engines.
+view, exactly like the engines. With `otel.forwarding=true` the same datasets are also
+exported as OpenTelemetry spans — see the
+[forwarder](config-logging-actuators.md#distributed-tracing-the-opentelemetry-forwarder-opt-in).
 
 **Application log context**: with `log.format` json/compact, every log line a
 function writes inside a traced request carries a `context` block (the

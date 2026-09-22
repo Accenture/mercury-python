@@ -20,3 +20,12 @@ mandatory.health.dependencies: 'demo.health'
 # Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
 show.env.variables: 'LOG_LEVEL'
 show.application.properties: 'application.name, rest.server.port'
+
+# OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin. Switch it on
+# at run time with -Dotel.forwarding=true; the endpoint and credential come from the
+# environment (a Dynatrace endpoint ends in /api/v2/otlp/v1/traces; the header is the whole
+# 'Authorization=Api-Token' prefix, the token its value). Header names are logged, never values.
+otel.forwarding: false
+otel.exporter.otlp.endpoint: '${OTLP_API_ENDPOINT:http://localhost:4318/v1/traces}'
+otel.exporter.otlp.headers: '${OTLP_AUTH_HEADER} ${OTLP_TOKEN}'
+otel.service.name: '${OTLP_SERVICE_NAME:demo-app}'
