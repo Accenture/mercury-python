@@ -10,13 +10,11 @@
       
       
       
-        <link rel="canonical" href="https://accenture.github.io/mercury-python/guides/rationale/">
+        <link rel="canonical" href="https://accenture.github.io/mercury-python/test-reports/otel-dynatrace-certification/">
       
       
-        <link rel="prev" href="../../mercury-family/">
+        <link rel="prev" href="../progressive-rendering-interop/">
       
-      
-        <link rel="next" href="../design/">
       
       
         
@@ -27,7 +25,7 @@
     
     
       
-        <title>Rationale - Composable for Python</title>
+        <title>Test Report — OpenTelemetry Certification, four runtimes - Composable for Python</title>
       
     
     
@@ -80,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#rationale-externalized-functions" class="md-skip">
+        <a href="#test-report-opentelemetry-certification-four-runtimes" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Rationale
+              Test Report — OpenTelemetry Certification, four runtimes
             
           </span>
         </div>
@@ -258,7 +256,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../getting-started/" class="md-tabs__link">
+        <a href="../../guides/getting-started/" class="md-tabs__link">
           
   
   
@@ -276,13 +274,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../guides/rationale/" class="md-tabs__link">
           
   
   
@@ -304,7 +300,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../function-patterns/" class="md-tabs__link">
+        <a href="../../guides/function-patterns/" class="md-tabs__link">
           
   
   
@@ -326,7 +322,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../join-event-script/" class="md-tabs__link">
+        <a href="../../guides/join-event-script/" class="md-tabs__link">
           
   
   
@@ -348,7 +344,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../ai-agent-guide/" class="md-tabs__link">
+        <a href="../../guides/ai-agent-guide/" class="md-tabs__link">
           
   
   
@@ -366,11 +362,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../configuration-reference/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../guides/configuration-reference/" class="md-tabs__link">
           
   
   
@@ -521,7 +519,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/" class="md-nav__link">
+      <a href="../../guides/getting-started/" class="md-nav__link">
         
   
   
@@ -581,10 +579,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -596,22 +592,19 @@
     
     
       
-        
-        
-      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -629,7 +622,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -644,37 +637,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Rationale — Externalized Functions
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../guides/rationale/" class="md-nav__link">
         
   
   
@@ -690,81 +656,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#the-composable-theme-does-not-stop-at-the-jvm-boundary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The composable theme does not stop at the JVM boundary
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#why-you-would-externalize-a-function" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why you would externalize a function
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#why-the-wrapper-owns-nothing-but-functions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why the wrapper owns nothing but functions
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-not-to-externalize" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When not to externalize
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-to-go-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Where to go next
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -777,7 +668,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../design/" class="md-nav__link">
+      <a href="../../guides/design/" class="md-nav__link">
         
   
   
@@ -874,7 +765,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../function-patterns/" class="md-nav__link">
+      <a href="../../guides/function-patterns/" class="md-nav__link">
         
   
   
@@ -902,7 +793,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../streaming/" class="md-nav__link">
+      <a href="../../guides/streaming/" class="md-nav__link">
         
   
   
@@ -930,7 +821,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../config-logging-actuators/" class="md-nav__link">
+      <a href="../../guides/config-logging-actuators/" class="md-nav__link">
         
   
   
@@ -958,7 +849,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../testing/" class="md-nav__link">
+      <a href="../../guides/testing/" class="md-nav__link">
         
   
   
@@ -1051,7 +942,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../join-event-script/" class="md-nav__link">
+      <a href="../../guides/join-event-script/" class="md-nav__link">
         
   
   
@@ -1079,7 +970,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../join-knowledge-graph/" class="md-nav__link">
+      <a href="../../guides/join-knowledge-graph/" class="md-nav__link">
         
   
   
@@ -1170,7 +1061,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ai-agent-guide/" class="md-nav__link">
+      <a href="../../guides/ai-agent-guide/" class="md-nav__link">
         
   
   
@@ -1202,8 +1093,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -1223,19 +1116,22 @@
     
     
       
+        
+        
+      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   
@@ -1253,7 +1149,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1271,7 +1167,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../configuration-reference/" class="md-nav__link">
+      <a href="../../guides/configuration-reference/" class="md-nav__link">
         
   
   
@@ -1299,7 +1195,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../http-surface-reference/" class="md-nav__link">
+      <a href="../../guides/http-surface-reference/" class="md-nav__link">
         
   
   
@@ -1327,7 +1223,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../test-reports/progressive-rendering-interop/" class="md-nav__link">
+      <a href="../progressive-rendering-interop/" class="md-nav__link">
         
   
   
@@ -1352,10 +1248,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../test-reports/otel-dynatrace-certification/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Report — OpenTelemetry Certification
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1371,6 +1294,59 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-was-driven" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What was driven
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-traces-through-this-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The traces through this host
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1466,10 +1442,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-composable-theme-does-not-stop-at-the-jvm-boundary" class="md-nav__link">
+  <a href="#what-was-driven" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The composable theme does not stop at the JVM boundary
+        What was driven
       
     </span>
   </a>
@@ -1477,10 +1453,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-you-would-externalize-a-function" class="md-nav__link">
+  <a href="#the-traces-through-this-host" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why you would externalize a function
+        The traces through this host
       
     </span>
   </a>
@@ -1488,32 +1464,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-the-wrapper-owns-nothing-but-functions" class="md-nav__link">
+  <a href="#observations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why the wrapper owns nothing but functions
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-not-to-externalize" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When not to externalize
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-to-go-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Where to go next
+        Observations
       
     </span>
   </a>
@@ -1540,75 +1494,95 @@
   
 
 
-<h1 id="rationale-externalized-functions">Rationale — Externalized Functions<a class="headerlink" href="#rationale-externalized-functions" title="Permanent link">&para;</a></h1>
-<p><em>Foundations: the thinking before the how.</em></p>
-<blockquote>
-<p><strong>At a glance</strong></p>
-<ul>
-<li><strong>What</strong> — why Python functions join Mercury flows and graphs over Event-over-HTTP,
-  and why the wrapper refuses to become a second orchestrator.</li>
-<li><strong>For</strong> architects deciding where a piece of logic should live.</li>
-</ul>
-</blockquote>
-<h2 id="the-composable-theme-does-not-stop-at-the-jvm-boundary">The composable theme does not stop at the JVM boundary<a class="headerlink" href="#the-composable-theme-does-not-stop-at-the-jvm-boundary" title="Permanent link">&para;</a></h2>
-<p>Mercury's core promise is that <strong>functions are self-contained and coupled only by
-route names and event envelopes</strong>. A flow that reads</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">process</span><span class="p">:</span><span class="w"> </span><span class="s">'hello.python'</span>
+<h1 id="test-report-opentelemetry-certification-four-runtimes">Test Report — OpenTelemetry Certification, four runtimes<a class="headerlink" href="#test-report-opentelemetry-certification-four-runtimes" title="Permanent link">&para;</a></h1>
+<p><em>The live drive of 2026-09-22 (UTC) that certified this host's
+<a href="../../guides/config-logging-actuators/#distributed-tracing-the-opentelemetry-forwarder-opt-in">OpenTelemetry forwarder</a>
+in company: the Java and Rust engines' Playground edges rendering real Gemini tokens progressively,
+the tokens produced by this host's <code>llm.stream</code> AI node (and by the Node.js host's twin), every
+application forwarding its spans to the same Dynatrace tenant under its own service name — one trace
+per request across an engine and a polyglot function host. The twin record on the engines is
+Scenario 8 of their <code>otel-dynatrace-certification</code> reports.</em></p>
+<h2 id="what-was-driven">What was driven<a class="headerlink" href="#what-was-driven" title="Permanent link">&para;</a></h2>
+<p>The forwarder exists on all four runtimes: the Java <code>opentelemetry-forwarder</code> module, the Rust port's
+<code>mercury-opentelemetry-forwarder</code>, and the two zero-dependency ports of the Rust OTLP encoder merged
+that day — this host (PR #33) and the Node.js host (mercury-nodejs #101). The maintainer's scenario is
+the agent-orchestration experiment E0 stretched across them: <code>POST /api/llm/stream</code> on an engine's
+Playground relays its reply lane into the event-over-http mapped <code>llm.stream</code> on a host, and the
+provider's token batches re-render progressively out the engine's edge; <code>POST
+/api/graph/support-triage</code> runs the E0 graph whose <code>llm.chat</code> node is a <code>graph.task</code> on the host.</p>
+<p>This host ran <code>mercury-serve examples/demo_app.py</code> on <code>:8086</code> with <code>-Dotel.forwarding=true</code>,
+<code>-Dotel.service.name=mercury-otel-cert-python</code>, <code>-Dllm.provider=gemini -Dllm.model=gemini-3.6-flash</code>,
+the OTLP endpoint and credential from the environment (<code>OTLP_API_ENDPOINT</code>, <code>OTLP_AUTH_HEADER</code>,
+<code>OTLP_TOKEN</code> — the demo <code>application.yml</code> wiring) and <code>GEMINI_API_KEY</code>. The Java Playground (4.12.14,
+<code>:8085</code>) and the Rust Playground (its E0 twin, <code>:8090</code>) forwarded as <code>mercury-otel-cert-java</code> and
+<code>mercury-otel-cert-rust</code>; the Node.js host (<code>:8087</code>) as <code>mercury-otel-cert-node</code>. Every request
+carried a caller-set <code>traceparent</code>.</p>
+<h2 id="the-traces-through-this-host">The traces through this host<a class="headerlink" href="#the-traces-through-this-host" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Edge → this host</th>
+<th>Trace</th>
+<th><code>llm.stream</code> span start (UTC)</th>
+<th>Token frames</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Java → Python</strong></td>
+<td><code>c90af9e36d8dbd3c2390db240b406d3a</code></td>
+<td>17:36:37.175Z</td>
+<td>2 + <code>done</code></td>
+<td><code>STOP</code>, 34 output tokens, 5.8 s</td>
+</tr>
+<tr>
+<td><strong>Rust → Python</strong></td>
+<td><code>a9686f1f87327466e46cc451ff34b319</code></td>
+<td>17:32:57.146Z</td>
+<td>2 + <code>done</code></td>
+<td><code>STOP</code>, 21.2 s</td>
+</tr>
+</tbody>
+</table>
+<p>The graph verdict through this host: Java → Python <code>372b040e245495158330fdb09b412ada</code> (17:32:29Z,
+label <code>bug</code>). The <code>done</code> frame of each stream carried the model, <code>stop_reason</code>, usage and the trace
+and business correlation ids — the continuity is self-documenting in the edge's output. (The Node.js
+twin carried the other two pairings: Java → Node <code>888a3f721907d31a9b0ec9836b2e580a</code>, Rust → Node
+<code>1232ab83511f3402a519e65a80e1a144</code>.)</p>
+<p><strong>The lineage, read from both sides' own datasets.</strong> The engine's relay span is the parent of this
+host's <code>llm.stream</code> span, and this host's span is the parent of the engine's reply-lane deliveries —
+the same ids in two applications' logs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Rust → Python a9686f1f…   rust   llm.stream.relay             b05fccf48da0d67a
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                          python llm.stream                   02a46cfc25802ae5  (parent b05f…, 21.2 s)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                          rust   async.http.response.stream.0 9f9206c70ec1e37e  (parent 02a4…)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>                          rust   async.http.response.stream.0 ad15a089c5a72849  (parent 02a4…)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Java → Python c90af9e3…   java   llm.stream.relay             babc1831e6f0d231
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>                          python llm.stream                   8bd6892d99b278d8  (parent babc…, 5.8 s)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>                          java   async.http.response.stream.0 813208e56d985f29  (parent 8bd6…)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>                          java   async.http.response.stream.0 902070e822a557d6  (parent 8bd6…)
 </code></pre></div>
-<p>does not know — and must not care — whether that route resolves to a Java method on a
-virtual thread, a Rust function, or a Python handler in another process. The route
-name is the contract; everything else is deployment detail.</p>
-<p>Externalized functions take that promise literally. The
-<a href="https://accenture.github.io/mercury-composable/guides/event-over-http/">Event-over-HTTP seam</a>
-already existed for engine-to-engine calls: the same event envelope, serialized in a
-language-neutral wire format, carried over HTTP. A Python function host is simply
-another peer speaking that protocol — nothing new crosses the wire.</p>
-<h2 id="why-you-would-externalize-a-function">Why you would externalize a function<a class="headerlink" href="#why-you-would-externalize-a-function" title="Permanent link">&para;</a></h2>
-<p><strong>Ecosystem gravity.</strong> Python's strength is its libraries: <code>requests</code>-style
-integrations, NumPy/pandas, scikit-learn and the ML inference stacks, domain SDKs.
-Porting that logic into Java rarely adds value; wrapping it as a route does. The
-function stays where its ecosystem lives; the orchestration stays where the
-architecture lives.</p>
-<p><strong>Team reality.</strong> Enterprise installations are polyglot for the long haul. A data
-science team ships Python; the platform team runs engine applications. Route names are
-the only interface the two must agree on — a one-line YAML entry, not a shared
-codebase.</p>
-<p><strong>Independent lifecycles.</strong> A Python host deploys, scales and restarts on its own
-cadence as an ordinary Kubernetes pod — with the engines' own actuator surface, so
-operations sees one shape everywhere.</p>
-<h2 id="why-the-wrapper-owns-nothing-but-functions">Why the wrapper owns nothing but functions<a class="headerlink" href="#why-the-wrapper-owns-nothing-but-functions" title="Permanent link">&para;</a></h2>
-<p>The tempting mistake is to grow the wrapper into a mini-engine — local flows, retries,
-queues, persistence. Mercury's architecture deliberately says no:</p>
+<p><strong>Exports.</strong> Zero export failures in this host (and in every other application) in every run — five
+drives, 24 LLM calls. This host exported 1–2 spans per round: its <code>llm.stream</code> executions. The
+graph's <code>llm.chat</code> is an RPC leg, which folds into the caller's span on every runtime, so no span is
+exported for it here — the engines' own rule, and the same one the <code>distributed.tracing</code> log follows.</p>
+<h2 id="observations">Observations<a class="headerlink" href="#observations" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Orchestration lives in the engines.</strong> Event Script and MiniGraph carry the retry
-  logic, branching, exception routing and state. A leaf that re-implements recovery
-  fights the tier that owns it.</li>
-<li><strong>Back-pressure belongs to the tier that owns recovery.</strong> The host's internal event
-  bus has <em>no spill tier and no queue cap</em>: a call that cannot be served by its
-  deadline fails fast with the standard 408 envelope, and the engine's flow decides
-  what happens next. A leaf that hoards work merely hides congestion from the layer
-  designed to handle it.</li>
-<li><strong>Sync-over-async across services is an anti-pattern by default.</strong> The engines' own
-  documentation warns that superimposing synchronous coupling on distributed parts
-  builds a <em>distributed monolith</em>. The wrapper inherits that judgment: local
-  composition is for simple leaf-side helpers; workflow processing belongs in flows
-  and graphs.</li>
+<li><strong>The provider, not the pipeline, decided which calls succeeded.</strong> Gemini answered <code>503 This model
+  is currently experiencing high demand</code> on roughly half the calls across the drives, <code>429
+  RESOURCE_EXHAUSTED</code> once, and <code>gemini-2.5-flash</code> proved retired (<code>no longer available to new users</code>,
+  its 404 text recommending <code>gemini-3.6-flash</code>, which then answered); the stable alias
+  <code>gemini-flash-latest</code> — now the demo's default — was the one under demand, so the drives pinned
+  <code>gemini-3.6-flash</code> with <code>-Dllm.model</code>. Every failure was itself a trace: this host rendered the
+  provider's status through the portable error contract (<code>LLM provider error - 503 ...</code>), the edge
+  returned it, and the forwarders exported those spans too.</li>
+<li><strong>The current flash models think before they answer.</strong> A 200-token budget was spent entirely on
+  reasoning (<code>stop_reason: MAX_TOKENS</code>, <code>output_tokens: 0</code>, an empty stream); 1000 tokens rendered two
+  token frames and a <code>STOP</code>. A streaming AI node's budget is a certification setting, not a default.</li>
+<li><strong>What remains:</strong> the backend's view — the maintainer's Dynatrace lookup of the traces above, each
+  expected to show two services with the parentage the datasets assert, this host's spans under the
+  instrumentation scope <code>mercury-composable-python</code>.</li>
 </ul>
-<p>The result is a package small enough to audit in an afternoon — an envelope codec, a
-host, a primitive bus, a thin client, and the engines' operational conventions — with
-the entire orchestration brain kept where it already is.</p>
-<h2 id="when-not-to-externalize">When <em>not</em> to externalize<a class="headerlink" href="#when-not-to-externalize" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Orchestration-shaped logic</strong> — sequencing, branching, compensation: write a flow
-  or a graph, not a Python function that calls other functions in a loop.</li>
-<li><strong>Latency-critical hot paths</strong> — an in-engine function call is an in-memory event;
-  an externalized one is an HTTP round trip. Microseconds versus milliseconds.</li>
-<li><strong>Logic that is really data mapping</strong> — Event Script's data mapping and MiniGraph's
-  built-in skills often eliminate the function entirely.</li>
-</ul>
-<h2 id="where-to-go-next">Where to go next<a class="headerlink" href="#where-to-go-next" title="Permanent link">&para;</a></h2>
-<p><a href="../design/">Design — The Wrapper Anatomy</a> shows how these principles become the five
-small components of the package.</p>
 
 
 
@@ -1649,7 +1623,7 @@ small components of the package.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../mercury-family/" class="md-footer__link md-footer__link--prev" aria-label="Previous: The Mercury Family">
+          <a href="../progressive-rendering-interop/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Interop Test Report — Progressive Rendering">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1659,27 +1633,11 @@ small components of the package.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                The Mercury Family
+                Interop Test Report — Progressive Rendering
               </div>
             </div>
           </a>
         
-        
-          
-          <a href="../design/" class="md-footer__link md-footer__link--next" aria-label="Next: Design — The Wrapper Anatomy">
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              <div class="md-ellipsis">
-                Design — The Wrapper Anatomy
-              </div>
-            </div>
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
-            </div>
-          </a>
         
       </nav>
     
