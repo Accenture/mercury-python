@@ -273,7 +273,8 @@ def test_span_mapping_preserves_the_ids_and_the_metrics() -> None:
     assert span.span_id_hex == SPAN_ID
     assert span.parent_span_id_hex == PARENT_SPAN_ID
     assert span.name == "hello.world"
-    assert span.kind == KIND_SERVER
+    # a function execution is an INTERNAL hop, even the first one (from=http.request)
+    assert span.kind == KIND_INTERNAL
     assert span.status_code == STATUS_OK
     assert span.start_unix_nano == 1_782_295_200_000_000_000
     assert span.end_unix_nano - span.start_unix_nano == 12_500_000
@@ -329,7 +330,8 @@ def test_encoding_round_trips_through_the_reader() -> None:
     assert len(decoded.spans) == 1
     got = decoded.spans[0]
     assert (got.trace_id, got.span_id, got.parent_span_id) == (TRACE_ID, SPAN_ID, PARENT_SPAN_ID)
-    assert got.name == "hello.world" and got.kind == 2 and got.status_code == 1
+    # a function execution encodes as kind 1 (INTERNAL); only the edge's round-trip record is SERVER
+    assert got.name == "hello.world" and got.kind == 1 and got.status_code == 1
     assert got.flags == otlp.SPAN_FLAGS_SAMPLED_LOCAL
     assert got.start_unix_nano == 1_782_295_200_000_000_000
     assert got.end_unix_nano - got.start_unix_nano == 12_500_000
@@ -542,3 +544,17 @@ async def _wait_for(condition: Callable[[], bool], timeout: float = 5.0) -> None
             raise AssertionError("condition not met in time")
         await asyncio.sleep(0.02)
 
+
+def test_edge_round_trip_record_is_the_server_span() -> None:
+    # an engine's REST automation emits one record per traced request with service
+    # "http.request" - the round trip from receipt to the completed response; it is the
+    # SERVER span and the first function's parent (the same rule as the engines' forwarders)
+    dataset = sample_dataset(service="http.request", path="GET /api/hello", exec_time=2016.0)
+    del dataset["trace"]["from"]
+    span = span_from_dataset(dataset)
+    assert span is not None
+    assert span.name == "http.request"
+    assert span.kind == KIND_SERVER
+    assert span.end_unix_nano - span.start_unix_nano == 2_016_000_000
+    assert span.attribute("path") == "GET /api/hello"
+    assert span.attribute("from") is None

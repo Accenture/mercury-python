@@ -17,7 +17,8 @@ Dataset metric           Span
 ``service`` (route)      span name (``path``, then ``task``, when absent)
 ``start`` + ``exec_time`` start / end timestamps
 ``success`` / ``status`` / ``exception``  status OK, or ERROR with a description
-``from`` = http.request  kind SERVER (else INTERNAL)
+``service`` = http.request  kind SERVER - the edge's round-trip record; a function
+                         execution is INTERNAL (its ``from`` does not decide the kind)
 ``path``, ``from``, ``origin``, ``status``, ``exec_time_ms``, ``round_trip_ms``,
 ``exception``            attributes (same names); ``service`` is the ``route`` attribute
 ``annotations`` entries  ``annotation.<key>`` attributes
@@ -114,7 +115,10 @@ def span_from_dataset(dataset: Any) -> Span | None:
     service = _display(trace.get("service"))
     path = _display(trace.get("path"))
     name = service or path or "task"
-    kind = KIND_SERVER if _display(trace.get("from")) == HTTP_REQUEST else KIND_INTERNAL
+    # the edge's round-trip record (service "http.request", emitted by an engine's REST
+    # automation when the response completes) is the SERVER span; every function execution
+    # - including the first one, whose "from" is http.request - is an INTERNAL hop under it
+    kind = KIND_SERVER if service == HTTP_REQUEST else KIND_INTERNAL
     attributes: list[tuple[str, AttributeValue]] = []
 
     def put_str(key: str, value: str | None) -> None:
