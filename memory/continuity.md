@@ -95,6 +95,9 @@
   `otel.exporter.otlp.connect.timeout` is honoured, scope `mercury-composable-python`. Rejected: the OTel SDKs as an
   optional extra (~ten packages against this package's three dependencies; Dynatrace takes protobuf only, so JSON
   was never an option). Shipped: PR #33, merge `697f5df4` (2026-09-22); Node twin next.
+  **Kind rule since 2026-09-22 (branch `fix/otel-span-kind-edge`):** SERVER iff the record's `service` is `http.request` — an
+  engine edge's round-trip record — and every function execution is INTERNAL; a record's `from` no longer decides the kind
+  (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
   <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-09-22 | uses: 1 | tier: working | origin: 2026-09-22-164128 -->
 
 ## Conventions
