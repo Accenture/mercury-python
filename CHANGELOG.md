@@ -18,6 +18,9 @@
 
 ### Changed
 
+- The demo AI nodes' default Gemini model is the stable alias `gemini-flash-latest`: the dated
+  `gemini-3.6-flash` id is no longer served (404 on a current key) - the alias moves with the
+  provider's current flash model. `llm.model` / `params.model` still pin a specific id.
 - The demo `application.yml` carries the `otel.*` keys switched off, wired to the
   `OTLP_API_ENDPOINT`, `OTLP_AUTH_HEADER` and `OTLP_TOKEN` environment variables, so
   `-Dotel.forwarding=true` at run time is enough to export to a backend.
