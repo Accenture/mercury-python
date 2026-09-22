@@ -37,7 +37,9 @@ log = get_logger(__name__)
 # the AI node's provider surface: llm.provider / llm.model in the app config
 # (or -D overrides), params.provider / params.model per call
 LLM_DEFAULT_PROVIDER = "anthropic"
-LLM_DEFAULT_MODELS = {"anthropic": "claude-opus-5", "gemini": "gemini-3.6-flash"}
+# gemini-flash-latest is the stable alias: a dated flash id stops being served when the
+# provider retires it (gemini-3.6-flash 404s on a current key), the alias moves with it
+LLM_DEFAULT_MODELS = {"anthropic": "claude-opus-5", "gemini": "gemini-flash-latest"}
 LLM_DEFAULT_MAX_TOKENS = 16000
 LLM_DEFAULT_TIMEOUT_MS = 60000
 
