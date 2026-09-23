@@ -20,7 +20,9 @@
   nodes and the constrained sdist) — the Python member of the Mercury Composable polyglot initiative: a lightweight
   Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in git history only).
 - **last_enabled:** 2026-08-22
-- **last_review:** 2026-09-05 | through 2026-09-05-211409
+- **last_review:** 2026-09-23 | through 2026-09-23-004552.md (cadence — 10 sessions since; archived 1 faded fact
+  `decision-polyglot-reboot` + swept 3 completed threads past `archive_window` → 2026-Q3; tier changes via `refresh-metadata`;
+  invariants not due (29 sessions, cadence 40, none yet); stalled none). Prior: 2026-09-05 | through 2026-09-05-211409
 - **last_invariant_check:** (none yet)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
 
@@ -70,10 +72,6 @@
 
 ## Key Decisions
 
-- **Polyglot reboot (August 2026):** instead of re-porting the full composable foundation,
-  this repo restarts as a lightweight Event-over-HTTP wrapper; the pre-composable
-  websocket-based language pack remains in git history only (CHANGELOG 0.1.0).
-  <!-- id: decision-polyglot-reboot | created: 2026-08-22 | last_used: 2026-08-22 | uses: 2 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 - **Two-audience root fork (Eric, 2026-08-22):** root `AGENTS.md` routes contributors to
   `memory/PROTOCOL.md` and consumers (developers writing polyglot functions — the "AI
   grammar" path) to `README.md`, which carries the quick start, function contract, and
