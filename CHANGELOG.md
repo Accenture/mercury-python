@@ -1,14 +1,12 @@
 # Changelog
 
-## Unreleased (4.12.15 in preparation)
+## Version 4.12.15, 9/22/2026
 
-### Changed
-
-- The forwarder's span kind now follows the engines' connected-span-tree rule: the record whose
-  `service` is `http.request` - an engine edge's round-trip record - is the `SERVER` span, and every
-  function execution is `INTERNAL` (a record's `from` no longer decides the kind). A host's own
-  records are function executions, so a backend now shows them as `INTERNAL` hops under the
-  calling engine's edge span.
+The lock-step round with the engines: the pack moves from 4.12.1 to 4.12.15, the number the Java engine and the
+Rust port ship in the same round (`conv-ports-adopt-java-release-number` — a version names content, not a
+cadence). Interop evidence for this release: the four-runtime OpenTelemetry certification drive of 2026-09-22 —
+this host's forwarder and `llm.stream` node under both engines' edges, one connected trace per request, confirmed
+in the backend UI (`docs/test-reports/otel-dynatrace-certification.md`). Off by default; nothing to configure.
 
 ### Added
 
@@ -25,6 +23,12 @@
   the forwarder's own execution emits none) - the engines' zero-tracing forwarder contract.
 
 ### Changed
+
+- The forwarder's span kind now follows the engines' connected-span-tree rule: the record whose
+  `service` is `http.request` - an engine edge's round-trip record - is the `SERVER` span, and every
+  function execution is `INTERNAL` (a record's `from` no longer decides the kind). A host's own
+  records are function executions, so a backend now shows them as `INTERNAL` hops under the
+  calling engine's edge span.
 
 - The demo AI nodes' default Gemini model is the stable alias `gemini-flash-latest`: the dated
   `gemini-3.6-flash` id is no longer served (404 on a current key) - the alias moves with the
