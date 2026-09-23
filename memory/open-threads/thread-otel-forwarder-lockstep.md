@@ -1,4 +1,7 @@
-- [ ] **OpenTelemetry forwarder lock-step and the v4.12.15 milestone (Eric's plan, 2026-09-22).** This host's
-  forwarder is MERGED (PR #33, `697f5df4`, 2026-09-22). The Node twin (#101, #102) and the Rust playground E0 twin (mercury #314, open) landed; the four-runtime Dynatrace drive ran 2026-09-22 (this host's traces `c90af9e3…`, `a9686f1f…`; report MERGED, PR #35 `4083c47f`). Remaining: Eric's Dynatrace confirmation, then v4.12.15 on all four repos (this package jumps from 4.12.1, adopting the Java number). Fix on the way: the demo's default Gemini model id no longer resolves on Eric's key
-  (`gemini-flash-latest` does). **2026-09-22 (later):** the span kind rule follows the engines' connected-span-tree fix (SERVER iff `service == http.request`, functions INTERNAL) on branch `fix/otel-span-kind-edge` (`75a6e05`) — **PR #36 MERGED 2026-09-22 (`cbf1f7f6`)**, confirmed in Dynatrace as an Internal span under the engine's `http.request` root — ships with 4.12.15. origin: 2026-09-22-164128, 2026-09-22-194827
-  <!-- id: otel-forwarder-lockstep | created: 2026-09-22 | last_used: 2026-09-22 | uses: 1 | tier: working | origin: 2026-09-22-164128 -->
+- [x] **OpenTelemetry forwarder lock-step and the v4.12.15 milestone — CLOSED 2026-09-23: v4.12.15 PUBLISHED.** PR #37 merge
+  `95101575`, tag `v4.12.15` → `7bf6991`, GitHub release 01:37Z, PyPI 02:34Z (wheel + constrained sdist). Ships the forwarder
+  (#33), the Gemini stable alias (#34), the four-runtime certification report (#35) and the span-kind rule (#36) — certified in
+  the 2026-09-22 Dynatrace drive and confirmed in the UI; one number on all four runtimes (crates.io 12/12 01:57Z, npm
+  2026-09-23 02:34Z). Lesson: the LLM provider, not the pipeline, decides which calls succeed — probe and pin the model per drive.
+  origin: 2026-09-22-164128, 2026-09-22-194827; close 2026-09-23-004552.
+  <!-- id: otel-forwarder-lockstep | created: 2026-09-22 | last_used: 2026-09-23 | uses: 3 | tier: active | origin: 2026-09-22-164128 -->

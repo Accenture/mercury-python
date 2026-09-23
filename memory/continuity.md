@@ -13,12 +13,12 @@
 ## Project State
 
 - **project:** mercury-python (PyPI: `mercury-composable`)
-- **status:** **v4.12.1 PUBLISHED to PyPI 2026-09-01** (`pip install mercury-composable` —
-  the first public package; tag v4.12.1; the 4.12.1 line carries the llm.chat/llm.stream
-  AI nodes and the publication metadata incl. the constrained sdist) — the Python member
-  of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function
-  host + thin client, repurposed August 2026 (legacy language pack in git history only). **2026-09-22: the OpenTelemetry forwarder MERGED (PR #33, `697f5df4`) on main for Eric's
-  v4.12.15 lock-step milestone; unreleased until the 4.12.15 cut.**
+- **status:** **v4.12.15 PUBLISHED to PyPI 2026-09-23 02:34Z** (`pip install mercury-composable`; tag `v4.12.15` → `7bf6991`,
+  PR #37 merge `95101575`, GitHub release 01:37Z — the lock-step round with both engines, adopting the Java number; the 4.12.15
+  line adds the OpenTelemetry forwarder (opt-in, no SDK), the SERVER-iff-`http.request` span-kind rule and the
+  `gemini-flash-latest` default; the 4.12.1 line of 2026-09-01, the first public package, carried the llm.chat/llm.stream AI
+  nodes and the constrained sdist) — the Python member of the Mercury Composable polyglot initiative: a lightweight
+  Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in git history only).
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-09-05 | through 2026-09-05-211409
 - **last_invariant_check:** (none yet)
@@ -29,18 +29,18 @@
 > Canonical live home for the current stack — language version, dependencies, tool
 > versions. `instructions.md` keeps only a high-level descriptor and points here.
 
-- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.1
-  (PyPI 2026-09-01; engine lock-step line from the v4.12.0 milestone), wheel from
+- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.15
+  (PyPI 2026-09-23; lock-step with the engines' 4.12.15), wheel from
   `src/mercury_composable`
-  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-09-05 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-09-05 | uses: 5 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`);
   optional extras: `llm` = `anthropic` >=1,<2 + `google-genai` >=2,<3 (the AI-node provider
   SDKs — `pip install 'mercury-composable[llm]'`, added 2026-09-01)
-  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-09-01 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-09-22 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
 - Developer runner: `mercury-serve` console script (`mercury_composable.cli:main`);
   examples run via `mercury-serve app.py --port <n>` with `-D` overrides
-  <!-- id: stack-mercury-serve-cli | created: 2026-08-22 | last_used: 2026-09-01 | uses: 2 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-mercury-serve-cli | created: 2026-08-22 | last_used: 2026-09-01 | uses: 2 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
 
@@ -83,7 +83,7 @@
   consumer path now points to `system/AGENTS.md` — a version-matched guide index, key
   references, and efficient lookup strategy — instead of `README.md` directly; mirrors the
   `system/AGENTS.md` convention from the mercury-composable and mercury (Rust) siblings.
-  <!-- id: decision-consumer-fork-system-agents | created: 2026-09-05 | last_used: 2026-09-05 | uses: 1 | tier: working | supersedes: decision-consumer-fork-readme | origin: 2026-09-05-212856 -->
+  <!-- id: decision-consumer-fork-system-agents | created: 2026-09-05 | last_used: 2026-09-05 | uses: 1 | tier: archive-candidate | supersedes: decision-consumer-fork-readme | origin: 2026-09-05-212856 -->
 
 - **The OpenTelemetry forwarder is a zero-dependency port of the Rust engine's hand-written OTLP encoder, attached
   at the engines' extension route (Eric, 2026-09-22).** `mercury_composable.otel`: with `otel.forwarding=true` the
@@ -98,7 +98,7 @@
   **Kind rule since 2026-09-22 (PR #36 MERGED, `cbf1f7f6`):** SERVER iff the record's `service` is `http.request` — an
   engine edge's round-trip record — and every function execution is INTERNAL; a record's `from` no longer decides the kind
   (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
-  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-09-22 | uses: 1 | tier: working | origin: 2026-09-22-164128 -->
+  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-09-22 | uses: 2 | tier: active | origin: 2026-09-22-164128 -->
 
 ## Conventions
 
@@ -110,11 +110,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-08-24 | uses: 3 | tier: archive-candidate | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-09-22 | uses: 4 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-08-24 | uses: 2 | tier: archive-candidate | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-09-22 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Open Threads
 
