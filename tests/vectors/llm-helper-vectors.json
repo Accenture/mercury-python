@@ -1,0 +1,2186 @@
+{
+  "contract": "llm-helper",
+  "version": 1,
+  "description": "One contract, two function hosts. mercury-python and mercury-nodejs ship this file byte-identical and run every case against their own fake of the Anthropic SDK, so the two helpers cannot drift apart. A case names the route, the config keys in force, the request body and what the fake provider does; the expectation is the exact SDK call (namespace, parameters, options), then either the reply map or the error (status and message fragments) for llm.chat, or the head, the segments in order, the terminal metadata (a subset) or the in-band error for llm.stream.",
+  "provider_kinds": {
+    "message": "succeeds: deltas are the token batches; text is the final message text (default: the deltas joined); usage, model, stop_reason, request_id (the request-id response header), stop_details",
+    "status": "an HTTP error from the API: status, type, message, request_id; after = the number of deltas delivered before it is raised (0: at open), deltas = those batches",
+    "connection": "a connection failure before any answer",
+    "timeout": "the SDK's own timeout error",
+    "credential": "the SDK found no credential (it raises a bare TypeError before sending anything)",
+    "hang": "never answers - the helper's own deadline must fire"
+  },
+  "cases": [
+    {
+      "name": "prep/missing-prompt-and-messages",
+      "route": "llm.chat",
+      "body": {},
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "missing 'prompt' or 'messages'"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/body-not-a-map",
+      "route": "llm.chat",
+      "body": "just some text",
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "missing 'prompt' or 'messages'"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/messages-not-a-list",
+      "route": "llm.chat",
+      "body": {
+        "messages": "hello"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "missing 'prompt' or 'messages'"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/empty-messages-and-no-prompt",
+      "route": "llm.chat",
+      "body": {
+        "messages": []
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "missing 'prompt' or 'messages'"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/params-not-a-map",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": "fast"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params must be a map"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/unsupported-param",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "unsupported params: temperature",
+            "supported: provider, model, max_tokens, timeout_ms, effort, stop_sequences"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/unknown-provider-param",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "provider": "gemini"
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "unknown LLM provider 'gemini'",
+            "this helper serves: anthropic"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/unknown-provider-config",
+      "route": "llm.chat",
+      "config": {
+        "llm.provider": "gemini"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "unknown LLM provider 'gemini'",
+            "this helper serves: anthropic"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/max-tokens-zero",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": 0
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params.max_tokens must be a whole number >= 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/max-tokens-text",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": "lots"
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params.max_tokens must be a whole number >= 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/max-tokens-boolean",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": true
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params.max_tokens must be a whole number >= 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/max-tokens-fraction",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": 2.5
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params.max_tokens must be a whole number >= 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/timeout-negative",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "timeout_ms": -5
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params.timeout_ms must be a whole number >= 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/bad-effort",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "effort": "extreme"
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params.effort must be one of: low, medium, high, xhigh, max"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/bad-role",
+      "route": "llm.chat",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "hi"
+          },
+          {
+            "role": "system",
+            "content": "be terse"
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "messages[1].role must be one of: user, assistant"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/empty-content",
+      "route": "llm.chat",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": ""
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "messages[0].content must be a non-empty string"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/content-blocks-not-supported",
+      "route": "llm.chat",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "messages[0].content must be a non-empty string"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/system-not-a-string",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "system": 5
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "system must be a string"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/schema-not-a-map",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "schema": "object"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "schema must be a JSON schema map"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/schema-on-the-streaming-route",
+      "route": "llm.stream",
+      "body": {
+        "prompt": "x",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "enum": [
+                "question",
+                "bug",
+                "feature"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "reason"
+          ]
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "schema is not part of the streaming contract - use llm.chat"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/stop-sequences-not-strings",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "stop_sequences": [
+            1
+          ]
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "params.stop_sequences must be a list of strings"
+          ]
+        }
+      }
+    },
+    {
+      "name": "prep/fallbacks-config-invalid",
+      "route": "llm.chat",
+      "config": {
+        "llm.fallbacks": "maybe"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "expect": {
+        "error": {
+          "status": 500,
+          "message_contains": [
+            "llm.fallbacks must be 'default' or 'off'"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/prompt-with-defaults",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Capital of France?"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Par",
+          "is"
+        ],
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 3
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "Capital of France?"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "Paris",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 12,
+            "output_tokens": 3
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/conversation-with-system",
+      "route": "llm.chat",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "My name is Alice."
+          },
+          {
+            "role": "assistant",
+            "content": "Hello Alice!"
+          },
+          {
+            "role": "user",
+            "content": "What is my name?"
+          }
+        ],
+        "system": "You are terse."
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Alice."
+        ],
+        "usage": {
+          "input_tokens": 30,
+          "output_tokens": 4
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "system": "You are terse.",
+            "messages": [
+              {
+                "role": "user",
+                "content": "My name is Alice."
+              },
+              {
+                "role": "assistant",
+                "content": "Hello Alice!"
+              },
+              {
+                "role": "user",
+                "content": "What is my name?"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "Alice.",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 30,
+            "output_tokens": 4
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/messages-win-over-prompt",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "ignored",
+        "messages": [
+          {
+            "role": "user",
+            "content": "kept"
+          }
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "kept"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "ok",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 1
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/schema-verdict",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "The app crashes when I upload a file",
+        "system": "You are a support triage assistant.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "enum": [
+                "question",
+                "bug",
+                "feature"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "reason"
+          ]
+        },
+        "params": {
+          "max_tokens": 512,
+          "timeout_ms": 25000
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "{\"label\":\"bug\",\"reas",
+          "on\":\"The upload crashes the app\"}"
+        ],
+        "usage": {
+          "input_tokens": 302,
+          "output_tokens": 24
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 512,
+            "system": "You are a support triage assistant.",
+            "messages": [
+              {
+                "role": "user",
+                "content": "The app crashes when I upload a file"
+              }
+            ],
+            "output_config": {
+              "format": {
+                "type": "json_schema",
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "enum": [
+                        "question",
+                        "bug",
+                        "feature"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "reason"
+                  ]
+                }
+              }
+            },
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 25000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "data": {
+            "label": "bug",
+            "reason": "The upload crashes the app"
+          },
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 302,
+            "output_tokens": 24
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/schema-keeps-the-callers-additional-properties",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "schema": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "a": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "{\"a\":\"b\"}"
+        ],
+        "usage": {
+          "input_tokens": 8,
+          "output_tokens": 6
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ],
+            "output_config": {
+              "format": {
+                "type": "json_schema",
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "data": {
+            "a": "b"
+          },
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 8,
+            "output_tokens": 6
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/effort-and-stop-sequences",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "effort": "high",
+          "stop_sequences": [
+            "END"
+          ]
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "stop_sequence",
+        "deltas": [
+          "done"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 2
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ],
+            "output_config": {
+              "effort": "high"
+            },
+            "stop_sequences": [
+              "END"
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "done",
+          "model": "claude-opus-5-5",
+          "stop_reason": "stop_sequence",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 2
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/numeric-strings-are-accepted",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": "512",
+          "timeout_ms": "2500"
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 512,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 2500,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "ok",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 1
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/other-model-gets-no-fallbacks",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "model": "claude-haiku-4-5"
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-haiku-4-5-20251001",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "OK"
+        ],
+        "usage": {
+          "input_tokens": 14,
+          "output_tokens": 4
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "messages",
+          "params": {
+            "model": "claude-haiku-4-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ]
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "OK",
+          "model": "claude-haiku-4-5-20251001",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/fallbacks-off-by-config",
+      "route": "llm.chat",
+      "config": {
+        "llm.fallbacks": "off"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ]
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "ok",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 1
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/config-supplies-defaults-and-params-win",
+      "route": "llm.chat",
+      "config": {
+        "llm.model": "claude-haiku-4-5",
+        "llm.max.tokens": "2048",
+        "llm.timeout.ms": "9000",
+        "llm.max.retries": "0",
+        "llm.effort": "low"
+      },
+      "body": {
+        "prompt": "x",
+        "params": {
+          "model": "claude-opus-5-5"
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 2048,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ],
+            "output_config": {
+              "effort": "low"
+            },
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 9000,
+            "max_retries": 0
+          }
+        },
+        "result": {
+          "text": "ok",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 1
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/no-request-id-leaves-the-key-out",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        }
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "ok",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "chat/refusal-after-partial-text-is-reported",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "refusal",
+        "deltas": [
+          "I can"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 2
+        },
+        "request_id": "req_ok_001",
+        "stop_details": {
+          "category": "cyber",
+          "explanation": "declined"
+        }
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "I can",
+          "model": "claude-opus-5-5",
+          "stop_reason": "refusal",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 2
+          },
+          "request_id": "req_ok_001",
+          "stop_details": {
+            "category": "cyber",
+            "explanation": "declined"
+          }
+        }
+      }
+    },
+    {
+      "name": "chat/truncated-text-is-returned-with-its-stop-reason",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": 1
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "max_tokens",
+        "deltas": [
+          "O"
+        ],
+        "usage": {
+          "input_tokens": 20,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 1,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "O",
+          "model": "claude-opus-5-5",
+          "stop_reason": "max_tokens",
+          "usage": {
+            "input_tokens": 20,
+            "output_tokens": 1
+          },
+          "request_id": "req_ok_001"
+        }
+      }
+    },
+    {
+      "name": "chat/unusable/refusal-with-no-text",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "refusal",
+        "deltas": [],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 0
+        },
+        "text": "",
+        "request_id": "req_ok_001",
+        "stop_details": {
+          "category": "cyber",
+          "explanation": "declined"
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM refused the request - stop_reason=refusal",
+            "category=cyber"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/unusable/refusal-of-a-schema-request",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "enum": [
+                "question",
+                "bug",
+                "feature"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "reason"
+          ]
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "refusal",
+        "deltas": [
+          "{"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001",
+        "stop_details": {
+          "category": null,
+          "explanation": null
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM refused the request - stop_reason=refusal"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/unusable/empty-reply",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 0
+        },
+        "text": "",
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM reply is empty - stop_reason=end_turn",
+            "output_tokens=0"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/unusable/empty-reply-cut-off-by-max-tokens",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": 8
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "max_tokens",
+        "deltas": [],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 8
+        },
+        "text": "",
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM reply is empty - stop_reason=max_tokens",
+            "output_tokens=8",
+            "raise params.max_tokens or lower params.effort"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/unusable/schema-reply-cut-off",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "enum": [
+                "question",
+                "bug",
+                "feature"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "reason"
+          ]
+        },
+        "params": {
+          "max_tokens": 1
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "max_tokens",
+        "deltas": [
+          "{"
+        ],
+        "usage": {
+          "input_tokens": 300,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM reply is not valid JSON for the requested schema - stop_reason=max_tokens",
+            "the reply was cut off - raise params.max_tokens"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/unusable/schema-reply-not-json",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "enum": [
+                "question",
+                "bug",
+                "feature"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "reason"
+          ]
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Sorry, I cannot do that."
+        ],
+        "usage": {
+          "input_tokens": 300,
+          "output_tokens": 6
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM reply is not valid JSON for the requested schema - stop_reason=end_turn"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/http-404",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 404,
+        "type": "not_found_error",
+        "message": "model: claude-no-such-model-9",
+        "request_id": "req_err_404"
+      },
+      "expect": {
+        "error": {
+          "status": 404,
+          "message_contains": [
+            "LLM provider error - 404 not_found_error: model: claude-no-such-model-9",
+            "request_id req_err_404"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/http-401",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 401,
+        "type": "authentication_error",
+        "message": "API key is invalid."
+      },
+      "expect": {
+        "error": {
+          "status": 401,
+          "message_contains": [
+            "LLM provider error - 401 authentication_error: API key is invalid."
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/http-400",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 400,
+        "type": "invalid_request_error",
+        "message": "This model does not support the effort parameter.",
+        "request_id": "req_err_400"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "LLM provider error - 400 invalid_request_error: This model does not support the effort parameter.",
+            "request_id req_err_400"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/http-429",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 429,
+        "type": "rate_limit_error",
+        "message": "Number of request tokens has exceeded your per-minute rate limit.",
+        "request_id": "req_err_429"
+      },
+      "expect": {
+        "error": {
+          "status": 429,
+          "message_contains": [
+            "LLM provider rate limit - 429 rate_limit_error: Number of request tokens has exceeded your per-minute rate limit.",
+            "request_id req_err_429"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/http-500",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 500,
+        "type": "api_error",
+        "message": "Internal server error",
+        "request_id": "req_err_500"
+      },
+      "expect": {
+        "error": {
+          "status": 500,
+          "message_contains": [
+            "LLM provider error - 500 api_error: Internal server error",
+            "request_id req_err_500"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/http-529",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 529,
+        "type": "overloaded_error",
+        "message": "Overloaded",
+        "request_id": "req_err_529"
+      },
+      "expect": {
+        "error": {
+          "status": 529,
+          "message_contains": [
+            "LLM provider error - 529 overloaded_error: Overloaded",
+            "request_id req_err_529"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/connection-failure",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "connection",
+        "message": "Connection error."
+      },
+      "expect": {
+        "error": {
+          "status": 503,
+          "message_contains": [
+            "LLM provider unreachable - "
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/sdk-timeout",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "timeout_ms": 1500
+        }
+      },
+      "provider": {
+        "kind": "timeout"
+      },
+      "expect": {
+        "error": {
+          "status": 408,
+          "message_contains": [
+            "LLM request timed out after 1500 ms"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/no-credential",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "credential"
+      },
+      "expect": {
+        "error": {
+          "status": 503,
+          "message_contains": [
+            "LLM provider credential missing - set ANTHROPIC_API_KEY in the environment"
+          ]
+        }
+      }
+    },
+    {
+      "name": "chat/provider-error/deadline-bounds-the-whole-call",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "params": {
+          "timeout_ms": 50
+        }
+      },
+      "provider": {
+        "kind": "hang"
+      },
+      "expect": {
+        "error": {
+          "status": 408,
+          "message_contains": [
+            "LLM request timed out after 50 ms"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream/batches-forwarded-in-order",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "greet me"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Hello ",
+          "wor",
+          "ld"
+        ],
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 34
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "beta.messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "greet me"
+              }
+            ],
+            "betas": [
+              "server-side-fallback-2026-07-01"
+            ],
+            "fallbacks": "default"
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "head": [
+          200,
+          "text/event-stream"
+        ],
+        "frames": [
+          "Hello ",
+          "wor",
+          "ld"
+        ],
+        "terminal": {
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 12,
+            "output_tokens": 34
+          },
+          "request_id": "req_ok_001",
+          "my_correlation_id": "biz-777",
+          "trace_id": null
+        }
+      }
+    },
+    {
+      "name": "stream/empty-batches-are-skipped",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "a",
+          "",
+          "b",
+          ""
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 2
+        },
+        "text": "ab",
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "head": [
+          200,
+          "text/event-stream"
+        ],
+        "frames": [
+          "a",
+          "b"
+        ],
+        "terminal": {
+          "stop_reason": "end_turn"
+        }
+      }
+    },
+    {
+      "name": "stream/idle-allowance-is-timeout-ms",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x",
+        "params": {
+          "timeout_ms": 7000,
+          "model": "claude-haiku-4-5"
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "messages",
+          "params": {
+            "model": "claude-haiku-4-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ]
+          },
+          "options": {
+            "timeout_ms": 7000,
+            "max_retries": 2
+          }
+        },
+        "head": [
+          200,
+          "text/event-stream"
+        ],
+        "frames": [
+          "ok"
+        ],
+        "terminal": {
+          "stop_reason": "end_turn"
+        }
+      }
+    },
+    {
+      "name": "stream/error-before-the-first-token",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 404,
+        "type": "not_found_error",
+        "message": "model: nope",
+        "request_id": "req_err_404"
+      },
+      "expect": {
+        "head": null,
+        "frames": [],
+        "terminal": null,
+        "error": {
+          "status": 404,
+          "message_contains": [
+            "LLM provider error - 404 not_found_error: model: nope",
+            "request_id req_err_404"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream/error-after-some-tokens",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 529,
+        "type": "overloaded_error",
+        "message": "Overloaded",
+        "request_id": "req_err_529",
+        "after": 1,
+        "deltas": [
+          "Once ",
+          "upon"
+        ]
+      },
+      "expect": {
+        "head": [
+          200,
+          "text/event-stream"
+        ],
+        "frames": [
+          "Once "
+        ],
+        "terminal": null,
+        "error": {
+          "status": 529,
+          "message_contains": [
+            "LLM provider error - 529 overloaded_error: Overloaded"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream/rate-limit",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 429,
+        "type": "rate_limit_error",
+        "message": "slow down"
+      },
+      "expect": {
+        "head": null,
+        "frames": [],
+        "terminal": null,
+        "error": {
+          "status": 429,
+          "message_contains": [
+            "LLM provider rate limit - 429 rate_limit_error"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream/no-token-at-all-is-a-422",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": 8
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "max_tokens",
+        "deltas": [],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 8
+        },
+        "text": "",
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "head": null,
+        "frames": [],
+        "terminal": null,
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM reply is empty - stop_reason=max_tokens",
+            "output_tokens=8"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream/refusal-before-any-token-is-a-422",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "refusal",
+        "deltas": [],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 0
+        },
+        "text": "",
+        "request_id": "req_ok_001",
+        "stop_details": {
+          "category": "cyber",
+          "explanation": "declined"
+        }
+      },
+      "expect": {
+        "head": null,
+        "frames": [],
+        "terminal": null,
+        "error": {
+          "status": 422,
+          "message_contains": [
+            "LLM refused the request - stop_reason=refusal",
+            "category=cyber"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream/refusal-after-tokens-closes-with-details",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "refusal",
+        "deltas": [
+          "I can"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 2
+        },
+        "request_id": "req_ok_001",
+        "stop_details": {
+          "category": "cyber",
+          "explanation": "declined"
+        }
+      },
+      "expect": {
+        "head": [
+          200,
+          "text/event-stream"
+        ],
+        "frames": [
+          "I can"
+        ],
+        "terminal": {
+          "stop_reason": "refusal",
+          "stop_details": {
+            "category": "cyber",
+            "explanation": "declined"
+          }
+        }
+      }
+    },
+    {
+      "name": "stream/truncated-stream-closes-with-its-stop-reason",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x",
+        "params": {
+          "max_tokens": 2
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "max_tokens",
+        "deltas": [
+          "Hel"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 2
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "head": [
+          200,
+          "text/event-stream"
+        ],
+        "frames": [
+          "Hel"
+        ],
+        "terminal": {
+          "stop_reason": "max_tokens"
+        }
+      }
+    },
+    {
+      "name": "stream/sdk-timeout",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x",
+        "params": {
+          "timeout_ms": 900
+        }
+      },
+      "provider": {
+        "kind": "timeout"
+      },
+      "expect": {
+        "head": null,
+        "frames": [],
+        "terminal": null,
+        "error": {
+          "status": 408,
+          "message_contains": [
+            "LLM request timed out after 900 ms"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stream/no-credential",
+      "route": "llm.stream",
+      "headers": {
+        "my_correlation_id": "biz-777"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "credential"
+      },
+      "expect": {
+        "head": null,
+        "frames": [],
+        "terminal": null,
+        "error": {
+          "status": 503,
+          "message_contains": [
+            "LLM provider credential missing - set ANTHROPIC_API_KEY in the environment"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -29,7 +29,7 @@ mercury-serve app.py -Drest.server.port=8090 -Dlog.format=compact
 ```
 
 See the worked sample
-[`examples/resources/application.yml`](https://github.com/Accenture/mercury-python/blob/main/examples/resources/application.yml)
+[`examples/demo-app/resources/application.yml`](https://github.com/Accenture/mercury-python/blob/main/examples/demo-app/resources/application.yml)
 and the full key table in the [Configuration Reference](configuration-reference.md).
 
 ## Logging — one aggregation, three presentations

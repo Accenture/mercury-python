@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The **LLM helper app** (`examples/llm-helper/`): a dedicated function host for the AI nodes of the
+  agent-orchestration experiment, on the official Anthropic SDK (default model `claude-opus-5-5`).
+  `llm.chat` answers once, with optional JSON-schema structured output returned parsed as `data`;
+  `llm.stream` relays the model's token batches over the multi-shot reply contract, each batch
+  forwarded the moment it is produced and never gathered; `llm.health` reports whether a call could
+  be sent, with no network traffic. The contract, the `llm.*` configuration keys, the error contract
+  and the backend seam (AWS Bedrock through IAM is the planned second route) are in its README.
+- One shared contract file, `tests/vectors/llm-helper-vectors.json`, byte-identical in mercury-nodejs:
+  63 cases (request validation, the exact SDK call, replies, errors, streaming) run against a fake
+  of the SDK in each pack, so the two helpers cannot drift apart. No token is spent, no credential
+  needed. A separate test fails if a token batch is held back.
+- A reply that carries nothing usable is an error, never an empty success: a refusal with no text, an
+  empty reply, or a structured reply cut off before it is valid JSON is a 422 that names the
+  `stop_reason`, the tokens spent and what to raise. A stream that ends before its first token fails
+  with a 422 instead of an empty 200.
+- Server-side refusal fallbacks (`fallbacks: "default"`) on the models that support them, switchable
+  with `llm.fallbacks=off`; `request_id` in every reply and terminal event; usage on the trace
+  record (`llm_model`, `llm_stop_reason`, `llm_input_tokens`, `llm_output_tokens`, `llm_request_id`).
+- `llm.log.batches` (off by default): log each streamed batch's number, size and arrival time, never its
+  text, to tell the hop that holds batches back from the one that forwards them. The certification drive
+  used it to show that every batch the helper forwarded reached the engine edge as its own frame. It
+  also showed that the cadence of progressive rendering is the API's and differs by model: Haiku 4.5
+  streams continuously, Opus 5.5 in bursts about every 600 ms (documented in the README).
+
+### Changed
+
+- The AI nodes moved out of the demo. `examples/demo-app/demo_app.py` is the minimal polyglot demo
+  again, with no LLM code; `llm.chat` and `llm.stream` live in `examples/llm-helper/llm_helper.py` on
+  the same default port (8086), with the same request surface, so a graph that names those routes (the
+  `support-triage` graph) works unchanged.
+- **READ - each example app now lives in its own folder**, with its own README and its own `resources/`:
+  `examples/demo-app/` and `examples/llm-helper/`. The demo moved from `examples/demo_app.py`, and its
+  sample configuration from `examples/resources/application.yml` to
+  `examples/demo-app/resources/application.yml`. Start it with
+  `mercury-serve examples/demo-app/demo_app.py`; the routes and the default port are unchanged.
+- **READ - the contract is stricter than the demo nodes were.** A `params` key outside `provider`,
+  `model`, `max_tokens`, `timeout_ms`, `effort` and `stop_sequences` is a 400 (the demo forwarded any
+  key to the provider SDK); a `schema` on `llm.stream` is a 400 (it was ignored); on `llm.chat`,
+  `params.timeout_ms` bounds the whole call, retries included; provider errors read
+  `LLM provider error - {status} {type}: {message} (request_id …)`.
+- The `llm` extra is `anthropic>=1,<2` only.
+
+### Removed
+
+- The Gemini provider (`google-genai`) and its selection: the helper serves Claude only, so
+  `-Dllm.provider=gemini` is now a 400 that names what is served.
+
 ## Version 4.12.15, 9/22/2026
 
 The lock-step round with the engines: the pack moves from 4.12.1 to 4.12.15, the number the Java engine and the

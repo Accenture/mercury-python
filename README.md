@@ -138,7 +138,7 @@ The same conventions as the engines, so a polyglot installation stays uniform:
 Configuration lives in the `resources` folder, mirroring the engines:
 `resources/application.yml` (or `.yaml` / `.properties`) in the working directory or next
 to the application file, or an explicit `--config` path — see
-[`examples/resources/application.yml`](examples/resources/application.yml) for a worked
+[`examples/demo-app/resources/application.yml`](examples/demo-app/resources/application.yml) for a worked
 sample. Values support `${ENV_VAR:default}` substitution. Runtime parameter overrides use the
 same `-D` syntax as the Java engine and the Rust port — checked first on every read
 (`AppConfig.set(key, value)` does the same programmatically, the `f:setConfig` analog):
