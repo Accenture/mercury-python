@@ -1,0 +1,49 @@
+# The LLM helper's configuration - the engines' "resources" convention.
+# mercury-serve loads resources/application.yml from the working directory, or from the
+# resources folder next to the application file (this one). Any key can be overridden at
+# run time with the engines' -D syntax, e.g.:
+#   mercury-serve examples/llm-helper/llm_helper.py -Dllm.model=claude-haiku-4-5
+
+application.name: 'llm-helper'
+info.app.description: 'Mercury Composable LLM helper (llm.chat / llm.stream on the Anthropic SDK)'
+
+rest.server.port: 8086
+
+# text (default) | json (pretty-printed) | compact (single-line JSONL)
+log.format: text
+log.level: INFO
+
+# Actuator /health dependencies - routes of health check functions speaking the
+# engines' type=info / type=health contract (llm.health in llm_helper.py). It reports
+# whether a call could be sent (a credential is present) with no network traffic.
+mandatory.health.dependencies: 'llm.health'
+
+# Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
+show.env.variables: 'LOG_LEVEL'
+show.application.properties: 'application.name, rest.server.port, llm.backend, llm.model'
+
+# --- the helper's settings (a call's params.* win over these) -----------------------------
+# The credential is never configured here: ANTHROPIC_API_KEY comes from the environment.
+llm.backend: 'anthropic'
+llm.model: 'claude-opus-5-5'
+llm.max.tokens: 16000
+# llm.chat: the whole call, SDK retries included. llm.stream: the idle allowance between events.
+llm.timeout.ms: 60000
+llm.max.retries: 2
+# server-side refusal fallbacks on the models that support them: default | off
+llm.fallbacks: 'default'
+# low | medium | high | xhigh | max - left unset, the model's own default applies (a model
+# that takes no effort parameter rejects one, so set this only for a model that does)
+# llm.effort: 'medium'
+# diagnostics for a slow or bursty stream: log each batch's number, size and arrival time (never
+# its text), so the hop that holds batches back can be told apart from the one that forwards them
+# llm.log.batches: true
+
+# OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin. Switch it on
+# at run time with -Dotel.forwarding=true; the endpoint and credential come from the
+# environment (a Dynatrace endpoint ends in /api/v2/otlp/v1/traces; the header is the whole
+# 'Authorization=Api-Token' prefix, the token its value). Header names are logged, never values.
+otel.forwarding: false
+otel.exporter.otlp.endpoint: '${OTLP_API_ENDPOINT:http://localhost:4318/v1/traces}'
+otel.exporter.otlp.headers: '${OTLP_AUTH_HEADER} ${OTLP_TOKEN}'
+otel.service.name: '${OTLP_SERVICE_NAME:llm-helper}'
