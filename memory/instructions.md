@@ -27,7 +27,8 @@ the engines by design. The legacy pre-composable language pack lives in git hist
   `cli.py` (`mercury-serve`); `py.typed` ships type information.
 - `tests/` — pytest suite; `tests/vectors/vectors.json` holds the **golden conformance
   vectors shared with the Java and Rust engines** (the wire-compatibility proof).
-- `examples/demo_app.py` — minimal runnable function app.
+- `examples/demo-app/demo_app.py` — the minimal runnable function app (README and `resources/` beside it);
+  `examples/llm-helper/llm_helper.py` — the LLM helper app (`llm.chat`, `llm.stream`, `llm.health` on the Anthropic SDK).
 - Root `README.md` — the consumer-facing guide (quick start, function contract,
   configuration, wire compatibility); the root `AGENTS.md` fork routes consumers there.
 

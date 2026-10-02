@@ -37,8 +37,8 @@
   <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-09-23 | uses: 6 | tier: active | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`);
-  optional extras: `llm` = `anthropic` >=1,<2 + `google-genai` >=2,<3 (the AI-node provider
-  SDKs — `pip install 'mercury-composable[llm]'`, added 2026-09-01)
+  optional extra: `llm` = `anthropic` >=1,<2 only (the LLM helper app's SDK — `pip install 'mercury-composable[llm]'`;
+  `google-genai` was removed 2026-10-01 with the Gemini provider, PR #38)
   <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-09-22 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
 - Developer runner: `mercury-serve` console script (`mercury_composable.cli:main`);
   examples run via `mercury-serve app.py --port <n>` with `-D` overrides
@@ -98,6 +98,28 @@
   (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
   <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-09-22 | uses: 2 | tier: active | origin: 2026-09-22-164128 -->
 
+- **The LLM helper is a dedicated function host on the Anthropic SDK: the engines stay LLM-free, the AI node is a bounded
+  function, and one contract is proven by a vector file shared with the Node pack (Eric's rulings, 2026-10-01; PR #38, merge
+  `c6cda5ab`).** `examples/llm-helper/llm_helper.py` serves `llm.chat` (one answer, optional JSON-schema structured output
+  returned as `data`), `llm.stream` (the model's token batches over the multi-shot reply contract) and `llm.health` (a credential
+  check, no network traffic). Claude only: the Gemini provider and `google-genai` are gone (the contract stays provider-neutral
+  through `params.provider`, which accepts only `anthropic`). Default model `claude-opus-5-5` (`llm.model`), server-side refusal
+  fallbacks on (`llm.fallbacks=off`), and a `Backend` seam (`get_backend()`) for the planned AWS Bedrock route
+  (`llm-helper-bedrock-iam`). **The contract:** a `params` allowlist (`provider`, `model`, `max_tokens`, `timeout_ms`, `effort`,
+  `stop_sequences`; anything else is a 400 and no sampling parameter is forwarded), a schema on `llm.stream` is a 400, **a reply
+  that carries nothing usable is a 422 and never an empty success**, and every failure is an `AppException` whose message the
+  Node twin repeats. **Progressive rendering is never buffered** (Eric's requirement): each batch leaves as its own segment the
+  moment it arrives, a test pins it (the fake model refuses batch k until the caller holds batches 0..k-1), and the certified
+  drives showed the helper and both engines add nothing (batches equal frames, 4-10 ms offset). The cadence a viewer sees is the
+  API's and depends on the model (Haiku 4.5 about 25 ms continuous, Sonnet 5.5 about 350 ms bursts, Opus 5.5 about 600 ms
+  bursts). **Opus 5.5 thinks first and thinking tokens count against `max_tokens`:** a few hundred can end with no text (the
+  422), so the engines' demos ask for 2000, the helper's default is 16000, and Haiku (`llm.model: claude-haiku-4-5`) is the
+  documented choice for smooth rendering; the default STAYS Opus (Eric, 2026-10-01). **Proof:** `tests/vectors/llm-helper-vectors.json`
+  (byte-identical in mercury-nodejs, 63 cases against SDK fakes) plus `tests/test_llm_helper.py` (86 tests), and a live
+  certification through the Java and Rust engines (`docs/test-reports/llm-helper-certification.md`: 124 model calls, every batch
+  its own frame, every trace one tree). No prompt or completion text reaches a log; usage rides the trace record.
+  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
+
 ## Conventions
 
 - **Quality gates (adopted 2026-08-23, Eric's IDE review round): ruff + basedpyright +
@@ -113,6 +135,13 @@
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
   <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-09-22 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
+- **Each example app lives in a folder of its own, with a README and its own `resources/` (Eric, 2026-10-01; PR #38).**
+  `examples/demo-app/` (the minimal polyglot app: `hello.python`, `hello.declarative`, `hello.chain`, `hello.sync.chain`,
+  `hello.tokens`, the private `demo.suffix.helper` and `demo.health`) and `examples/llm-helper/`; run one as
+  `mercury-serve examples/<app>/<file>.py` (the sample config is read from the `resources` folder next to the app file). The
+  Node pack mirrors the layout. The demo and the helper share the default port 8086, so give one of them another with
+  `-Drest.server.port` to run both. The demo stays provider-free and credential-free: no LLM code goes into it.
+  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
 
 ## Open Threads
 
