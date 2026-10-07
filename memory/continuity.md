@@ -14,7 +14,9 @@
 
 - **project:** mercury-python (PyPI: `mercury-composable`)
 - **status:** **v4.12.21 TAGGED 2026-10-07 (PR #42 merge `acb1f78`, tag `v4.12.21` → `fe43380` one memory commit past it, the version
-  at the tag, the GitHub release published 02:37:17Z, CI green on the tag commit; **PyPI PUBLISHED 02:45:59Z and VERIFIED** - PyPI  4.12.21 as the latest, wheel 02)** · **v4.12.15 PUBLISHED to PyPI 2026-09-23 02:34Z** (`pip install mercury-composable`; tag `v4.12.15` → `7bf6991`,
+  at the tag, the GitHub release published 02:37:17Z, CI green on the tag commit; **PyPI PUBLISHED 02:45:59Z and VERIFIED** - `mercury-composable` 4.12.21 as the latest, wheel 02:45:59Z and sdist 02:46:00Z; the
+  sdist's 20 `src/mercury_composable` modules identical to the tag's 20 (SHA-256), the wheel's `__version__` 4.12.21 with the same
+  20 modules)** · **v4.12.15 PUBLISHED to PyPI 2026-09-23 02:34Z** (`pip install mercury-composable`; tag `v4.12.15` → `7bf6991`,
   PR #37 merge `95101575`, GitHub release 01:37Z — the lock-step round with both engines, adopting the Java number; the 4.12.15
   line adds the OpenTelemetry forwarder (opt-in, no SDK), the SERVER-iff-`http.request` span-kind rule and the
   `gemini-flash-latest` default; the 4.12.1 line of 2026-09-01, the first public package, carried the llm.chat/llm.stream AI
