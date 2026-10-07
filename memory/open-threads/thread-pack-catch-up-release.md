@@ -4,6 +4,7 @@
   Java number it catches up to, never an intermediate one; Eric decides when, and tag and publish are his steps. **Prepared
   2026-10-07 (Eric: "the right time for release v4.12.21 for the 4 repos"):** `release/4.12.21` (head `953ba1a`) carries the bump
   and the CHANGELOG cut `## Version 4.12.21, 10/7/2026`; ruff clean, pytest 187; the PR #42 MERGED 2026-10-07
-  02:16:34Z as merge `acb1f78` (identical to the branch head outside `memory/`, CI green). Next, Eric's gates: tag `v4.12.21`, publish to PyPI.
+  02:16:34Z as merge `acb1f78` (identical to the branch head outside `memory/`, CI green). **TAGGED 2026-10-07 (Eric): tag → `fe43380`, the GitHub release published 02:37:17Z, verified.** Next, Eric's gate: the PyPI publication, then
+  verify the registry (the version, the published time, the artifact against the tag) and close. Was: tag `v4.12.21`, publish to PyPI.
   → serves: vision-mercury-python
   <!-- id: pack-catch-up-release | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
