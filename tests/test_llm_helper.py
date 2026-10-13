@@ -24,6 +24,7 @@ from typing import Any
 import anthropic
 import httpx2
 import pytest
+from anthropic.lib.bedrock import AsyncAnthropicBedrockMantle
 
 from mercury_composable import AppException
 
@@ -31,7 +32,7 @@ _TESTS = Path(__file__).resolve().parent
 _HELPER = _TESTS.parent / "examples" / "llm-helper" / "llm_helper.py"
 _VECTORS = _TESTS / "vectors" / "llm-helper-vectors.json"
 # the Node.js twin pins the same digest: change the file in both packs or in neither
-_VECTORS_SHA256 = "1f4823d9259ed6ff26e96d044b5f6b3c7bc9b342cc8ad76047434c2d3a2b8fa0"
+_VECTORS_SHA256 = "1b758e73605b2b088594faa8e573483778d7b85f29073d4779c3bba20ac024c1"
 
 _spec = importlib.util.spec_from_file_location("llm_helper_under_test", _HELPER)
 assert _spec is not None
@@ -198,9 +199,9 @@ def _install_backend(
 ) -> None:
     settings = dict(config or {})
     monkeypatch.setattr(helper, "_prop", lambda key, default=None: settings.get(key, default))
-    monkeypatch.setattr(
-        helper, "_backend", helper.Backend("anthropic", client, supports_fallbacks=True)
-    )
+    # the fake client under the shape of the backend the case names (the Claude API by default)
+    backend = helper.backend_for(settings.get("llm.backend", helper.DEFAULT_BACKEND), client)
+    monkeypatch.setattr(helper, "_backend", backend)
 
 
 def _install_writer(monkeypatch: pytest.MonkeyPatch) -> _FakeWriter:
@@ -512,13 +513,13 @@ def test_an_unknown_backend_is_a_501_that_names_what_is_served(
 ) -> None:
     monkeypatch.setattr(helper, "_backend", None)
     monkeypatch.setattr(
-        helper, "_prop", lambda key, default=None: "bedrock" if key == "llm.backend" else default
+        helper, "_prop", lambda key, default=None: "vertex" if key == "llm.backend" else default
     )
     with pytest.raises(AppException) as raised:
         helper.get_backend()
     assert raised.value.status == 501
-    assert "unknown LLM backend 'bedrock'" in raised.value.message
-    assert "this helper serves: anthropic" in raised.value.message
+    assert "unknown LLM backend 'vertex'" in raised.value.message
+    assert "this helper serves: anthropic, bedrock" in raised.value.message
 
 
 def test_the_default_backend_is_the_anthropic_client(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -529,3 +530,118 @@ def test_the_default_backend_is_the_anthropic_client(monkeypatch: pytest.MonkeyP
     assert backend.supports_fallbacks is True
     assert isinstance(backend.client, anthropic.AsyncAnthropic)
     assert helper.get_backend() is backend, "the client is built once"
+
+
+# --- the Bedrock backend: the SDK's Mantle client, built without a credential or a token ----
+
+_AWS_ENVIRONMENT = (
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_PROFILE",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "ANTHROPIC_AWS_API_KEY",
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "ANTHROPIC_BEDROCK_MANTLE_BASE_URL",
+)
+
+
+def _bedrock_settings(monkeypatch: pytest.MonkeyPatch, **settings: str) -> None:
+    """llm.backend: bedrock in a process with no AWS environment at all: the shared credential
+    and config files pointed nowhere, the instance metadata lookup switched off, so every
+    check below stays local and deterministic."""
+    config = {"llm.backend": "bedrock", **settings}
+    monkeypatch.setattr(helper, "_backend", None)
+    monkeypatch.setattr(helper, "_prop", lambda key, default=None: config.get(key, default))
+    for name in _AWS_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent/aws/credentials")
+    monkeypatch.setenv("AWS_CONFIG_FILE", "/nonexistent/aws/config")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+
+def test_the_bedrock_backend_is_the_sdk_mantle_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The SDK's Bedrock client over the region from llm.aws.region, the model prefix for a bare
+    id (an id already spelled for Bedrock is kept), no server-side fallbacks; built once."""
+    _bedrock_settings(monkeypatch, **{"llm.aws.region": "us-east-1"})
+    backend = helper.get_backend()
+    assert backend.name == "bedrock"
+    assert isinstance(backend.client, AsyncAnthropicBedrockMantle)
+    assert backend.client.aws_region == "us-east-1"
+    assert backend.supports_fallbacks is False
+    assert backend.provider_model("claude-opus-5-5") == "anthropic.claude-opus-5-5"
+    assert backend.provider_model("us.anthropic.claude-opus-5-5") == "us.anthropic.claude-opus-5-5"
+    assert helper.get_backend() is backend
+
+
+def test_the_bedrock_backend_reads_the_region_from_the_aws_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bedrock_settings(monkeypatch)
+    monkeypatch.setenv("AWS_REGION", "eu-west-1")
+    assert helper.get_backend().client.aws_region == "eu-west-1"
+
+
+def test_the_bedrock_backend_without_a_region_is_a_503_that_names_the_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bedrock_settings(monkeypatch)
+    with pytest.raises(AppException) as raised:
+        helper.get_backend()
+    assert raised.value.status == 503
+    assert "AWS region missing" in raised.value.message
+    assert "llm.aws.region" in raised.value.message
+
+
+def test_the_bedrock_backend_without_boto3_is_a_503_that_names_the_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bedrock_settings(monkeypatch, **{"llm.aws.region": "us-east-1"})
+    monkeypatch.setattr(helper.importlib.util, "find_spec", lambda _name: None)
+    with pytest.raises(AppException) as raised:
+        helper.get_backend()
+    assert raised.value.status == 503
+    assert "mercury-composable[bedrock]" in raised.value.message
+
+
+async def test_bedrock_health_reports_the_region_and_resolves_the_aws_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The health route names the region a call is signed for, and its check resolves the AWS
+    credential chain the way a call would: nothing in the chain is a 503 by name, the AWS
+    environment is a credential, and so is a Bedrock API key."""
+    _bedrock_settings(monkeypatch, **{"llm.aws.region": "us-east-1"})
+    info = await helper.llm_health({"type": "info"}, None)
+    assert info["backend"] == "bedrock"
+    assert info["region"] == "us-east-1"
+    with pytest.raises(AppException) as raised:
+        await helper.llm_health({"type": "health"}, None)
+    assert raised.value.status == 503
+    assert "AWS credential missing" in raised.value.message
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIATESTONLY")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-only-secret")
+    assert await helper.llm_health({"type": "health"}, None) == "llm.helper is running fine"
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID")
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY")
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "test-only-token")
+    monkeypatch.setattr(helper, "_backend", None)  # the key is read when the client is built
+    assert await helper.llm_health({"type": "health"}, None) == "llm.helper is running fine"
+
+
+def test_a_missing_aws_credential_at_call_time_is_a_503_by_name() -> None:
+    """The SDK signs each Bedrock call with the AWS chain and raises a bare RuntimeError when
+    the chain is empty (botocore its NoCredentialsError); both map to the portable 503."""
+    from botocore.exceptions import NoCredentialsError
+
+    failure = helper._failure(RuntimeError("could not resolve credentials from session"), 25)
+    assert failure is not None
+    assert failure.status == 503
+    assert "AWS credential missing" in failure.message
+    failure = helper._failure(NoCredentialsError(), 25)
+    assert failure is not None
+    assert failure.status == 503
+    assert helper._failure(RuntimeError("something else entirely"), 25) is None

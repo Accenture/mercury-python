@@ -2,7 +2,20 @@
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+1. **AWS Bedrock as the LLM helper's second backend (`llm.backend: 'bedrock'`).** The helper reaches the same Claude models
+   through the SDK's Bedrock client, signed with the AWS credential chain through IAM (`AWS_ACCESS_KEY_ID` and
+   `AWS_SECRET_ACCESS_KEY`, a profile, a role) or a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK` - no vendor API key, the
+   platform-mediated access an enterprise security policy asks for. The new `bedrock` extra adds boto3
+   (`pip install 'mercury-composable[llm,bedrock]'`); the region comes from `llm.aws.region` or `AWS_REGION`, and without one
+   the helper answers `503 AWS region missing` instead of starting a call. A bare model id is sent with the `anthropic.`
+   prefix and an id already spelled for Bedrock as written; server-side refusal fallbacks are never sent there (Bedrock offers
+   none); a call whose credential chain is empty is a `503 AWS credential missing` by name. `llm.health` reports `region`
+   beside `backend` and `model`, and its check resolves the credential chain the way a call would, without spending a token.
+   The routes and the contract are unchanged: the shared vector file gains three Bedrock cases (66), byte-identical with the
+   Node pack, and the Bedrock client, its region and credential checks are pinned by unit tests. **Upgrade note:** none - the
+   Claude API backend is the default and behaves as before; `llm.backend` now also accepts `bedrock`.
 
 ## Version 4.12.21, 10/7/2026
 

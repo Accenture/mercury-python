@@ -23,6 +23,15 @@ export ANTHROPIC_API_KEY=...               # from the environment, never from a 
 mercury-serve examples/llm-helper/llm_helper.py
 ```
 
+On AWS Bedrock instead (see Backends), the `bedrock` extra adds boto3, which signs each call with the
+AWS credential chain, and a region is required:
+
+```bash
+pip install 'mercury-composable[llm,bedrock]'
+export AWS_REGION=us-east-1                # or llm.aws.region; the AWS credential chain signs each call
+mercury-serve examples/llm-helper/llm_helper.py -Dllm.backend=bedrock
+```
+
 The app listens on port 8086 (`rest.server.port` in `resources/application.yml`). Map its routes
 from the engine's `event-over-http.yaml`, as the Java and Rust MiniGraph Playgrounds do:
 
@@ -45,7 +54,7 @@ token batches as they are produced.
 | `prompt` or `messages` | A single user turn, or conversation turns `[{role: user\|assistant, content}]`. `messages` wins when both are given. Content is plain text. |
 | `system` | Optional system prompt (text). |
 | `schema` | `llm.chat` only. A JSON schema; the reply is then structured output, returned parsed as `data`. `additionalProperties` defaults to `false`. A schema on `llm.stream` is a 400. |
-| `params.model` | The model. Default `claude-opus-5-5` (`llm.model`). |
+| `params.model` | The model. Default `claude-opus-5-5` (`llm.model`). On Bedrock a bare id is sent with the `anthropic.` prefix; an id already spelled for Bedrock is sent as written. |
 | `params.max_tokens` | Output cap. Default 16000 (`llm.max.tokens`). |
 | `params.timeout_ms` | `llm.chat`: a deadline for the whole call, SDK retries included. `llm.stream`: the idle allowance between events. Default 60000 (`llm.timeout.ms`). |
 | `params.effort` | `low`, `medium`, `high`, `xhigh` or `max`. Sent only when set; otherwise the model's own default applies. A model that takes no effort parameter answers 400. |
@@ -93,7 +102,7 @@ the envelope into a graph's error context or an HTTP edge.
 | 408 | The deadline or the SDK's timeout | `LLM request timed out after {n} ms` |
 | 422 | The reply carries nothing usable | `LLM refused the request …`, `LLM reply is empty …`, `LLM reply is not valid JSON for the requested schema …` |
 | 429 | Rate limited | `LLM provider rate limit - 429 rate_limit_error: …` |
-| 503 | No credential, or the API is unreachable | `LLM provider credential missing - set ANTHROPIC_API_KEY in the environment`, `LLM provider unreachable - …` |
+| 503 | No credential, no region, or the API is unreachable | `LLM provider credential missing - set ANTHROPIC_API_KEY in the environment`, `AWS credential missing - …`, `AWS region missing - …`, `LLM provider unreachable - …` |
 
 **A reply that carries nothing usable is an error, never an empty success.** A refusal with no
 text, an empty reply, or a structured reply cut off before it is valid JSON is a 422 that says why
@@ -110,20 +119,22 @@ the 422 above, not an empty stream. Raise `params.max_tokens` or lower `params.e
 
 | Key | Default | Meaning |
 |---|---|---|
-| `llm.backend` | `anthropic` | The route to the models; see Backends. |
+| `llm.backend` | `anthropic` | The route to the models: `anthropic` (the Claude API) or `bedrock` (AWS Bedrock); see Backends. |
+| `llm.aws.region` | unset | The AWS region a Bedrock call is signed for. Unset, the SDK reads `AWS_REGION` / `AWS_DEFAULT_REGION`. |
 | `llm.model` | `claude-opus-5-5` | The default model. |
 | `llm.max.tokens` | `16000` | The default output cap. |
 | `llm.timeout.ms` | `60000` | The default deadline (chat) or idle allowance (stream). |
 | `llm.max.retries` | `2` | SDK retries for connection errors, 408, 409, 429 and 5xx. |
-| `llm.fallbacks` | `default` | `default` or `off`. Server-side refusal fallbacks (`fallbacks: "default"`) on the models that support them (the Opus 5, Fable 5 and Sonnet 5.5 families). The reply's `model` names the model that answered. |
+| `llm.fallbacks` | `default` | `default` or `off`. Server-side refusal fallbacks (`fallbacks: "default"`) on the models that support them (the Opus 5, Fable 5 and Sonnet 5.5 families). The reply's `model` names the model that answered. The Claude API only: Bedrock offers none, so the switch has no effect there. |
 | `llm.effort` | unset | The default effort. |
 | `llm.log.batches` | `false` | Log each streamed batch's number, size and arrival time (never its text). |
 | `llm.provider` | `anthropic` | Only `anthropic`; any other value is a 400. |
 
 The credential is never configured here. `ANTHROPIC_API_KEY` (or whatever the SDK resolves: an
-auth token, or a profile) comes from the environment. `llm.health` reports whether a call could
-be sent (a credential is present) with no network traffic, so a health probe never spends a token.
-`/health` includes it through `mandatory.health.dependencies`.
+auth token, or a profile) comes from the environment for the Claude API; the AWS credential chain,
+or a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`, for Bedrock. `llm.health` reports whether a call
+could be sent (a credential is present) without reaching the model, so a health probe never spends a
+token. `/health` includes it through `mandatory.health.dependencies`.
 
 ### The default model and the token budget
 
@@ -148,15 +159,26 @@ annotations (`llm_model`, `llm_stop_reason`, `llm_input_tokens`, `llm_output_tok
 ## Backends
 
 `get_backend()` builds the one client the app uses, and a `Backend` says what that route to the
-models supports. Today there is one, `anthropic` (the Claude API).
+models supports: how it spells a model id, whether server-side fallbacks exist, and what a missing
+credential looks like. Nothing else in the module knows which route answered, so the routes, the
+contract and the vector file are the same on every backend.
 
-**Planned: AWS Bedrock through IAM.** It is additive. Build the SDK's Bedrock client in
-`get_backend()` (it authenticates with the AWS credentials of the default chain instead of an API
-key, and takes a region), give the `Backend` a `provider_model` that prefixes the model id (`anthropic.claude-opus-5-5`),
-report `supports_fallbacks=False` (server-side fallbacks are not offered on Bedrock), and describe a
-missing AWS credential in `credential_problem()`. Select it with `llm.backend: 'bedrock'`. The routes,
-the contract and the vector file stay as they are, because nothing outside `Backend` knows which
-route answered.
+| `llm.backend` | Client | Credential | Model id | Server-side fallbacks |
+|---|---|---|---|---|
+| `anthropic` (default) | the Claude API, `AsyncAnthropic` | `ANTHROPIC_API_KEY`, or whatever the SDK resolves | as written | on the models that support them |
+| `bedrock` | AWS Bedrock, the SDK's `AsyncAnthropicBedrockMantle` | the AWS credential chain through IAM (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, a profile, a role), or a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK` | a bare id gets the `anthropic.` prefix; an id already spelled for Bedrock is sent as written | none - the request never carries them |
+
+**AWS Bedrock.** Install the extra (`pip install 'mercury-composable[llm,bedrock]'` - it adds boto3,
+which signs each call), set `llm.backend: 'bedrock'` and a region (`llm.aws.region`, or `AWS_REGION`
+in the environment; without one the helper answers `503 AWS region missing` instead of starting a
+call), and give the process AWS credentials the way any AWS client gets them. The model must be
+enabled for the account in that region. `llm.health` reports `region` beside `backend` and `model`,
+and its health check resolves the credential chain the way a call would - on an EC2 or ECS host that
+includes the instance metadata service - so a probe tells a missing credential from a present one
+without spending a token; a call whose chain turns out empty is a `503 AWS credential missing`.
+Effort, structured output and streaming work as on the Claude API. The SDK's client-side refusal
+fallback middleware is not wired in; a refusal on Bedrock is the 422 or the `stop_details` of the
+contract, like a refusal on the Claude API with `llm.fallbacks: off`.
 
 ## What it does not do
 
@@ -167,10 +189,11 @@ deliberate: the helper is the bounded AI node of a graph, not an agent runtime.
 ## Tests
 
 `tests/test_llm_helper.py` runs the shared `tests/vectors/llm-helper-vectors.json` against a fake of
-the SDK (63 cases: request validation, the exact SDK call, replies, the error contract, streaming),
-plus the tests a vector cannot express (token batches are never held back, no prompt text in a
-log, the deadline cancels the call, trace annotations, health, the backend seam). No token is
-spent and no credential is needed.
+the SDK (66 cases: request validation, the exact SDK call, replies, the error contract, streaming,
+the shape of a Bedrock call), plus the tests a vector cannot express (token batches are never held
+back, no prompt text in a log, the deadline cancels the call, trace annotations, health, the backend
+seam, the Bedrock client with its region and credential checks). No token is spent and no credential
+is needed.
 
 ```bash
 pip install -e '.[dev]'
