@@ -47,6 +47,38 @@ nothing is gathered or sent once. The long gaps are the API's own pacing, the sa
 no credential gave 503 through Java on all three layers and through Rust on the graph, and an invalid key gave Anthropic's 401 with its request id when this pack's client called the helper directly. The same message came from both helpers, through every layer. All traces that touched this helper rebuild
 as one connected tree.
 
+## Verified live on AWS Bedrock (2026-10-14)
+
+The helper's second backend (`llm.backend: 'bedrock'`), driven against an enterprise AWS account in `us-east-1` with temporary IAM
+credentials - a key pair and a session token - in the helper's environment and no vendor key anywhere. Negative controls first.
+
+| Step | Result |
+|---|---|
+| A corrupted secret | `401 LLM provider error - 401 authentication_error: The request signature we calculated does not match ...` |
+| No credential at all | health `503 AWS credential missing`; the call a bare 500 until this pack mapped the SDK's wording (below) |
+| `llm.chat`, Haiku 4.5 | `200`, `ready`, 14 input / 4 output tokens |
+| `llm.chat` with a schema | `{"verdict": "bug", "confidence": 0.95}`, 218 / 17 |
+| `llm.stream` | 4 batches, the first after 815 ms, `eof` with usage 20 / 23 |
+| Java engine, the shipped `support-triage` graph | `bug` → `bug-filed`, 240 / 29 |
+| Java engine, the streaming relay | 4 `data` frames, then `done` with usage, the trace id and the correlation id |
+
+Every call ran on `us.anthropic.claude-haiku-4-5-20251001-v1:0` through the classic runtime surface (`llm.aws.api: 'runtime'`): the
+account was enabled for that surface and not for the Anthropic-shaped one the SDK prefers, and for Haiku 4.5 and not for the newer
+model generation. The full account of the surfaces and the gates is Finding 7 of the
+[engine report](https://accenture.github.io/mercury-composable/test-reports/llm-helper-certification/).
+
+## What the Python SDK needed on Bedrock
+
+- **The Bedrock clients live at `anthropic.lib.bedrock`** (`AsyncAnthropicBedrockMantle`, `AsyncAnthropicBedrock`); the top level
+  re-exports them through a star import that the type checker reads as private, so the helper imports the package path.
+- **An empty credential chain is a bare `RuntimeError`** raised while signing - `Could not resolve AWS credentials from session`
+  from the Mantle client, `could not resolve credentials from session` from the classic one - so the helper matches the words both
+  wordings carry, without case, and maps it to `503 AWS credential missing`. The health check resolves a boto3 session's
+  credentials the way a call would, so a probe tells a missing credential from a present one without spending a token.
+- **No region is a construction error**, an `AnthropicError` from the Mantle client and a `ValueError` from the classic one; both
+  are the helper's `503 AWS region missing`, raised before any call.
+- **The reply carries no request id:** Bedrock sends no `request-id` header the helper reads.
+
 ## What the Python SDK needed
 
 - **No credential is not an API error.** `anthropic` 1.x raises a bare `TypeError` ("Could not resolve authentication method…")

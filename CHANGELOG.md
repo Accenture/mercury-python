@@ -13,8 +13,14 @@
    prefix and an id already spelled for Bedrock as written; server-side refusal fallbacks are never sent there (Bedrock offers
    none); a call whose credential chain is empty is a `503 AWS credential missing` by name. `llm.health` reports `region`
    beside `backend` and `model`, and its check resolves the credential chain the way a call would, without spending a token.
-   The routes and the contract are unchanged: the shared vector file gains three Bedrock cases (66), byte-identical with the
-   Node pack, and the Bedrock client, its region and credential checks are pinned by unit tests. **Upgrade note:** none - the
+   Bedrock serves Claude on two surfaces and an account may be enabled for one only: `llm.aws.api` selects `mantle` (the
+   default, the Anthropic-shaped endpoint with the prefixed ids) or `runtime` (the classic one, every model id sent as written
+   - an inference profile id as the account lists it), and `llm.health` names the surface. Certified live on 2026-10-14 against
+   an enterprise account, negative controls first (a wrong secret a 401 by name, no credential a 503 by name), then a chat
+   reply, a structured verdict and a progressive stream on Haiku 4.5 through the runtime surface, from both packs and through
+   the Java engine's shipped triage graph and streaming relay (the engines' `docs/test-reports/llm-helper-certification.md`, Scenario 8, and this pack's own report).
+   The routes and the contract are unchanged: the shared vector file gains five Bedrock cases (68), byte-identical with the
+   Node pack, and the Bedrock clients, their region and credential checks are pinned by unit tests. **Upgrade note:** none - the
    Claude API backend is the default and behaves as before; `llm.backend` now also accepts `bedrock`.
 
 ## Version 4.12.21, 10/7/2026

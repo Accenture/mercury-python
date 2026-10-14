@@ -24,7 +24,7 @@ from typing import Any
 import anthropic
 import httpx2
 import pytest
-from anthropic.lib.bedrock import AsyncAnthropicBedrockMantle
+from anthropic.lib.bedrock import AsyncAnthropicBedrock, AsyncAnthropicBedrockMantle
 
 from mercury_composable import AppException
 
@@ -32,7 +32,7 @@ _TESTS = Path(__file__).resolve().parent
 _HELPER = _TESTS.parent / "examples" / "llm-helper" / "llm_helper.py"
 _VECTORS = _TESTS / "vectors" / "llm-helper-vectors.json"
 # the Node.js twin pins the same digest: change the file in both packs or in neither
-_VECTORS_SHA256 = "1b758e73605b2b088594faa8e573483778d7b85f29073d4779c3bba20ac024c1"
+_VECTORS_SHA256 = "7bfffbf36c52488c246f250f36afc4e8012f119fd56c93e9de1cbe93bf5988b6"
 
 _spec = importlib.util.spec_from_file_location("llm_helper_under_test", _HELPER)
 assert _spec is not None
@@ -200,7 +200,11 @@ def _install_backend(
     settings = dict(config or {})
     monkeypatch.setattr(helper, "_prop", lambda key, default=None: settings.get(key, default))
     # the fake client under the shape of the backend the case names (the Claude API by default)
-    backend = helper.backend_for(settings.get("llm.backend", helper.DEFAULT_BACKEND), client)
+    backend = helper.backend_for(
+        settings.get("llm.backend", helper.DEFAULT_BACKEND),
+        client,
+        settings.get("llm.aws.api", helper.AWS_API_MANTLE),
+    )
     monkeypatch.setattr(helper, "_backend", backend)
 
 
@@ -575,7 +579,52 @@ def test_the_bedrock_backend_is_the_sdk_mantle_client(monkeypatch: pytest.Monkey
     assert backend.supports_fallbacks is False
     assert backend.provider_model("claude-opus-5-5") == "anthropic.claude-opus-5-5"
     assert backend.provider_model("us.anthropic.claude-opus-5-5") == "us.anthropic.claude-opus-5-5"
+    assert backend.api == "mantle"
     assert helper.get_backend() is backend
+
+
+def test_the_bedrock_backend_takes_the_classic_runtime_surface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """llm.aws.api: runtime - the SDK's classic client, every model id sent as written (an
+    inference profile id as the account lists it), no server-side fallbacks; found necessary in
+    the live drive of 2026-10-14, where the account was enabled for the runtime and not for the
+    Anthropic-shaped surface."""
+    _bedrock_settings(monkeypatch, **{"llm.aws.region": "us-east-1", "llm.aws.api": "runtime"})
+    backend = helper.get_backend()
+    assert isinstance(backend.client, AsyncAnthropicBedrock)
+    assert backend.client.aws_region == "us-east-1"
+    assert backend.api == "runtime"
+    assert backend.supports_fallbacks is False
+    profile = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    assert backend.provider_model(profile) == profile
+    assert backend.provider_model("claude-opus-5-5") == "claude-opus-5-5"
+
+
+async def test_bedrock_health_names_the_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+    _bedrock_settings(monkeypatch, **{"llm.aws.region": "us-east-1", "llm.aws.api": "runtime"})
+    info = await helper.llm_health({"type": "info"}, None)
+    assert info["backend"] == "bedrock"
+    assert info["api"] == "runtime"
+    assert info["region"] == "us-east-1"
+
+
+def test_the_runtime_surface_without_a_region_is_a_503_that_names_the_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bedrock_settings(monkeypatch, **{"llm.aws.api": "runtime"})
+    with pytest.raises(AppException) as raised:
+        helper.get_backend()
+    assert raised.value.status == 503
+    assert "AWS region missing" in raised.value.message
+
+
+def test_a_bad_aws_api_value_is_a_500_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    _bedrock_settings(monkeypatch, **{"llm.aws.region": "us-east-1", "llm.aws.api": "console"})
+    with pytest.raises(AppException) as raised:
+        helper.get_backend()
+    assert raised.value.status == 500
+    assert "llm.aws.api must be one of: mantle, runtime" in raised.value.message
 
 
 def test_the_bedrock_backend_reads_the_region_from_the_aws_environment(

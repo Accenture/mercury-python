@@ -11,8 +11,8 @@ Run:  pip install 'mercury-composable[llm]'
 The credential comes from the environment, never from a config file: ANTHROPIC_API_KEY for
 the Claude API, the AWS credential chain (or AWS_BEARER_TOKEN_BEDROCK) for AWS Bedrock.
 Settings live in resources/application.yml (or -Dkey=value): llm.backend (anthropic or
-bedrock), llm.aws.region, llm.model, llm.max.tokens, llm.timeout.ms, llm.max.retries,
-llm.fallbacks, llm.effort. The contract, the keys and the backends are documented in
+bedrock), llm.aws.api (mantle or runtime), llm.aws.region, llm.model, llm.max.tokens,
+llm.timeout.ms, llm.max.retries, llm.fallbacks, llm.effort. The contract, the keys and the backends are documented in
 README.md next to this file. The Node.js twin (mercury-nodejs examples/llm-helper) speaks
 the same contract, and both are pinned by one shared vector file.
 
@@ -63,13 +63,19 @@ log = get_logger(__name__)
 DEFAULT_PROVIDER = "anthropic"
 DEFAULT_BACKEND = "anthropic"
 BEDROCK_BACKEND = "bedrock"
+# the two Bedrock surfaces: the Anthropic-shaped endpoint (the default) and the classic runtime
+AWS_API_MANTLE = "mantle"
+AWS_API_RUNTIME = "runtime"
+AWS_APIS = (AWS_API_MANTLE, AWS_API_RUNTIME)
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_MAX_TOKENS = 16000
 DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_MAX_RETRIES = 2
 PROVIDERS = (DEFAULT_PROVIDER,)
 BACKENDS = (DEFAULT_BACKEND, BEDROCK_BACKEND)
-# Bedrock spells a model id with the vendor prefix; a bare id gets it, a prefixed one is kept
+# the Anthropic-shaped surface spells a model id with the vendor prefix; a bare id gets it, a
+# prefixed one is kept. The classic runtime takes an inference profile id exactly as the account
+# lists it (they carry dates and versions no rule can derive), so there the id is sent as written
 BEDROCK_MODEL_PREFIX = "anthropic."
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 ROLES = ("user", "assistant")
@@ -267,8 +273,9 @@ def _same_model(model: str) -> str:
 
 
 def _bedrock_model(model: str) -> str:
-    """A bare model id gets the prefix Bedrock expects (``anthropic.claude-opus-5-5``); an id
-    already spelled for Bedrock - prefixed, or an inference profile - is sent as written."""
+    """The Anthropic-shaped surface: a bare model id gets the prefix it expects
+    (``anthropic.claude-opus-5-5``); an id already spelled for Bedrock is sent as written. The
+    classic runtime surface sends every id as written (``_same_model``)."""
     return BEDROCK_MODEL_PREFIX + model if model.startswith("claude-") else model
 
 
@@ -311,21 +318,24 @@ class Backend:
     supports_fallbacks: bool
     provider_model: Callable[[str], str] = _same_model
     credentials: Callable[[Any], str | None] = _anthropic_credentials
+    api: str | None = None  # the Bedrock surface in use, reported by llm.health
 
     def credential_problem(self) -> str | None:
         """What is missing for a call to be sent, or None. No token is spent."""
         return self.credentials(self.client)
 
 
-def backend_for(name: str, client: Any) -> Backend:
-    """The Backend of a route over a client: get_backend() builds the client, tests inject one."""
+def backend_for(name: str, client: Any, aws_api: str = AWS_API_MANTLE) -> Backend:
+    """The Backend of a route over a client: get_backend() builds the client, tests inject one.
+    For Bedrock, aws_api names the surface, which decides how a model id is spelled."""
     if name == BEDROCK_BACKEND:
         return Backend(
             BEDROCK_BACKEND,
             client,
             supports_fallbacks=False,  # server-side refusal fallbacks are not offered on Bedrock
-            provider_model=_bedrock_model,
+            provider_model=_bedrock_model if aws_api == AWS_API_MANTLE else _same_model,
             credentials=_bedrock_credentials,
+            api=aws_api,
         )
     return Backend(DEFAULT_BACKEND, client, supports_fallbacks=True)
 
@@ -333,18 +343,29 @@ def backend_for(name: str, client: Any) -> Backend:
 _backend: Backend | None = None  # built on first use - module-level so tests can inject
 
 
-def _bedrock_client() -> Any:
-    """AWS Bedrock through the SDK's Mantle client: the AWS credential chain (or a Bedrock API
-    key) signs each call, and the region comes from llm.aws.region or the AWS environment."""
+def _aws_api() -> str:
+    """The Bedrock surface a call goes to: the Anthropic-shaped endpoint (mantle, the default)
+    or the classic runtime - an account may be enabled for one and not the other."""
+    api = str(_prop("llm.aws.api", AWS_API_MANTLE) or AWS_API_MANTLE).lower()
+    if api not in AWS_APIS:
+        raise AppException(500, f"llm.aws.api must be one of: {', '.join(AWS_APIS)}")
+    return api
+
+
+def _bedrock_client(aws_api: str) -> Any:
+    """AWS Bedrock through the SDK's client for the chosen surface: the AWS credential chain (or
+    a Bedrock API key) signs each call, and the region comes from llm.aws.region or the AWS
+    environment."""
     if importlib.util.find_spec("boto3") is None:
         raise AppException(503, MISSING_BEDROCK_SDK)
-    # the SDK reaches its Bedrock client lazily at the top level; the package path is the typed one
-    from anthropic.lib.bedrock import AsyncAnthropicBedrockMantle
+    # the SDK reaches its Bedrock clients lazily at the top level; the package path is the typed one
+    from anthropic.lib.bedrock import AsyncAnthropicBedrock, AsyncAnthropicBedrockMantle
 
+    factory = AsyncAnthropicBedrockMantle if aws_api == AWS_API_MANTLE else AsyncAnthropicBedrock
     region = _prop("llm.aws.region")
     try:
-        return AsyncAnthropicBedrockMantle(aws_region=str(region) if region else None)
-    except anthropic.AnthropicError as exc:  # no region, and no base URL to stand in for one
+        return factory(aws_region=str(region) if region else None)
+    except (anthropic.AnthropicError, ValueError) as exc:  # no region, and no base URL for one
         raise AppException(503, MISSING_AWS_REGION) from exc
 
 
@@ -358,8 +379,9 @@ def get_backend() -> Backend:
                 501, f"unknown LLM backend '{name}' - this helper serves: {', '.join(BACKENDS)}"
             )
         # credentials resolve per call, so the app starts (and reports its health) without one
-        client = _bedrock_client() if name == BEDROCK_BACKEND else anthropic.AsyncAnthropic()
-        backend = backend_for(name, client)
+        aws_api = _aws_api() if name == BEDROCK_BACKEND else AWS_API_MANTLE
+        client = _bedrock_client(aws_api) if name == BEDROCK_BACKEND else anthropic.AsyncAnthropic()
+        backend = backend_for(name, client, aws_api)
         _backend = backend
     return backend
 
@@ -702,6 +724,8 @@ async def llm_health(headers: dict[str, str], _body: Body) -> Any:
         region = getattr(backend.client, "aws_region", None)
         if region:
             info["region"] = region  # which region a Bedrock call is signed for
+        if backend.api:
+            info["api"] = backend.api  # which Bedrock surface answers
         return info
     problem = backend.credential_problem()
     if problem:

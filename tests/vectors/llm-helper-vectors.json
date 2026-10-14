@@ -1,7 +1,7 @@
 {
   "contract": "llm-helper",
   "version": 1,
-  "description": "One contract, two function hosts. mercury-python and mercury-nodejs ship this file byte-identical and run every case against their own fake of the Anthropic SDK, so the two helpers cannot drift apart. A case's config may name llm.backend, and the harness then installs its fake under that backend's shape (bedrock: the anthropic. model prefix for a bare id, no server-side fallbacks, the messages namespace). A case names the route, the config keys in force, the request body and what the fake provider does; the expectation is the exact SDK call (namespace, parameters, options), then either the reply map or the error (status and message fragments) for llm.chat, or the head, the segments in order, the terminal metadata (a subset) or the in-band error for llm.stream.",
+  "description": "One contract, two function hosts. mercury-python and mercury-nodejs ship this file byte-identical and run every case against their own fake of the Anthropic SDK, so the two helpers cannot drift apart. A case's config may name llm.backend, and the harness then installs its fake under that backend's shape (bedrock: no server-side fallbacks, the messages namespace, and the model id by surface - llm.aws.api mantle, the default, prefixes a bare id with anthropic.; runtime sends every id as written). A case names the route, the config keys in force, the request body and what the fake provider does; the expectation is the exact SDK call (namespace, parameters, options), then either the reply map or the error (status and message fragments) for llm.chat, or the head, the segments in order, the terminal metadata (a subset) or the in-band error for llm.stream.",
   "provider_kinds": {
     "message": "succeeds: deltas are the token batches; text is the final message text (default: the deltas joined); usage, model, stop_reason, request_id (the request-id response header), stop_details",
     "status": "an HTTP error from the API: status, type, message, request_id; after = the number of deltas delivered before it is raised (0: at open), deltas = those batches",
@@ -2355,6 +2355,117 @@
           "trace_id": null
         }
       }
+    },
+    {
+      "name": "chat/bedrock-runtime-sends-an-inference-profile-as-written",
+      "route": "llm.chat",
+      "config": {
+        "llm.backend": "bedrock",
+        "llm.aws.api": "runtime"
+      },
+      "body": {
+        "prompt": "x",
+        "params": {
+          "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "messages",
+          "params": {
+            "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ]
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "ok",
+          "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 1
+          },
+          "request_id": "req_ok_001"
+        }
+      },
+      "note": "the classic runtime surface takes an inference profile id exactly as the account lists it"
+    },
+    {
+      "name": "chat/bedrock-runtime-keeps-a-bare-model-as-written",
+      "route": "llm.chat",
+      "config": {
+        "llm.backend": "bedrock",
+        "llm.aws.api": "runtime"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 1
+        },
+        "request_id": "req_ok_001"
+      },
+      "expect": {
+        "sdk": {
+          "namespace": "messages",
+          "params": {
+            "model": "claude-opus-5-5",
+            "max_tokens": 16000,
+            "messages": [
+              {
+                "role": "user",
+                "content": "x"
+              }
+            ]
+          },
+          "options": {
+            "timeout_ms": 60000,
+            "max_retries": 2
+          }
+        },
+        "result": {
+          "text": "ok",
+          "model": "claude-opus-5-5",
+          "stop_reason": "end_turn",
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 1
+          },
+          "request_id": "req_ok_001"
+        }
+      },
+      "note": "no prefix rule on the runtime surface - the ids there carry dates and versions no rule can derive"
     }
   ]
 }
