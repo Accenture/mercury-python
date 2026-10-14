@@ -29,6 +29,9 @@ show.application.properties: 'application.name, rest.server.port, llm.backend, l
 llm.backend: 'anthropic'
 # the region a Bedrock call is signed for; unset, the SDK reads AWS_REGION / AWS_DEFAULT_REGION
 # llm.aws.region: 'us-east-1'
+# the Bedrock surface: mantle (the Anthropic-shaped endpoint, default) | runtime (the classic one,
+# which takes an inference profile id as the account lists it - set llm.model to that id)
+# llm.aws.api: 'mantle'
 llm.model: 'claude-opus-5-5'
 llm.max.tokens: 16000
 # llm.chat: the whole call, SDK retries included. llm.stream: the idle allowance between events.
