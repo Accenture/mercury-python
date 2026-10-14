@@ -637,10 +637,15 @@ def test_a_missing_aws_credential_at_call_time_is_a_503_by_name() -> None:
     the chain is empty (botocore its NoCredentialsError); both map to the portable 503."""
     from botocore.exceptions import NoCredentialsError
 
-    failure = helper._failure(RuntimeError("could not resolve credentials from session"), 25)
+    # the message the SDK's Bedrock client raises, seen live in the drive of 2026-10-14
+    failure = helper._failure(RuntimeError("Could not resolve AWS credentials from session"), 25)
     assert failure is not None
     assert failure.status == 503
     assert "AWS credential missing" in failure.message
+    # the legacy client's wording, without "AWS"
+    failure = helper._failure(RuntimeError("could not resolve credentials from session"), 25)
+    assert failure is not None
+    assert failure.status == 503
     failure = helper._failure(NoCredentialsError(), 25)
     assert failure is not None
     assert failure.status == 503

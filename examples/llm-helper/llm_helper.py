@@ -89,8 +89,10 @@ MISSING_AWS_REGION = "AWS region missing - set llm.aws.region or AWS_REGION in t
 MISSING_BEDROCK_SDK = "The Bedrock backend needs boto3 - pip install 'mercury-composable[bedrock]'"
 # the SDK raises a bare TypeError, before sending anything, when no credential resolves
 CREDENTIAL_TYPE_ERROR = "Could not resolve authentication method"
-# the SDK's Bedrock client raises a bare RuntimeError, while signing, when the AWS chain is empty
-AWS_CREDENTIAL_RUNTIME_ERROR = "could not resolve credentials from session"
+# the SDK's Bedrock client raises a bare RuntimeError, while signing, when the AWS chain is empty:
+# "Could not resolve AWS credentials from session" (its legacy client says "credentials from
+# session" without "AWS"); matched without case on the words both carry
+AWS_CREDENTIAL_RUNTIME_ERROR = ("could not resolve", "credentials from session")
 
 
 def _prop(key: str, default: str | None = None) -> str | None:
@@ -515,6 +517,15 @@ def _status_failure(exc: anthropic.APIStatusError) -> AppException:
     return AppException(status, f"LLM provider error - {_detail(exc)}")
 
 
+def _aws_credential_error(exc: BaseException) -> bool:
+    """The AWS credential chain resolved nothing: the SDK's bare RuntimeError while signing, or
+    botocore's NoCredentialsError."""
+    if type(exc).__name__ == "NoCredentialsError":
+        return True
+    text = str(exc).lower()
+    return isinstance(exc, RuntimeError) and all(w in text for w in AWS_CREDENTIAL_RUNTIME_ERROR)
+
+
 def _failure(exc: BaseException, timeout_ms: int) -> AppException | None:
     """Map a provider failure to AppException(status, message); None for anything else."""
     if isinstance(exc, AppException):
@@ -527,9 +538,7 @@ def _failure(exc: BaseException, timeout_ms: int) -> AppException | None:
         return AppException(503, f"LLM provider unreachable - {exc}")
     if isinstance(exc, TypeError) and CREDENTIAL_TYPE_ERROR in str(exc):
         return AppException(503, MISSING_CREDENTIAL)
-    if (isinstance(exc, RuntimeError) and AWS_CREDENTIAL_RUNTIME_ERROR in str(exc)) or type(
-        exc
-    ).__name__ == "NoCredentialsError":
+    if _aws_credential_error(exc):
         return AppException(503, MISSING_AWS_CREDENTIAL)
     return None
 
