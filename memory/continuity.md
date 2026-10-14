@@ -162,14 +162,14 @@
   <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
-  ran (`python app.py`) - and the working directory is never searched (Eric's rule, 2026-10-14; PR #45).** The engines' classpath
+  ran (`python app.py`) - and the working directory is never searched (Eric's rule, 2026-10-14; PR #45 merge `a3c5a26`).** The engines' classpath
   convention: the configuration travels with the application and does not depend on the launch directory. `AppConfig(path, argv,
   app_dir)` resolves `resources/application.yml|yaml|properties` under `app_dir`, defaulting to `main_script_dir()`
   (`__main__.__file__`; an interactive session has no script and loads nothing); the CLI passes the app's folder; `--config` names
   another file; the companion `app-log-context.yaml` lives in `resources_dir`, the one folder beside an explicit file or next to
   the app; `source` is the absolute path found and the startup log reports `Configuration: <path>`. Found when a direct
   `python llm_helper.py` from the repository root started unconfigured during the Bedrock drive ([[llm-helper-app]]); pinned by
-  subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113).
+  subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
   <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-10-14 | uses: 1 | tier: working | origin: 2026-10-14-015420 -->
 
