@@ -23,14 +23,19 @@ show.env.variables: 'LOG_LEVEL'
 show.application.properties: 'application.name, rest.server.port, llm.backend, llm.model'
 
 # --- the helper's settings (a call's params.* win over these) -----------------------------
-# The credential is never configured here: ANTHROPIC_API_KEY comes from the environment.
+# The credential is never configured here: ANTHROPIC_API_KEY (the Claude API) or the AWS
+# credential chain (AWS Bedrock) comes from the environment.
+# anthropic (the Claude API, default) | bedrock (AWS Bedrock through IAM - the [bedrock] extra)
 llm.backend: 'anthropic'
+# the region a Bedrock call is signed for; unset, the SDK reads AWS_REGION / AWS_DEFAULT_REGION
+# llm.aws.region: 'us-east-1'
 llm.model: 'claude-opus-5-5'
 llm.max.tokens: 16000
 # llm.chat: the whole call, SDK retries included. llm.stream: the idle allowance between events.
 llm.timeout.ms: 60000
 llm.max.retries: 2
-# server-side refusal fallbacks on the models that support them: default | off
+# server-side refusal fallbacks on the models that support them: default | off (the Claude
+# API only - Bedrock offers none, so the switch has no effect there)
 llm.fallbacks: 'default'
 # low | medium | high | xhigh | max - left unset, the model's own default applies (a model
 # that takes no effort parameter rejects one, so set this only for a model that does)

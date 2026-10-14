@@ -8,12 +8,13 @@ control flow while the LLM advises within it.
 Run:  pip install 'mercury-composable[llm]'
       mercury-serve examples/llm-helper/llm_helper.py
 
-The credential comes from the environment (ANTHROPIC_API_KEY), never from a config file.
-Settings live in resources/application.yml (or -Dkey=value): llm.backend, llm.model,
-llm.max.tokens, llm.timeout.ms, llm.max.retries, llm.fallbacks, llm.effort. The contract,
-the keys and the backend seam are documented in README.md next to this file. The Node.js
-twin (mercury-nodejs examples/llm-helper) speaks the same contract, and both are pinned by
-one shared vector file.
+The credential comes from the environment, never from a config file: ANTHROPIC_API_KEY for
+the Claude API, the AWS credential chain (or AWS_BEARER_TOKEN_BEDROCK) for AWS Bedrock.
+Settings live in resources/application.yml (or -Dkey=value): llm.backend (anthropic or
+bedrock), llm.aws.region, llm.model, llm.max.tokens, llm.timeout.ms, llm.max.retries,
+llm.fallbacks, llm.effort. The contract, the keys and the backends are documented in
+README.md next to this file. The Node.js twin (mercury-nodejs examples/llm-helper) speaks
+the same contract, and both are pinned by one shared vector file.
 
 Then map the routes from a Mercury engine application (event-over-http.yaml):
 
@@ -28,6 +29,7 @@ Then map the routes from a Mercury engine application (event-over-http.yaml):
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import time
 from collections.abc import Callable
@@ -60,12 +62,15 @@ log = get_logger(__name__)
 
 DEFAULT_PROVIDER = "anthropic"
 DEFAULT_BACKEND = "anthropic"
+BEDROCK_BACKEND = "bedrock"
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_MAX_TOKENS = 16000
 DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_MAX_RETRIES = 2
 PROVIDERS = (DEFAULT_PROVIDER,)
-BACKENDS = (DEFAULT_BACKEND,)
+BACKENDS = (DEFAULT_BACKEND, BEDROCK_BACKEND)
+# Bedrock spells a model id with the vendor prefix; a bare id gets it, a prefixed one is kept
+BEDROCK_MODEL_PREFIX = "anthropic."
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 ROLES = ("user", "assistant")
 # per-call params. Anything else is rejected: the current models take no sampling
@@ -76,8 +81,16 @@ TEXT_EVENT_STREAM = "text/event-stream"
 FALLBACKS_BETA = "server-side-fallback-2026-07-01"
 FALLBACK_MODEL_PREFIXES = ("claude-opus-5", "claude-fable-5", "claude-sonnet-5-5")
 MISSING_CREDENTIAL = "LLM provider credential missing - set ANTHROPIC_API_KEY in the environment"
+MISSING_AWS_CREDENTIAL = (
+    "AWS credential missing - configure the AWS credential chain (AWS_ACCESS_KEY_ID and "
+    "AWS_SECRET_ACCESS_KEY, a profile, or a role) or set AWS_BEARER_TOKEN_BEDROCK"
+)
+MISSING_AWS_REGION = "AWS region missing - set llm.aws.region or AWS_REGION in the environment"
+MISSING_BEDROCK_SDK = "The Bedrock backend needs boto3 - pip install 'mercury-composable[bedrock]'"
 # the SDK raises a bare TypeError, before sending anything, when no credential resolves
 CREDENTIAL_TYPE_ERROR = "Could not resolve authentication method"
+# the SDK's Bedrock client raises a bare RuntimeError, while signing, when the AWS chain is empty
+AWS_CREDENTIAL_RUNTIME_ERROR = "could not resolve credentials from session"
 
 
 def _prop(key: str, default: str | None = None) -> str | None:
@@ -251,30 +264,86 @@ def _same_model(model: str) -> str:
     return model
 
 
+def _bedrock_model(model: str) -> str:
+    """A bare model id gets the prefix Bedrock expects (``anthropic.claude-opus-5-5``); an id
+    already spelled for Bedrock - prefixed, or an inference profile - is sent as written."""
+    return BEDROCK_MODEL_PREFIX + model if model.startswith("claude-") else model
+
+
+def _anthropic_credentials(client: Any) -> str | None:
+    """The Claude API client: a key, a token, an OAuth profile or a custom auth, all local."""
+    names = ("api_key", "auth_token", "credentials", "custom_auth")
+    if any(getattr(client, name, None) for name in names):
+        return None
+    return MISSING_CREDENTIAL
+
+
+def _bedrock_credentials(client: Any) -> str | None:
+    """The Bedrock client: a Bedrock API key, else what the AWS credential chain resolves - the
+    environment, a profile, a role; on an EC2 or ECS host that includes the instance metadata
+    service, the one lookup the chain makes outside the process. No token is spent."""
+    if getattr(client, "api_key", None):
+        return None
+    import boto3  # the [bedrock] extra; get_backend() checked that it is installed
+
+    session = boto3.Session(
+        profile_name=getattr(client, "aws_profile", None),
+        region_name=getattr(client, "aws_region", None),
+        aws_access_key_id=getattr(client, "aws_access_key", None),
+        aws_secret_access_key=getattr(client, "aws_secret_key", None),
+        aws_session_token=getattr(client, "aws_session_token", None),
+    )
+    return None if session.get_credentials() else MISSING_AWS_CREDENTIAL
+
+
 @dataclass(frozen=True)
 class Backend:
-    """One way to reach Claude: the client, and what this route to the model supports.
-
-    This is the seam for a second route to the same models - AWS Bedrock through IAM is the
-    planned one (see README.md, "Backends"): build its client in get_backend(), give it a
-    provider_model that prefixes the model id, report no server-side fallbacks, and describe
-    a missing credential. Nothing else in this module knows which route answered.
+    """One way to reach Claude: the client, and what this route to the model supports - how it
+    spells a model id, whether server-side fallbacks exist, and what a missing credential looks
+    like. Nothing else in this module knows which route answered, so the routes, the contract
+    and the vector file are the same on every backend (see README.md, "Backends").
     """
 
     name: str
     client: Any
     supports_fallbacks: bool
     provider_model: Callable[[str], str] = _same_model
+    credentials: Callable[[Any], str | None] = _anthropic_credentials
 
     def credential_problem(self) -> str | None:
-        """What is missing for a call to be sent, or None. No network traffic."""
-        names = ("api_key", "auth_token", "credentials", "custom_auth")
-        if any(getattr(self.client, name, None) for name in names):
-            return None
-        return MISSING_CREDENTIAL
+        """What is missing for a call to be sent, or None. No token is spent."""
+        return self.credentials(self.client)
+
+
+def backend_for(name: str, client: Any) -> Backend:
+    """The Backend of a route over a client: get_backend() builds the client, tests inject one."""
+    if name == BEDROCK_BACKEND:
+        return Backend(
+            BEDROCK_BACKEND,
+            client,
+            supports_fallbacks=False,  # server-side refusal fallbacks are not offered on Bedrock
+            provider_model=_bedrock_model,
+            credentials=_bedrock_credentials,
+        )
+    return Backend(DEFAULT_BACKEND, client, supports_fallbacks=True)
 
 
 _backend: Backend | None = None  # built on first use - module-level so tests can inject
+
+
+def _bedrock_client() -> Any:
+    """AWS Bedrock through the SDK's Mantle client: the AWS credential chain (or a Bedrock API
+    key) signs each call, and the region comes from llm.aws.region or the AWS environment."""
+    if importlib.util.find_spec("boto3") is None:
+        raise AppException(503, MISSING_BEDROCK_SDK)
+    # the SDK reaches its Bedrock client lazily at the top level; the package path is the typed one
+    from anthropic.lib.bedrock import AsyncAnthropicBedrockMantle
+
+    region = _prop("llm.aws.region")
+    try:
+        return AsyncAnthropicBedrockMantle(aws_region=str(region) if region else None)
+    except anthropic.AnthropicError as exc:  # no region, and no base URL to stand in for one
+        raise AppException(503, MISSING_AWS_REGION) from exc
 
 
 def get_backend() -> Backend:
@@ -287,7 +356,8 @@ def get_backend() -> Backend:
                 501, f"unknown LLM backend '{name}' - this helper serves: {', '.join(BACKENDS)}"
             )
         # credentials resolve per call, so the app starts (and reports its health) without one
-        backend = Backend(name, anthropic.AsyncAnthropic(), supports_fallbacks=True)
+        client = _bedrock_client() if name == BEDROCK_BACKEND else anthropic.AsyncAnthropic()
+        backend = backend_for(name, client)
         _backend = backend
     return backend
 
@@ -457,6 +527,10 @@ def _failure(exc: BaseException, timeout_ms: int) -> AppException | None:
         return AppException(503, f"LLM provider unreachable - {exc}")
     if isinstance(exc, TypeError) and CREDENTIAL_TYPE_ERROR in str(exc):
         return AppException(503, MISSING_CREDENTIAL)
+    if (isinstance(exc, RuntimeError) and AWS_CREDENTIAL_RUNTIME_ERROR in str(exc)) or type(
+        exc
+    ).__name__ == "NoCredentialsError":
+        return AppException(503, MISSING_AWS_CREDENTIAL)
     return None
 
 
@@ -606,16 +680,20 @@ async def llm_health(headers: dict[str, str], _body: Body) -> Any:
 
     Activated for the /health actuator endpoint by mandatory.health.dependencies in
     resources/application.yml. It reports whether a call could be sent (a credential is
-    present) without any network traffic, so a probe never spends a token.
+    present) without reaching the model, so a probe never spends a token.
     """
     backend = get_backend()
     if headers.get("type") == "info":
-        return {
+        info: dict[str, Any] = {
             "service": "llm.helper",
             "href": "http://127.0.0.1",
             "backend": backend.name,
             "model": _prop("llm.model", DEFAULT_MODEL),
         }
+        region = getattr(backend.client, "aws_region", None)
+        if region:
+            info["region"] = region  # which region a Bedrock call is signed for
+        return info
     problem = backend.credential_problem()
     if problem:
         raise AppException(503, problem)
