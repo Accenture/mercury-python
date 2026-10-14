@@ -1616,7 +1616,9 @@
 </blockquote>
 <h2 id="configuration-the-engines-conventions">Configuration — the engines' conventions<a class="headerlink" href="#configuration-the-engines-conventions" title="Permanent link">&para;</a></h2>
 <p>Configuration lives in the <code>resources</code> folder (<code>resources/application.yml</code>, <code>.yaml</code>
-or <code>.properties</code>), in the working directory or next to the application file. Values
+or <code>.properties</code>) next to the application file — the file <code>mercury-serve</code> is given, or the
+script <code>python app.py</code> ran — never in the working directory, so the configuration does not
+depend on where the app is launched from (<code>--config</code> names another file). Values
 support <code>${ENV_VAR:default}</code> substitution; <code>-Dkey=value</code> command-line arguments are
 runtime overrides checked first on every read — the same syntax as the Java engine's
 JVM system properties and the Rust port's <code>-D</code> arguments:</p>

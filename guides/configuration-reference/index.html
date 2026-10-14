@@ -1532,8 +1532,9 @@
 <ol>
 <li><code>-Dkey=value</code> command-line overrides (and programmatic <code>AppConfig.set</code>) — checked
    first on every read, the engines' <code>f:setConfig</code> analog.</li>
-<li>The configuration file: <code>resources/application.yml</code> | <code>.yaml</code> | <code>.properties</code>, in
-   the working directory or next to the application file, or <code>--config &lt;path&gt;</code>.</li>
+<li>The configuration file: <code>resources/application.yml</code> | <code>.yaml</code> | <code>.properties</code> next to
+   the application file (the file <code>mercury-serve</code> is given, or the script <code>python app.py</code>
+   ran), never in the working directory; or <code>--config &lt;path&gt;</code>.</li>
 <li><code>${ENV_VAR:default}</code> substitution inside values: environment first, then a base
    configuration key of that name, then the default.</li>
 </ol>
