@@ -19,7 +19,11 @@ JavaScript handler has no sync flavour), with the same behaviour.
 ```bash
 pip install mercury-composable
 mercury-serve examples/demo-app/demo_app.py
+python examples/demo-app/demo_app.py       # the same without mercury-serve
 ```
+
+Either way the app reads `resources/application.yml` next to `demo_app.py`, whichever directory the
+command runs from.
 
 The app listens on port 8086 (`rest.server.port` in `resources/application.yml`; `-Drest.server.port=8090`
 overrides it). The [LLM helper](../llm-helper/README.md) defaults to 8086 as well, so give one of the two

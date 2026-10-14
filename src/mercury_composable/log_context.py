@@ -131,12 +131,12 @@ def _load() -> tuple[LogContextConfig, str | None]:
     config = app_config()
     if (config.get_property(FEATURE_FLAG, "true") or "true").lower() == "false":
         return LogContextConfig(None), None
-    # an application override replaces the default entirely - same resources
-    # convention as application.yml
-    source = config.source
-    folder = os.path.dirname(source) if source != "none" else "resources"
-    candidate = os.path.join(folder or "resources", CONFIG_FILE)
-    if os.path.isfile(candidate):
+    # an application override replaces the default entirely - it sits in the same
+    # resources folder as application.yml (next to the application file, or beside
+    # an explicit --config file); the working directory is never searched
+    folder = config.resources_dir
+    candidate = os.path.join(folder, CONFIG_FILE) if folder else None
+    if candidate and os.path.isfile(candidate):
         with open(candidate, "r", encoding="utf-8") as f:
             section = _context_section(yaml.safe_load(f.read()) or {})
         if section is None:

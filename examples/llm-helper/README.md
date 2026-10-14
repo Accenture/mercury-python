@@ -21,7 +21,11 @@ speaks the same contract. Both run one shared vector file, so they cannot drift 
 pip install 'mercury-composable[llm]'      # the SDK is this app's one dependency
 export ANTHROPIC_API_KEY=...               # from the environment, never from a config file
 mercury-serve examples/llm-helper/llm_helper.py
+python examples/llm-helper/llm_helper.py   # the same without mercury-serve
 ```
+
+Either way the helper reads `resources/application.yml` next to `llm_helper.py`, whichever directory the
+command runs from; `-Dkey=value` overrides any key.
 
 On AWS Bedrock instead (see Backends), the `bedrock` extra adds boto3, which signs each call with the
 AWS credential chain, and a region is required:

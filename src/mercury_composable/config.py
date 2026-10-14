@@ -4,9 +4,13 @@ Minimalist configuration management, consistent with the Mercury engines.
 Same conventions as the Java/Rust AppConfigReader so a polyglot installation
 uses one configuration style everywhere:
 
-- Configuration lives in the ``resources`` folder, mirroring the engines:
-  ``resources/application.yml`` (or ``.yaml`` / ``.properties``), or an
-  explicit path via ``AppConfig(path=...)`` / ``mercury-serve --config``.
+- Configuration lives in the ``resources`` folder NEXT TO THE APPLICATION
+  FILE, mirroring the engines' classpath resources: ``resources/application.yml``
+  (or ``.yaml`` / ``.properties``) beside the file ``mercury-serve`` is given,
+  or beside the script Python ran (``python app.py``); or an explicit path via
+  ``AppConfig(path=...)`` / ``mercury-serve --config``. The working directory
+  is never searched, so the configuration an application starts with does not
+  depend on where it is launched from.
 - Dotted keys over nested YAML (``rest.server.port``).
 - ``-Dkey=value`` command-line arguments are runtime parameter overrides,
   checked first on every read — the same syntax as the Java engine's JVM
@@ -46,6 +50,16 @@ DEFAULT_CANDIDATES = [
     "resources/application.properties",
 ]
 
+RESOURCES_FOLDER = "resources"
+
+
+def main_script_dir() -> str | None:
+    """The folder of the script Python ran (``python app.py``) - where a direct run
+    finds its ``resources`` folder; None in an interactive session, which has no script."""
+    main = sys.modules.get("__main__")
+    file = getattr(main, "__file__", None)
+    return os.path.dirname(os.path.abspath(file)) if file else None
+
 
 def _flatten(prefix: str, node: Any, out: dict[str, Any]) -> None:
     if isinstance(node, dict):
@@ -81,19 +95,32 @@ def parse_d_args(argv: list[str]) -> dict[str, Any]:
 class AppConfig:
     """Flat, dot-addressed application configuration."""
 
-    def __init__(self, path: str | None = None, argv: list[str] | None = None):
+    def __init__(self, path: str | None = None, argv: list[str] | None = None,
+                 app_dir: str | None = None):
+        """``path`` names the configuration file explicitly; otherwise the file is one of
+        DEFAULT_CANDIDATES under ``app_dir`` - the application file's folder, defaulting to the
+        folder of the script Python ran. The working directory is never searched."""
         self._store: dict[str, Any] = {}
         self._overrides: dict[str, Any] = parse_d_args(sys.argv[1:] if argv is None else argv)
         self._source = "none"
-        candidates = [path] if path else DEFAULT_CANDIDATES
-        for candidate in candidates:
-            if candidate and os.path.isfile(candidate):
-                self._load(candidate)
-                self._source = candidate
-                break
-        else:
-            if path:
+        self._resources_dir: str | None = None
+        if path:
+            if not os.path.isfile(path):
                 raise FileNotFoundError(f"Configuration file not found - {path}")
+            self._load(path)
+            self._source = path
+            self._resources_dir = os.path.dirname(os.path.abspath(path))
+            return
+        folder = app_dir if app_dir is not None else main_script_dir()
+        if folder is None:
+            return
+        self._resources_dir = os.path.join(folder, RESOURCES_FOLDER)
+        for candidate in DEFAULT_CANDIDATES:
+            probe = os.path.join(folder, candidate)
+            if os.path.isfile(probe):
+                self._load(probe)
+                self._source = probe
+                break
 
     def _load(self, path: str) -> None:
         with open(path, "r", encoding="utf-8") as f:
@@ -108,7 +135,16 @@ class AppConfig:
 
     @property
     def source(self) -> str:
+        """The configuration file loaded (an explicit path as given, else the absolute path of
+        the file found next to the application file), or ``none``."""
         return self._source
+
+    @property
+    def resources_dir(self) -> str | None:
+        """The ``resources`` folder companion files (``app-log-context.yaml``) share with the
+        configuration file - beside an explicit file, else next to the application file;
+        None when there is neither."""
+        return self._resources_dir
 
     def set(self, key: str, value: Any) -> None:
         """Runtime override, checked first on every read (f:setConfig analog)."""
@@ -169,7 +205,8 @@ _instance: AppConfig | None = None
 
 
 def app_config() -> AppConfig:
-    """The shared AppConfig singleton (created on first use)."""
+    """The shared AppConfig singleton (created on first use - a direct ``python app.py`` run
+    resolves its ``resources`` folder next to the script)."""
     global _instance
     with _lock:
         instance = _instance
@@ -179,10 +216,11 @@ def app_config() -> AppConfig:
         return instance
 
 
-def load_config(path: str | None = None) -> AppConfig:
-    """Replace the shared AppConfig (used by the CLI before startup)."""
+def load_config(path: str | None = None, app_dir: str | None = None) -> AppConfig:
+    """Replace the shared AppConfig (used by the CLI before startup, with the application
+    file's folder as ``app_dir``)."""
     global _instance
     with _lock:
-        instance = AppConfig(path)
+        instance = AppConfig(path, app_dir=app_dir)
         _instance = instance
         return instance

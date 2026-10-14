@@ -1,6 +1,7 @@
 # The LLM helper's configuration - the engines' "resources" convention.
-# mercury-serve loads resources/application.yml from the working directory, or from the
-# resources folder next to the application file (this one). Any key can be overridden at
+# mercury-serve (and a direct `python llm_helper.py`) loads resources/application.yml from the
+# resources folder next to the application file (this one), never from the working directory.
+# Any key can be overridden at
 # run time with the engines' -D syntax, e.g.:
 #   mercury-serve examples/llm-helper/llm_helper.py -Dllm.model=claude-haiku-4-5
 

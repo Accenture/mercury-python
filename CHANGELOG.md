@@ -23,6 +23,20 @@
    Node pack, and the Bedrock clients, their region and credential checks are pinned by unit tests. **Upgrade note:** none - the
    Claude API backend is the default and behaves as before; `llm.backend` now also accepts `bedrock`.
 
+### Changed
+
+1. **The `resources` folder is the one next to the application file; the working directory is never searched.**
+   `mercury-serve app.py` reads `resources/application.yml` (`.yaml`, `.properties`) beside `app.py`, and a direct
+   `python app.py` beside the script Python ran, wherever the command runs from - the engines' classpath convention: the
+   configuration travels with the application and does not depend on the launch directory. Before, the working directory
+   was searched first and the application's folder only as a fallback, so a direct `python llm_helper.py` from the
+   repository root started with no configuration at all (the default name and port, no health dependencies), and a stray
+   `resources/` in the launch directory could shadow the application's own. `--config <file>` still names another file;
+   the companion `app-log-context.yaml` follows the same folder; `AppConfig.source` is now the absolute path of the file
+   found and `AppConfig.resources_dir` names the folder; the startup log reports `Configuration: <path>`.
+   **Upgrade note:** an application that kept `resources/` in the working directory with its application file elsewhere
+   passes `--config`, or moves the folder next to the file.
+
 ## Version 4.12.21, 10/7/2026
 
 The lock-step round with the engines: the pack moves from 4.12.15 to 4.12.21, the number the Java engine and the

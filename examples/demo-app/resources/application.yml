@@ -1,6 +1,7 @@
 # Sample configuration - the engines' "resources" convention.
-# mercury-serve loads resources/application.yml from the working directory, or from
-# the resources folder next to the application file (this one). Any key can be
+# mercury-serve (and a direct `python demo_app.py`) loads resources/application.yml from
+# the resources folder next to the application file (this one), never from the working
+# directory. Any key can be
 # overridden at run time with the engines' -D syntax, e.g.:
 #   mercury-serve examples/demo-app/demo_app.py -Drest.server.port=8090 -Dlog.format=compact
 
