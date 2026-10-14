@@ -1363,6 +1363,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#verified-live-on-aws-bedrock-2026-10-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verified live on AWS Bedrock (2026-10-14)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-python-sdk-needed-on-bedrock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the Python SDK needed on Bedrock
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-python-sdk-needed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1505,6 +1527,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#verified-live-on-aws-bedrock-2026-10-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verified live on AWS Bedrock (2026-10-14)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-python-sdk-needed-on-bedrock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the Python SDK needed on Bedrock
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-python-sdk-needed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1614,6 +1658,63 @@ nothing is gathered or sent once. The long gaps are the API's own pacing, the sa
 (a batch about every 25 ms) while Opus 5.5 arrives in bursts about every 600 ms. Credential states, measured on the real SDK:
 no credential gave 503 through Java on all three layers and through Rust on the graph, and an invalid key gave Anthropic's 401 with its request id when this pack's client called the helper directly. The same message came from both helpers, through every layer. All traces that touched this helper rebuild
 as one connected tree.</p>
+<h2 id="verified-live-on-aws-bedrock-2026-10-14">Verified live on AWS Bedrock (2026-10-14)<a class="headerlink" href="#verified-live-on-aws-bedrock-2026-10-14" title="Permanent link">&para;</a></h2>
+<p>The helper's second backend (<code>llm.backend: 'bedrock'</code>), driven against an enterprise AWS account in <code>us-east-1</code> with temporary IAM
+credentials - a key pair and a session token - in the helper's environment and no vendor key anywhere. Negative controls first.</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A corrupted secret</td>
+<td><code>401 LLM provider error - 401 authentication_error: The request signature we calculated does not match ...</code></td>
+</tr>
+<tr>
+<td>No credential at all</td>
+<td>health <code>503 AWS credential missing</code>; the call a bare 500 until this pack mapped the SDK's wording (below)</td>
+</tr>
+<tr>
+<td><code>llm.chat</code>, Haiku 4.5</td>
+<td><code>200</code>, <code>ready</code>, 14 input / 4 output tokens</td>
+</tr>
+<tr>
+<td><code>llm.chat</code> with a schema</td>
+<td><code>{"verdict": "bug", "confidence": 0.95}</code>, 218 / 17</td>
+</tr>
+<tr>
+<td><code>llm.stream</code></td>
+<td>4 batches, the first after 815 ms, <code>eof</code> with usage 20 / 23</td>
+</tr>
+<tr>
+<td>Java engine, the shipped <code>support-triage</code> graph</td>
+<td><code>bug</code> → <code>bug-filed</code>, 240 / 29</td>
+</tr>
+<tr>
+<td>Java engine, the streaming relay</td>
+<td>4 <code>data</code> frames, then <code>done</code> with usage, the trace id and the correlation id</td>
+</tr>
+</tbody>
+</table>
+<p>Every call ran on <code>us.anthropic.claude-haiku-4-5-20251001-v1:0</code> through the classic runtime surface (<code>llm.aws.api: 'runtime'</code>): the
+account was enabled for that surface and not for the Anthropic-shaped one the SDK prefers, and for Haiku 4.5 and not for the newer
+model generation. The full account of the surfaces and the gates is Finding 7 of the
+<a href="https://accenture.github.io/mercury-composable/test-reports/llm-helper-certification/">engine report</a>.</p>
+<h2 id="what-the-python-sdk-needed-on-bedrock">What the Python SDK needed on Bedrock<a class="headerlink" href="#what-the-python-sdk-needed-on-bedrock" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>The Bedrock clients live at <code>anthropic.lib.bedrock</code></strong> (<code>AsyncAnthropicBedrockMantle</code>, <code>AsyncAnthropicBedrock</code>); the top level
+  re-exports them through a star import that the type checker reads as private, so the helper imports the package path.</li>
+<li><strong>An empty credential chain is a bare <code>RuntimeError</code></strong> raised while signing - <code>Could not resolve AWS credentials from session</code>
+  from the Mantle client, <code>could not resolve credentials from session</code> from the classic one - so the helper matches the words both
+  wordings carry, without case, and maps it to <code>503 AWS credential missing</code>. The health check resolves a boto3 session's
+  credentials the way a call would, so a probe tells a missing credential from a present one without spending a token.</li>
+<li><strong>No region is a construction error</strong>, an <code>AnthropicError</code> from the Mantle client and a <code>ValueError</code> from the classic one; both
+  are the helper's <code>503 AWS region missing</code>, raised before any call.</li>
+<li><strong>The reply carries no request id:</strong> Bedrock sends no <code>request-id</code> header the helper reads.</li>
+</ul>
 <h2 id="what-the-python-sdk-needed">What the Python SDK needed<a class="headerlink" href="#what-the-python-sdk-needed" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>No credential is not an API error.</strong> <code>anthropic</code> 1.x raises a bare <code>TypeError</code> ("Could not resolve authentication method…")
