@@ -289,6 +289,7 @@ class Platform:
         for route, service in sorted(self.registry.routes().items()):
             visibility = "PRIVATE" if service.private else "PUBLIC"
             log.info("Loaded %s %s, instances=%d", visibility, route, service.instances)
+        log.info("Configuration: %s", config.source)
         log.info("%s - Event API service started on port %d", app_name, actual_port)
         app = server.create_app()
         if exporter is not None:

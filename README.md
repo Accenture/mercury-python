@@ -135,9 +135,11 @@ The same conventions as the engines, so a polyglot installation stays uniform:
 | `log.format` | `text`, `json` (pretty-printed) or `compact` (single-line JSONL) | `text` |
 | `log.level` | log level (`LOG_LEVEL` env var wins) | `INFO` |
 
-Configuration lives in the `resources` folder, mirroring the engines:
-`resources/application.yml` (or `.yaml` / `.properties`) in the working directory or next
-to the application file, or an explicit `--config` path — see
+Configuration lives in the `resources` folder next to the application file, mirroring the
+engines' classpath resources: `resources/application.yml` (or `.yaml` / `.properties`) beside
+the file `mercury-serve` is given, or beside the script `python app.py` ran — never the working
+directory, so the configuration does not depend on where the app is launched from — or an
+explicit `--config` path; see
 [`examples/demo-app/resources/application.yml`](examples/demo-app/resources/application.yml) for a worked
 sample. Values support `${ENV_VAR:default}` substitution. Runtime parameter overrides use the
 same `-D` syntax as the Java engine and the Rust port — checked first on every read

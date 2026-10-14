@@ -19,7 +19,9 @@ keywords: [configuration, resources, log format, actuator, health, kubernetes, l
 ## Configuration — the engines' conventions
 
 Configuration lives in the `resources` folder (`resources/application.yml`, `.yaml`
-or `.properties`), in the working directory or next to the application file. Values
+or `.properties`) next to the application file — the file `mercury-serve` is given, or the
+script `python app.py` ran — never in the working directory, so the configuration does not
+depend on where the app is launched from (`--config` names another file). Values
 support `${ENV_VAR:default}` substitution; `-Dkey=value` command-line arguments are
 runtime overrides checked first on every read — the same syntax as the Java engine's
 JVM system properties and the Rust port's `-D` arguments:

@@ -13,8 +13,9 @@ keywords: [configuration, reference, keys, substitution, overrides]
 
 1. `-Dkey=value` command-line overrides (and programmatic `AppConfig.set`) — checked
    first on every read, the engines' `f:setConfig` analog.
-2. The configuration file: `resources/application.yml` | `.yaml` | `.properties`, in
-   the working directory or next to the application file, or `--config <path>`.
+2. The configuration file: `resources/application.yml` | `.yaml` | `.properties` next to
+   the application file (the file `mercury-serve` is given, or the script `python app.py`
+   ran), never in the working directory; or `--config <path>`.
 3. `${ENV_VAR:default}` substitution inside values: environment first, then a base
    configuration key of that name, then the default.
 
