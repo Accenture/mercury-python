@@ -22,6 +22,8 @@
   `gemini-flash-latest` default; the 4.12.1 line of 2026-09-01, the first public package, carried the llm.chat/llm.stream AI
   nodes and the constrained sdist) — the Python member of the Mercury Composable polyglot initiative: a lightweight
   Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in git history only).
+  **HOLD (Eric, 2026-10-14):** the 4.12.25 catch-up waits until the account has full access to the higher AI models on Bedrock -
+  the additional tests and the fine tuning come first ([[pack-catch-up-4-12-25]]).
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-09-23 | through 2026-09-23-004552.md (cadence — 10 sessions since; archived 1 faded fact
   `decision-polyglot-reboot` + swept 3 completed threads past `archive_window` → 2026-Q3; tier changes via `refresh-metadata`;
