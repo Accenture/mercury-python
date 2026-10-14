@@ -127,7 +127,15 @@
   missing`); a bare model id prefixed `anthropic.`, an id already spelled for Bedrock kept; no server-side fallbacks (Bedrock offers
   none); an empty credential chain `503 AWS credential missing` by name; `llm.health` reporting `region`. `backend_for(name, client)`
   holds a route's shape, and the vector harness installs its fake under the backend a case names (66 cases). The `bedrock` extra adds
-  boto3. The live drive is pending ([[llm-helper-bedrock-iam]]).
+  boto3. **Driven live 2026-10-14 (PR #44, the Node twin mercury-nodejs #112):** negative controls first, then chat, a structured
+  verdict and a progressive stream on Haiku 4.5, and the Java engine's shipped triage graph and streaming relay in front of the
+  helper - all through IAM, no vendor key. What the drive taught: Bedrock has TWO SURFACES an account may be enabled for separately,
+  so `llm.aws.api` selects `mantle` (the default, the Anthropic-shaped endpoint, the `anthropic.` prefix) or `runtime` (the classic
+  one, every model id sent as written - an inference profile id as the account lists it); model access is a one-time use case plus a
+  per-model agreement (`CreateFoundationModelAgreement`), and a model generation can be gated at the account on top (Opus 5.5 and the
+  5.5 family stayed 403 with their agreements active); `GetFoundationModelAvailability` tells the four gates apart; the SDK's
+  empty-chain error reads `Could not resolve AWS credentials from session` (mapped by its words); Bedrock sends no `request-id`.
+  Closed [[llm-helper-bedrock-iam]].
   <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
 
 ## Conventions

@@ -1,12 +1,9 @@
-- [ ] **AWS Bedrock through IAM as the LLM helper's second backend.** The helper's `Backend` seam is documented, not built:
-  build the SDK's Bedrock client in `get_backend()` (it signs with the default AWS credential chain and takes a region, so
-  there is no API key), give the `Backend` a `provider_model` that prefixes the model id (`anthropic.claude-opus-5-5`), report
-  `supports_fallbacks=False` (server-side fallbacks are not offered on Bedrock), describe a missing AWS credential in
-  `credential_problem()`, and select it with `llm.backend: 'bedrock'`. The routes, the contract and the vector file stay as they
-  are, and the Node twin does the same in `defaultBackend()`. Needs Eric's AWS account for the live drive, with a negative
-  control first (a bad credential must fail by name).
-  **Built 2026-10-14 (PR #43 merged `c25ba35`, the Node twin mercury-nodejs #111 merged `def1e3a`):** the client, the prefix, the fallbacks flag, the credential and
-  region checks, the docs and the vectors are in; what remains is the live drive - a wrong credential first - which this machine
-  cannot run (no AWS access).
+- [x] **AWS Bedrock through IAM as the LLM helper's second backend. CLOSED 2026-10-14.** Built in PR #43 (merged `c25ba35`) and
+  driven live the same day with Eric's temporary IAM credentials and no vendor key: negative controls first (401 and 503 by
+  name), then chat, a structured verdict and a progressive stream on Haiku 4.5 through the classic runtime surface, and the Java
+  engine's shipped triage graph and streaming relay in front of the helper; PR #44 carries the surface switch `llm.aws.api`, the
+  SDK's credential wording mapped, and the report. Lesson: an account may be enabled for one Bedrock surface and one model
+  generation only - the gates are the per-model agreement, the one-time use case and the account's own enablement, told apart by
+  `GetFoundationModelAvailability` - and the negative control is what found the mapping gap. origin: 2026-10-02-001146.
   → serves: vision-mercury-python
   <!-- id: llm-helper-bedrock-iam | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
