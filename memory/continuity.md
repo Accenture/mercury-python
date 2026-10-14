@@ -127,7 +127,7 @@
   missing`); a bare model id prefixed `anthropic.`, an id already spelled for Bedrock kept; no server-side fallbacks (Bedrock offers
   none); an empty credential chain `503 AWS credential missing` by name; `llm.health` reporting `region`. `backend_for(name, client)`
   holds a route's shape, and the vector harness installs its fake under the backend a case names (66 cases). The `bedrock` extra adds
-  boto3. **Driven live 2026-10-14 (PR #44, the Node twin mercury-nodejs #112):** negative controls first, then chat, a structured
+  boto3. **Driven live 2026-10-14 (PR #44 merge `03c5f57`, the Node twin mercury-nodejs #112 merge `0ece23f`, both MERGED 2026-10-14):** negative controls first, then chat, a structured
   verdict and a progressive stream on Haiku 4.5, and the Java engine's shipped triage graph and streaming relay in front of the
   helper - all through IAM, no vendor key. What the drive taught: Bedrock has TWO SURFACES an account may be enabled for separately,
   so `llm.aws.api` selects `mantle` (the default, the Anthropic-shaped endpoint, the `anthropic.` prefix) or `runtime` (the classic
