@@ -121,7 +121,7 @@
   (byte-identical in mercury-nodejs, 63 cases against SDK fakes) plus `tests/test_llm_helper.py` (86 tests), and a live
   certification through the Java and Rust engines (`docs/test-reports/llm-helper-certification.md`: 124 model calls, every batch
   its own frame, every trace one tree). No prompt or completion text reaches a log; usage rides the trace record.
-  **Extended 2026-10-14 (the AI SDLC epic's first sprint, Eric's direction; PR #43, the Node twin mercury-nodejs #111):**
+  **Extended 2026-10-14 (the AI SDLC epic's first sprint, Eric's direction; PR #43 merged `c25ba35`, the Node twin mercury-nodejs #111 merged `def1e3a`, both 2026-10-14):**
   `llm.backend: 'bedrock'` reaches the same models through the SDK's `AsyncAnthropicBedrockMantle` - the AWS credential chain through
   IAM, or a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`; the region from `llm.aws.region` or `AWS_REGION` (none: `503 AWS region
   missing`); a bare model id prefixed `anthropic.`, an id already spelled for Bedrock kept; no server-side fallbacks (Bedrock offers
