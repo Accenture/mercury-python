@@ -22,7 +22,7 @@
   `gemini-flash-latest` default; the 4.12.1 line of 2026-09-01, the first public package, carried the llm.chat/llm.stream AI
   nodes and the constrained sdist) — the Python member of the Mercury Composable polyglot initiative: a lightweight
   Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in git history only).
-  **HOLD (Eric, 2026-10-14):** the 4.12.25 catch-up waits until the account has full access to the higher AI models on Bedrock -
+  **HOLD (Eric, 2026-10-14):** the 4.12.25 catch-up waits until the higher AI models are available on Bedrock -
   the additional tests and the fine tuning come first ([[pack-catch-up-4-12-25]]).
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-09-23 | through 2026-09-23-004552.md (cadence — 10 sessions since; archived 1 faded fact
@@ -134,8 +134,8 @@
   helper - all through IAM, no vendor key. What the drive taught: Bedrock has TWO SURFACES an account may be enabled for separately,
   so `llm.aws.api` selects `mantle` (the default, the Anthropic-shaped endpoint, the `anthropic.` prefix) or `runtime` (the classic
   one, every model id sent as written - an inference profile id as the account lists it); model access is a one-time use case plus a
-  per-model agreement (`CreateFoundationModelAgreement`), and a model generation can be gated at the account on top (Opus 5.5 and the
-  5.5 family stayed 403 with their agreements active); `GetFoundationModelAvailability` tells the four gates apart; the SDK's
+  per-model agreement (`CreateFoundationModelAgreement`), and a model generation can be gated at the account on top;
+  `GetFoundationModelAvailability` tells the four gates apart; the SDK's
   empty-chain error reads `Could not resolve AWS credentials from session` (mapped by its words); Bedrock sends no `request-id`.
   Closed [[llm-helper-bedrock-iam]].
   <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
