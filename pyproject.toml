@@ -38,7 +38,7 @@ Repository = "https://github.com/Accenture/mercury-python"
 Changelog = "https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-# the LLM helper app (examples/llm-helper) - the package itself stays SDK-free
+# the LLM helper (extensions/llm-helper) - the package itself stays SDK-free
 llm = ["anthropic>=1,<2"]
 # AWS Bedrock as the helper's backend (llm.backend: bedrock) - boto3 signs each call with the
 # AWS credential chain; the Claude API install stays lean without it
@@ -58,6 +58,7 @@ only-include = [
     "src/mercury_composable",
     "tests",
     "examples",
+    "extensions",
     "README.md",
     "CHANGELOG.md",
     "LICENSE.txt",
@@ -81,7 +82,7 @@ extend-select = ["I"]
 # by agent-memory and excluded.
 typeCheckingMode = "standard"
 reportMissingParameterType = "error"
-include = ["src", "examples", "tests"]
+include = ["src", "examples", "extensions", "tests"]
 exclude = ["agent-skills", ".venv"]
 
 [tool.pytest.ini_options]

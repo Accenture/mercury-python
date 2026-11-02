@@ -3,7 +3,7 @@
 # resources folder next to the application file (this one), never from the working directory.
 # Any key can be overridden at
 # run time with the engines' -D syntax, e.g.:
-#   mercury-serve examples/llm-helper/llm_helper.py -Dllm.model=claude-haiku-4-5
+#   mercury-serve extensions/llm-helper/llm_helper.py -Dllm.model=claude-haiku-4-5
 
 application.name: 'llm-helper'
 info.app.description: 'Mercury Composable LLM helper (llm.chat / llm.stream on the Anthropic SDK)'

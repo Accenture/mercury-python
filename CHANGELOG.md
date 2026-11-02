@@ -36,6 +36,11 @@
    found and `AppConfig.resources_dir` names the folder; the startup log reports `Configuration: <path>`.
    **Upgrade note:** an application that kept `resources/` in the working directory with its application file elsewhere
    passes `--config`, or moves the folder next to the file.
+2. **The LLM helper graduates from an example to an extension: `extensions/llm-helper/`.** It is no longer a sample to copy
+   but a function host an installation runs to give its engines an LLM, so it moves out of `examples/`, which keeps the
+   demo app. The files, the routes, the contract and the configuration keys are unchanged; the sdist ships the new folder.
+   **Upgrade note:** start it as `mercury-serve extensions/llm-helper/llm_helper.py` (or
+   `python extensions/llm-helper/llm_helper.py`); a script or a deployment that names the old path changes it.
 
 ## Version 4.12.21, 10/7/2026
 

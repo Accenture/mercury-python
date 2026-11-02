@@ -1,4 +1,4 @@
-"""The LLM helper (examples/llm-helper/llm_helper.py) - token-free.
+"""The LLM helper (extensions/llm-helper/llm_helper.py) - token-free.
 
 One shared contract file, tests/vectors/llm-helper-vectors.json (byte-identical in
 mercury-nodejs), drives every case below against a fake of the Anthropic SDK: the exact SDK
@@ -29,7 +29,7 @@ from anthropic.lib.bedrock import AsyncAnthropicBedrock, AsyncAnthropicBedrockMa
 from mercury_composable import AppException
 
 _TESTS = Path(__file__).resolve().parent
-_HELPER = _TESTS.parent / "examples" / "llm-helper" / "llm_helper.py"
+_HELPER = _TESTS.parent / "extensions" / "llm-helper" / "llm_helper.py"
 _VECTORS = _TESTS / "vectors" / "llm-helper-vectors.json"
 # the Node.js twin pins the same digest: change the file in both packs or in neither
 _VECTORS_SHA256 = "7bfffbf36c52488c246f250f36afc4e8012f119fd56c93e9de1cbe93bf5988b6"
