@@ -12,8 +12,10 @@ model advises within it.
             flow, or graph
 ```
 
+`llm.chat` is also the model turn of the engines' agent loop (`llm.run`): see The loop contract.
+
 The Node.js twin ([mercury-nodejs `examples/llm-helper`](https://github.com/Accenture/mercury-nodejs))
-speaks the same contract. Both run one shared vector file, so they cannot drift apart.
+speaks the same contract. Both run the same shared vector files, so they cannot drift apart.
 
 ## Run it
 
@@ -43,6 +45,15 @@ surface and name the model as an inference profile id, exactly as the account li
 ```bash
 mercury-serve extensions/llm-helper/llm_helper.py -Dllm.backend=bedrock -Dllm.aws.api=runtime \
   -Dllm.model=us.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+To serve an agent loop from more than one replica, keep the transcripts in Redis (see The transcript store);
+the `redis` extra adds the client:
+
+```bash
+pip install 'mercury-composable[llm,redis]'
+export REDIS_PASSWORD=...                  # from the environment, like every credential
+mercury-serve extensions/llm-helper/llm_helper.py -Dllm.transcript.store=redis
 ```
 
 The app listens on port 8086 (`rest.server.port` in `resources/application.yml`). Map its routes
@@ -126,6 +137,80 @@ the model refused. A stream that ends before its first token fails with a 422 in
 is too small for the question can end with no text at all (seen live with a 120-token budget): that is
 the 422 above, not an empty stream. Raise `params.max_tokens` or lower `params.effort`.
 
+## The loop contract
+
+`llm.chat` also serves one model turn of an agent loop. The loop is `llm.run`, a function of the Java and Rust
+engines (RFC-0011 in mercury-composable): it calls `llm.chat` once per turn, runs each tool the model asks for as a
+composable-function route, and sends the results back. A request that carries `tools` is such a turn. The
+transcript never leaves this app: it lives in the transcript store, and the loop holds only a reference to it.
+
+```text
+loop     → llm.chat:  system, tools, prompt                               (the first turn)
+llm.chat → loop:      status=tool_use, calls=[{id, name, input}], conversation, turn=1
+loop     → route:     each call's input, as the event body
+loop     → llm.chat:  system, tools, conversation, turn=1, results=[{id, output}]
+llm.chat → loop:      status=done, text, conversation, turn=2
+```
+
+| Field | Meaning |
+|---|---|
+| `tools` | `[{name, description, input_schema, strict}]`, as the model sees them. `name` matches `^[a-zA-Z0-9_-]{1,128}$` and is unique; `strict: true` asks for grammar-constrained arguments. Any other key is a 400: a route or an approval mark stays in the loop's catalog, and the model never sees it. |
+| `prompt` or `messages` | The first turn only. A later turn carries neither: the transcript holds the conversation. |
+| `conversation` | The reference a previous turn returned. Absent on the first turn. |
+| `turn` | The turn count the loop expects the record to hold: `0` or absent on the first turn, required with `conversation`. |
+| `results` | The answers to the previous turn's calls, one per call: `[{id, output}]` or `[{id, error}]`. |
+| `ttl` | How long the record lives while the run goes on: seconds, or `30m`, `12h`, `2d`. Default `7d` (`llm.transcript.ttl`). |
+| `retention` | How long the record is kept once the model ends the run. Default `0` (`llm.transcript.retention`), which deletes it. |
+| `system`, `schema`, `params` | As on any call, and sent on every turn. |
+
+**Reply:** `status` (`done`, `tool_use`, `refusal` or `cap`); `text`, or `data` for a `schema` request, when done;
+`calls [{id, name, input}]` for `tool_use`; `refusal {category}`; `cap` (`max_tokens` or `context`); then
+`conversation`, `turn` (the record's count after this turn), `model`, `stop_reason`, `usage {input_tokens,
+output_tokens, cache_creation_input_tokens, cache_read_input_tokens}` and `request_id` when the API sent one.
+
+- **A model outcome is a status, not an error.** A refusal, and a turn cut off at `max_tokens` or at the context
+  window, come back with their status, so the loop can name them in its envelope. A cut-off turn returns no calls,
+  so a truncated call never runs. A run that ends with nothing usable (no text, or a verdict that is not JSON) is
+  still the 422 above, and `pause_turn` (server tools, which a loop never sends) is a 502.
+- **The append check.** A request whose `turn` differs from the record's count is a 409, and so is a turn on a run
+  that has ended. Each write is a compare-and-set on that count, so two copies of one turn (a duplicated resume)
+  can never fork the conversation: the second is a 409 even when both passed the check. A conversation that ended
+  or expired is a 404.
+- **Append-only, exactly as returned.** Each assistant turn is stored as the API returned it, thinking blocks and
+  their signatures included, and sent back unchanged. The helper builds the one user message of `tool_result`
+  blocks, in call order, with `is_error` on an `error` result; a result that is not text is written as compact JSON.
+  A missing `results`, an unknown or duplicate id, or a call left unanswered is a 400 that names the ids.
+- **The model is pinned at the first turn.** Every later turn uses it, and a `params.model` that names another is a
+  400. Server-side refusal fallbacks are never sent on a loop turn: a fallback moves the conversation to another
+  model, whose replay rules edit the history. The graph routes `status: refusal` instead.
+- **Caching is the helper's job.** Tools and system come first and stay the same across turns, so the system prompt
+  carries one cache breakpoint and the request a top-level one that follows the conversation as it grows. No stored
+  block is ever marked. `usage.cache_read_input_tokens` shows the hits.
+- **No tool runs here.** The helper carries the model's calls out and the loop's results in; the loop dispatches.
+
+### The transcript store
+
+`llm.transcript.store` names it, and a loop turn without one is a `503 transcript store not configured`. A request
+without `tools` never touches it.
+
+| `llm.transcript.store` | For |
+|---|---|
+| `memory` | One process: development and tests. A turn that reaches another replica answers 404. |
+| `redis` | Any number of replicas. The `redis` extra adds the client. |
+
+Redis keeps one hash per conversation under `transcript:{conversation}`, holding the turn count and the record. A
+Lua script makes the compare-and-set atomic on that one key. A deployment may share one Redis with the graph's
+suspend store (`minigraph-state-redis`, keys `graph:{graph_id}:{cid}`): give this app a Redis ACL user confined to
+`~transcript:*`, so the two share a server but neither a namespace nor a credential. The client connects on the
+first turn, to a standalone server (a cluster's configuration endpoint needs the cluster client, not built yet); a
+store that cannot be reached is a `503 transcript store unreachable - …`.
+
+Every write sets the record's time to live to `ttl`, so a run that waits for a person keeps its transcript: make
+`ttl` at least as long as the longest approval wait. When the model ends the run (done, a refusal, the context
+window), the record takes `retention` instead: `0` deletes it, and anything longer keeps it closed for audit, under
+the store's access control, because a transcript may hold personal data. A run the loop stops itself (a turn cut off
+at `max_tokens`, or the loop's own limits) keeps its `ttl` and expires with it.
+
 ## Configuration
 
 `resources/application.yml`, or `-Dkey=value` at run time. A call's `params` win over these keys.
@@ -143,6 +228,10 @@ the 422 above, not an empty stream. Raise `params.max_tokens` or lower `params.e
 | `llm.effort` | unset | The default effort. |
 | `llm.log.batches` | `false` | Log each streamed batch's number, size and arrival time (never its text). |
 | `llm.provider` | `anthropic` | Only `anthropic`; any other value is a 400. |
+| `llm.transcript.store` | unset | `memory` or `redis`; a loop turn needs one (see The transcript store). |
+| `llm.transcript.ttl` | `7d` | A loop turn's `ttl` when the request carries none. |
+| `llm.transcript.retention` | `0` | A loop turn's `retention` when the request carries none. |
+| `llm.transcript.redis.host`, `.port`, `.username`, `.password`, `.ssl`, `.database`, `.timeout.ms` | `127.0.0.1`, `6379`, none, none, `false`, `0`, `5000` | The Redis connection: the engines' `redis.*` set under this store's own prefix. The password comes from the environment (`${REDIS_PASSWORD}`). |
 
 The credential is never configured here. `ANTHROPIC_API_KEY` (or whatever the SDK resolves: an
 auth token, or a profile) comes from the environment for the Claude API; the AWS credential chain,
@@ -203,23 +292,34 @@ is a `403 ... is not available for this account` on a model the console's playgr
 name the model as a profile id. The same message on both surfaces, with the model agreement in place, is an account
 enablement for that model generation - a conversation with the AWS account team, not a setting. `llm.health` reports
 `api` beside `backend`, `model` and `region`. Bedrock sends no `request_id` the helper reads, so a reply carries none.
+A loop turn's top-level cache breakpoint works on both surfaces with the current models; Bedrock's legacy integration
+for Opus 4.6 and earlier rejects it with a 400.
 
 ## What it does not do
 
-No tools or function calling, no images or documents, no `system` turns inside `messages`, no
-sampling parameters, no prompt caching controls, and no provider other than Claude. Those are
-deliberate: the helper is the bounded AI node of a graph, not an agent runtime.
+No tool ever runs here: the engines' agent loop dispatches each call to a route. No images or
+documents, no `system` turns inside `messages`, no sampling parameters, no prompt caching controls
+for a caller (a loop turn is cached by the helper), and no provider other than Claude. Those are
+deliberate: the helper is the bounded AI node of a graph and the model turn of an agent loop, not
+an agent runtime.
 
 ## Tests
 
 `tests/test_llm_helper.py` runs the shared `tests/vectors/llm-helper-vectors.json` against a fake of
 the SDK (68 cases: request validation, the exact SDK call, replies, the error contract, streaming,
-the shape of a Bedrock call on either surface), plus the tests a vector cannot express (token batches are
-never held back, no prompt text in a log, the deadline cancels the call, trace annotations, health, the
-backend seam, the Bedrock clients with their region and credential checks). No token is spent and no credential
-is needed.
+the shape of a Bedrock call on either surface) and the shared `tests/vectors/llm-loop-vectors.json` (66 cases of
+one or more turns: the loop fields, the exact SDK call of each turn with the transcript sent back, the reply, and the
+stored record after each step), the loop cases once on the memory store and again on a Redis fake that runs the
+store's Lua. Then come the tests a vector cannot express (token batches are never held back, no prompt or tool text
+in a log, the deadline cancels the call, trace annotations, health, the backend seam, the Bedrock clients with their
+region and credential checks, the stored blocks as the SDK sends them back, the Redis store's keys,
+compare-and-set and connection settings). No token is spent and no credential is needed.
 
 ```bash
 pip install -e '.[dev]'
 pytest tests/test_llm_helper.py
+LLM_TRANSCRIPT_REDIS_URL=redis://127.0.0.1:6379/15 pytest tests/test_llm_helper.py -k live_redis   # on a real Redis
 ```
+
+The live run touches only the keys of the vectors' own conversations; mercury-composable's
+`helpers/redis-standalone` is a local Redis without Docker.

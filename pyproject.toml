@@ -43,7 +43,18 @@ llm = ["anthropic>=1,<2"]
 # AWS Bedrock as the helper's backend (llm.backend: bedrock) - boto3 signs each call with the
 # AWS credential chain; the Claude API install stays lean without it
 bedrock = ["anthropic[bedrock]>=1,<2"]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.9", "anthropic[bedrock]>=1,<2"]
+# Redis as the helper's transcript store (llm.transcript.store: redis) - an agent loop's turns
+# can then land on any replica; a single process keeps its transcripts in memory without it
+redis = ["redis>=5,<9"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.9",
+    "anthropic[bedrock]>=1,<2",
+    "redis>=5,<9",
+    # the store's compare-and-set is a Lua script; the [lua] extra runs it in the fake
+    "fakeredis[lua]>=2.26",
+]
 
 [project.scripts]
 mercury-serve = "mercury_composable.cli:main"

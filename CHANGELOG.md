@@ -22,6 +22,26 @@
    The routes and the contract are unchanged: the shared vector file gains five Bedrock cases (68), byte-identical with the
    Node pack, and the Bedrock clients, their region and credential checks are pinned by unit tests. **Upgrade note:** none - the
    Claude API backend is the default and behaves as before; `llm.backend` now also accepts `bedrock`.
+2. **The loop contract: `llm.chat` serves one model turn of the engines' agent loop (RFC-0011).** A request that carries
+   `tools` is a turn of `llm.run`, the agent loop of the Java and Rust engines, which dispatches each tool call to a
+   composable-function route. The transcript stays in the helper's own store and the loop holds a reference to it: the
+   first turn returns `conversation` and `turn`, a later turn sends them back with `results` (`[{id, output}]` or
+   `[{id, error}]`), and the helper appends the one `tool_result` message, in call order, and the model's turn exactly as
+   the API returned it, thinking blocks included. The reply carries `status` (`done`, `tool_use`, `refusal` or `cap`),
+   `calls [{id, name, input}]`, the cache usage, and `cap` (`max_tokens` or `context`) for a cut-off turn, whose calls
+   never run. A stale turn count, or a turn on a run that has ended, is a 409, and each write is a compare-and-set on
+   the count, so a duplicated turn can never fork a conversation; an ended or expired one is a 404. The model is pinned
+   at the first turn, server-side refusal fallbacks are never sent on a loop turn, and the helper places the cache
+   breakpoints (the system prompt, and a top-level one for the growing conversation). `llm.transcript.store` names the
+   store: `memory` for one process, `redis` for any number of replicas (the new `redis` extra; one hash per conversation
+   under `transcript:{conversation}`, a Lua compare-and-set, a connection from the `llm.transcript.redis.*` keys). Every
+   write sets the record's time to live to the turn's `ttl` (default `7d`), and a run the model ends takes `retention`
+   (default `0`, which deletes the record). A new shared vector file, `tests/vectors/llm-loop-vectors.json` (66 cases),
+   pins the contract for the Node twin; the cases run on the memory store, a Redis fake, and a live Redis when
+   `LLM_TRANSCRIPT_REDIS_URL` names one. **Upgrade note:** a request without `tools` behaves as before. `tools`,
+   `conversation`, `turn`, `results`, `ttl` and `retention` are now fields of the loop contract: on `llm.chat` they need
+   `tools`, and on `llm.stream` any of them is a 400. A loop turn needs `llm.transcript.store`; the sample configuration
+   sets `memory`.
 
 ### Changed
 
