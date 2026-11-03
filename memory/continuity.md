@@ -22,8 +22,8 @@
   `gemini-flash-latest` default; the 4.12.1 line of 2026-09-01, the first public package, carried the llm.chat/llm.stream AI
   nodes and the constrained sdist) — the Python member of the Mercury Composable polyglot initiative: a lightweight
   Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in git history only).
-  **HOLD (Eric, 2026-10-14):** the 4.12.25 catch-up waits until the higher AI models are available on Bedrock -
-  the additional tests and the fine tuning come first ([[pack-catch-up-4-12-25]]).
+  The next catch-up release ([[pack-catch-up-4-12-25]]) is no longer held: the 2026-10-14 hold was lifted on 2026-10-29
+  (Eric) and the pack releases when its work is ready.
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-09-23 | through 2026-09-23-004552.md (cadence — 10 sessions since; archived 1 faded fact
   `decision-polyglot-reboot` + swept 3 completed threads past `archive_window` → 2026-Q3; tier changes via `refresh-metadata`;
@@ -138,6 +138,11 @@
   `GetFoundationModelAvailability` tells the four gates apart; the SDK's
   empty-chain error reads `Could not resolve AWS credentials from session` (mapped by its words); Bedrock sends no `request-id`.
   Closed [[llm-helper-bedrock-iam]].
+  **Extended 2026-11-02 (RFC-0011 build plan step 1; on branches, not merged):** the helper graduates to
+  `extensions/llm-helper/` (Eric), and a request with `tools` is one turn of the engines' agent loop: the transcript stays
+  in the helper's store (`llm.transcript.store`: `memory` or `redis`), the loop holds `conversation` and `turn`, a stale or
+  ended turn is a 409, the model is pinned at the first turn and no server-side fallback is sent; a second shared vector
+  file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
   <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
 
 ## Conventions
@@ -161,6 +166,9 @@
   `mercury-serve examples/<app>/<file>.py` (the sample config is read from the `resources` folder next to the app file). The
   Node pack mirrors the layout. The demo and the helper share the default port 8086, so give one of them another with
   `-Drest.server.port` to run both. The demo stays provider-free and credential-free: no LLM code goes into it.
+  **2026-11-02 (Eric):** the LLM helper graduates from an example to an extension, `extensions/llm-helper/` (same folder
+  shape: a README and its own `resources/`), so `examples/` holds the demo app; on branch `refactor/llm-helper-extension`
+  until merged, and the Node pack follows when its twin moves.
   <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
