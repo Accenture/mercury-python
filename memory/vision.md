@@ -68,9 +68,10 @@ teams, who gain polyglot reach with zero engine coupling.
 
 ## Non-goals (what it must never become)
 
-- **Never a composable foundation or full SDK** — no flows, no graphs, no persistence, no
-  pub/sub broadcast, no orchestration. Those live in the engines (the ratified scope
-  fence). This is **not** a ban on an in-process dispatch bus.
+- **Never a composable foundation or full SDK** — no flows, no graphs, no persistence (in
+  the package: the LLM helper's configurable transcript store is that application's,
+  2026-11-03), no pub/sub broadcast, no orchestration. Those live in the engines (the
+  ratified scope fence). This is **not** a ban on an in-process dispatch bus.
 - **The primitive in-process event bus is in scope** (ratified 2026-08-23, implemented):
   the single dispatch pipeline — one FIFO mailbox per route, `instances` worker tasks,
   `deliver` (RPC) and `publish` (drop-n-forget) only. HTTP and local `PostOffice` are thin

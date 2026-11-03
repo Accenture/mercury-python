@@ -33,8 +33,8 @@
   Prior: 2026-09-23 | through 2026-09-23-004552.md (cadence — archived 1 faded fact `decision-polyglot-reboot` + swept 3
   completed threads → 2026-Q3; invariants not due (29 sessions, cadence 40, none yet); stalled none) · 2026-09-05 | through
   2026-09-05-211409
-- **last_invariant_check:** 2026-11-03 | 2026-11-03-010131.md (PROMPTED, not yet confirmed — the first re-verify, due at 40
-  session files; [[reverify-invariants-20261103]] awaits Eric)
+- **last_invariant_check:** 2026-11-03 | 2026-11-03-010131.md (PROMPTED; WALKED 2026-11-03-012056 against the live tree - all four
+  invariants and the Vision hold, two wordings refreshed; [[reverify-invariants-20261103]] awaits Eric's confirmation)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
 
 ## Stack & Tools
@@ -63,7 +63,9 @@
   graphs, no persistence and no pub/sub broadcast; orchestration lives in the Mercury
   engines. It provides functions, the primitive in-process event bus (route mailboxes +
   workers — dispatch, not orchestration; ratified 2026-08-23), and minimalist foundation
-  utilities (README "Scope", amended with the bus).
+  utilities (README "Scope", amended with the bus). The LLM helper (`extensions/llm-helper/`) is an
+  application on the package, not part of it, so its configurable transcript store leaves the
+  package persistence-free (re-verified 2026-11-03).
   <!-- id: scope-wrapper-no-orchestration | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: core | origin: 2026-08-22-171555 -->
 - **Standard wire format, proven by shared vectors.** The codec implements the standard
   event-envelope wire format, verified against the golden conformance vectors shared with
@@ -78,7 +80,11 @@
   <!-- id: engine-consistent-conventions | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: core | origin: 2026-08-22-171555 -->
 - **Functions are stateless.** Anything a handler must keep belongs to the caller's flow
   model or state machine; intentional errors travel as `AppException(status, message)` —
-  the portable error contract.
+  the portable error contract. **The LLM helper's `llm.chat` is configurable by design (Eric,
+  2026-11-03):** a stateless chat, or, with `tools`, one turn of a multi-turn tool-use loop whose
+  transcript lives in the configured transcript store (`llm.transcript.store`: `memory` for one
+  process, `redis` shared by replicas; RFC-0011). That store is part of the function's configured
+  contract, not an exception to this rule.
   <!-- id: stateless-functions-contract | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: core | origin: 2026-08-22-171555 -->
 
 ## Key Decisions

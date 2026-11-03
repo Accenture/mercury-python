@@ -1,11 +1,7 @@
-- [ ] **Contradiction: the LLM helper's transcript store against `stateless-functions-contract` (and the wording of
-  `scope-wrapper-no-orchestration`).** The invariant says a function keeps nothing and anything it must keep belongs to the
-  caller's flow model or state machine. RFC-0011's rulings 9 and 27 (Eric, 2026-10-28) put an agent loop's transcript in
-  a store the pack owns, so the engine's state machine stays small and no provider block crosses an engine codec; the
-  loop contract (2026-11-02, [[llm-chat-loop-contract]]) builds it in `extensions/llm-helper/`. The package
-  (`src/mercury_composable`) stays persistence-free, so `scope-wrapper-no-orchestration` still holds for the package, and the
-  handler keeps no in-process state (any replica serves any turn). Proposed amendment of `stateless-functions-contract`,
-  for Eric's approval: "Functions are stateless in process. What a function must keep belongs to the caller's flow model
-  or state machine, except where a design names an external, access-controlled store (the LLM helper's transcript store,
-  RFC-0011); intentional errors travel as `AppException(status, message)`." Not edited until Eric rules.
-  <!-- id: contradiction-transcript-store-stateless | created: 2026-11-02 | last_used: 2026-11-02 | uses: 1 | tier: working | origin: 2026-11-02-235604 -->
+- [x] **Contradiction: the LLM helper's transcript store against `stateless-functions-contract`** - RESOLVED 2026-11-03,
+  NOT a contradiction (Eric): `llm.chat` is configurable by design, a stateless chat by default or, with `tools`, one
+  turn of a multi-turn tool-use loop whose transcript lives in the configured transcript store (RFC-0011). The
+  invariant and the scope fence now say so, and the package itself stays persistence-free. Lesson: a configurable
+  contract is not an exception to the rule it configures; state it in the rule so the next review does not re-raise it.
+  origin: 2026-11-02-235604; closed 2026-11-03-012056.
+  <!-- id: contradiction-transcript-store-stateless | created: 2026-11-02 | last_used: 2026-11-03 | uses: 2 | tier: active | origin: 2026-11-02-235604 -->
