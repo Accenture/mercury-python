@@ -14,8 +14,9 @@ model advises within it.
 
 `llm.chat` is also the model turn of the engines' agent loop (`llm.run`): see The loop contract.
 
-The Node.js twin ([mercury-nodejs `examples/llm-helper`](https://github.com/Accenture/mercury-nodejs))
-speaks the same contract. Both run the same shared vector files, so they cannot drift apart.
+The Node.js twin ([mercury-nodejs `extensions/llm-helper`](https://github.com/Accenture/mercury-nodejs/tree/main/extensions/llm-helper))
+speaks the same contract. Both run the shared `llm-helper-vectors.json`, so they cannot drift apart; the twin's loop
+contract, on the shared `llm-loop-vectors.json`, is still to come.
 
 ## Run it
 

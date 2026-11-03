@@ -15,7 +15,7 @@ bedrock), llm.aws.api (mantle or runtime), llm.aws.region, llm.model, llm.max.to
 llm.timeout.ms, llm.max.retries, llm.fallbacks, llm.effort, and for the agent loop's turns
 llm.transcript.store (memory or redis), llm.transcript.ttl, llm.transcript.retention and the
 llm.transcript.redis.* connection keys. The contract, the keys and the backends are documented in
-README.md next to this file. The Node.js twin (mercury-nodejs examples/llm-helper) speaks
+README.md next to this file. The Node.js twin (mercury-nodejs extensions/llm-helper) speaks
 the same contract, and both are pinned by shared vector files.
 
 Then map the routes from a Mercury engine application (event-over-http.yaml):
