@@ -37,7 +37,7 @@
    under `transcript:{conversation}`, a Lua compare-and-set, a connection from the `llm.transcript.redis.*` keys). Every
    write sets the record's time to live to the turn's `ttl` (default `7d`), and a run the model ends takes `retention`
    (default `0`, which deletes the record). A new shared vector file, `tests/vectors/llm-loop-vectors.json` (66 cases),
-   pins the contract for the Node twin; the cases run on the memory store, a Redis fake, and a live Redis when
+   is shared byte for byte with the Node twin, which runs it too (mercury-nodejs #115); the cases run on the memory store, a Redis fake, and a live Redis when
    `LLM_TRANSCRIPT_REDIS_URL` names one. **Upgrade note:** a request without `tools` behaves as before. `tools`,
    `conversation`, `turn`, `results`, `ttl` and `retention` are now fields of the loop contract: on `llm.chat` they need
    `tools`, and on `llm.stream` any of them is a 400. A loop turn needs `llm.transcript.store`; the sample configuration
@@ -62,6 +62,11 @@
    configuration keys are unchanged; the sdist ships the new folder.
    **Upgrade note:** start it as `mercury-serve extensions/llm-helper/llm_helper.py` (or
    `python extensions/llm-helper/llm_helper.py`); a script or a deployment that names the old path changes it.
+3. **The Scope allows one subprocess: an MCP server reached over stdio (2026-11-03).** A function still runs in the
+   pack's own process. The pack may run a stdio MCP server as its child process, which is the reason the MCP clients of
+   the engines' agent loop (RFC-0011) live in the language packs and not in the engines. Nothing starts one yet: the stdio
+   MCP binding is a later step. The README's Scope also says the LLM helper is an application on the package, whose
+   `llm.chat` is a stateless chat or a loop turn with a configured transcript store. **Upgrade note:** none.
 
 ## Version 4.12.21, 10/7/2026
 
