@@ -213,6 +213,16 @@ workers, RPC and drop-n-forget — nothing more), and the minimalist foundation 
 keeping Python fast to prototype with while the composable core guarantees the
 architecture.
 
+A function always runs in this process, never in a subprocess or an embedded interpreter.
+The one subprocess the pack may start is an **MCP server reached over stdio**: the pack runs it
+as a child process and talks to it over its standard input and output. That is why the MCP
+clients of the engines' agent loop (RFC-0011) live in the language packs: no engine starts a
+child process. The stdio MCP binding itself is still to come.
+
+The LLM helper in `extensions/llm-helper/` is an application on this package, not part of it.
+Its `llm.chat` is configurable: a stateless chat, or one turn of a multi-turn tool-use loop whose
+transcript lives in the store the helper is configured with.
+
 ## Development
 
 ```bash
