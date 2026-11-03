@@ -6,7 +6,7 @@ through declarative Event-over-HTTP like any other function, so the certified mo
 control flow while the LLM advises within it.
 
 Run:  pip install 'mercury-composable[llm]'
-      mercury-serve examples/llm-helper/llm_helper.py
+      mercury-serve extensions/llm-helper/llm_helper.py
 
 The credential comes from the environment, never from a config file: ANTHROPIC_API_KEY for
 the Claude API, the AWS credential chain (or AWS_BEARER_TOKEN_BEDROCK) for AWS Bedrock.

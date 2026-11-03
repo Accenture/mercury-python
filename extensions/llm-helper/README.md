@@ -20,8 +20,8 @@ speaks the same contract. Both run one shared vector file, so they cannot drift 
 ```bash
 pip install 'mercury-composable[llm]'      # the SDK is this app's one dependency
 export ANTHROPIC_API_KEY=...               # from the environment, never from a config file
-mercury-serve examples/llm-helper/llm_helper.py
-python examples/llm-helper/llm_helper.py   # the same without mercury-serve
+mercury-serve extensions/llm-helper/llm_helper.py
+python extensions/llm-helper/llm_helper.py   # the same without mercury-serve
 ```
 
 Either way the helper reads `resources/application.yml` next to `llm_helper.py`, whichever directory the
@@ -33,7 +33,7 @@ AWS credential chain, and a region is required:
 ```bash
 pip install 'mercury-composable[llm,bedrock]'
 export AWS_REGION=us-east-1                # or llm.aws.region; the AWS credential chain signs each call
-mercury-serve examples/llm-helper/llm_helper.py -Dllm.backend=bedrock
+mercury-serve extensions/llm-helper/llm_helper.py -Dllm.backend=bedrock
 ```
 
 If the account is enabled for Bedrock's classic runtime and not for its Anthropic-shaped endpoint (the default
@@ -41,7 +41,7 @@ surface answers `403 ... not available for this account` on a model the console'
 surface and name the model as an inference profile id, exactly as the account lists it:
 
 ```bash
-mercury-serve examples/llm-helper/llm_helper.py -Dllm.backend=bedrock -Dllm.aws.api=runtime \
+mercury-serve extensions/llm-helper/llm_helper.py -Dllm.backend=bedrock -Dllm.aws.api=runtime \
   -Dllm.model=us.anthropic.claude-haiku-4-5-20251001-v1:0
 ```
 

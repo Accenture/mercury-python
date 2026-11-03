@@ -3,7 +3,7 @@
 The minimal polyglot function host: seven small functions that show what a Mercury engine can reach
 over Event-over-HTTP and what a function host does with a call. Run it to watch a Python function
 answer an engine, and copy it as the starting point for your own app. It never calls a model and needs
-no credential; the LLM routes are a separate app, [`llm-helper`](../llm-helper/README.md).
+no credential; the LLM routes are a separate app, [`llm-helper`](../../extensions/llm-helper/README.md).
 
 ```text
   caller ── REST ──> Java or Rust engine ── Event-over-HTTP ──> demo app
@@ -26,7 +26,7 @@ Either way the app reads `resources/application.yml` next to `demo_app.py`, whic
 command runs from.
 
 The app listens on port 8086 (`rest.server.port` in `resources/application.yml`; `-Drest.server.port=8090`
-overrides it). The [LLM helper](../llm-helper/README.md) defaults to 8086 as well, so give one of the two
+overrides it). The [LLM helper](../../extensions/llm-helper/README.md) defaults to 8086 as well, so give one of the two
 another port when you run both on one machine. Map a route from the engine's `event-over-http.yaml`:
 
 ```yaml
