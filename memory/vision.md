@@ -5,7 +5,8 @@
 > design (D0–D8 plus the same-day scope refinements: minimalist utilities, `resources/` +
 > `-D` config parity). **Versioning amended 2026-11-03 (Eric):** the pack catches up with the
 > Java engine when functionality crosses from the engine to the language packs, and carries the Java
-> release number it caught up to. Treated as `core` (never decays) but re-confirmed on the
+> release number it caught up to. **Subprocesses allowed for stdio MCP 2026-11-03 (Eric).**
+> Treated as `core` (never decays) but re-confirmed on the
 > invariant-verification cadence — a vision can go stale. The **Blueprint** (Open Threads
 > tagged `(blueprint)` in `continuity.md`) tracks the gap from Current State to here;
 > Designs and Implementations trace back to this `id`. See `DECAY.md` §12.
@@ -78,8 +79,11 @@ teams, who gain polyglot reach with zero engine coupling.
   ingress over it. Non-goals *of the bus*: no spill tier, no queue cap (back-pressure
   belongs to engine flows/graphs), not an application API (apps use `@preload` and
   `PostOffice` only).
-- **Never subprocess or embedded-interpreter execution** (Option A shelved; helper-style
-  embedding explicitly not planned).
+- **Never subprocess or embedded-interpreter execution of a function** (Option A shelved;
+  helper-style embedding explicitly not planned): a function runs in the pack's own process.
+  **A subprocess is allowed for stdio MCP (Eric, 2026-11-03):** the pack may run an MCP server
+  as its child process and talk to it over stdio. That is the reason the MCP client work moved
+  from the engines to the packs (RFC-0011): no engine runs a child process.
 - **Never released on the engine's cadence for its own sake**: a Java release with nothing that
   crosses to the language packs needs no pack release, and the pack never runs a version
   sequence of its own (amended 2026-11-03, Eric).
