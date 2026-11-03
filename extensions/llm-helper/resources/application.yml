@@ -21,7 +21,7 @@ mandatory.health.dependencies: 'llm.health'
 
 # Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
 show.env.variables: 'LOG_LEVEL'
-show.application.properties: 'application.name, rest.server.port, llm.backend, llm.model'
+show.application.properties: 'application.name, rest.server.port, llm.backend, llm.model, llm.transcript.store'
 
 # --- the helper's settings (a call's params.* win over these) -----------------------------
 # The credential is never configured here: ANTHROPIC_API_KEY (the Claude API) or the AWS
@@ -47,6 +47,23 @@ llm.fallbacks: 'default'
 # diagnostics for a slow or bursty stream: log each batch's number, size and arrival time (never
 # its text), so the hop that holds batches back can be told apart from the one that forwards them
 # llm.log.batches: true
+
+# --- the agent loop's turns (llm.chat with tools): the transcript store -------------------
+# memory keeps the transcripts in this process - development and a single replica. With more
+# than one replica a turn may land on any of them: set redis (the [redis] extra)
+llm.transcript.store: 'memory'
+# a loop turn's defaults when the engine's agent loop sends none; it normally sends both
+# llm.transcript.ttl: '7d'
+# llm.transcript.retention: '0'
+# the Redis connection for llm.transcript.store: redis - the engines' redis.* set under this
+# store's own prefix; the password comes from the environment, never from this file
+# llm.transcript.redis.host: '127.0.0.1'
+# llm.transcript.redis.port: 6379
+# llm.transcript.redis.username: ''
+# llm.transcript.redis.password: '${REDIS_PASSWORD:}'
+# llm.transcript.redis.ssl: false
+# llm.transcript.redis.database: 0
+# llm.transcript.redis.timeout.ms: 5000
 
 # OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin. Switch it on
 # at run time with -Dotel.forwarding=true; the endpoint and credential come from the

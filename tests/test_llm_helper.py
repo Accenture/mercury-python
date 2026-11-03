@@ -1,30 +1,34 @@
 """The LLM helper (extensions/llm-helper/llm_helper.py) - token-free.
 
-One shared contract file, tests/vectors/llm-helper-vectors.json (byte-identical in
-mercury-nodejs), drives every case below against a fake of the Anthropic SDK: the exact SDK
-call, the reply map, the error contract and the streaming segments are pinned without
-spending a token or needing a credential, and the Node.js twin runs the same file, so the two
-helpers cannot drift apart. The tests after the vector runs pin what a vector cannot: token
-batches are never held back, no prompt text reaches a log, the trace annotations, the health
-route and the backend seam.
+Two shared contract files, tests/vectors/llm-helper-vectors.json and llm-loop-vectors.json
+(byte-identical in mercury-nodejs), drive every case below against a fake of the Anthropic
+SDK: the exact SDK call, the reply map, the error contract, the streaming segments and the
+loop's stored record are pinned without spending a token or needing a credential, and the
+Node.js twin runs the same files, so the two helpers cannot drift apart. The tests after the
+vector runs pin what a vector cannot: token batches are never held back, no prompt text
+reaches a log, the trace annotations, the health route, the backend seam and the Redis store.
 """
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import importlib.util
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import anthropic
+import fakeredis
 import httpx2
 import pytest
 from anthropic.lib.bedrock import AsyncAnthropicBedrock, AsyncAnthropicBedrockMantle
+from anthropic.types import RedactedThinkingBlock, TextBlock, ThinkingBlock, ToolUseBlock
 
 from mercury_composable import AppException
 
@@ -46,6 +50,14 @@ _spec.loader.exec_module(helper)
 VECTORS: dict[str, Any] = json.loads(_VECTORS.read_text(encoding="utf-8"))
 CHAT_CASES: list[dict[str, Any]] = [c for c in VECTORS["cases"] if c["route"] == "llm.chat"]
 STREAM_CASES: list[dict[str, Any]] = [c for c in VECTORS["cases"] if c["route"] == "llm.stream"]
+
+_LOOP_VECTORS = _TESTS / "vectors" / "llm-loop-vectors.json"
+# the Node.js twin pins the same digest: change the file in both packs or in neither
+_LOOP_VECTORS_SHA256 = "8b6644861643daf36ec7879b825dd6e0268a8bae53007c678043e31d9171f8aa"
+LOOP_VECTORS: dict[str, Any] = json.loads(_LOOP_VECTORS.read_text(encoding="utf-8"))
+LOOP_CASES: list[dict[str, Any]] = LOOP_VECTORS["cases"]
+# the cases a Redis server can run as well: its clock is the wall clock, so none that moves time
+LOOP_CASES_ON_REDIS = [c for c in LOOP_CASES if not any("advance_s" in s for s in c["steps"])]
 
 _REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 _STATUS_CLASSES: dict[int, type[anthropic.APIStatusError]] = {
@@ -80,6 +92,14 @@ class _Ledger:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.options: list[dict[str, int]] = []
         self.cancelled = False
+
+
+class _FakeBlock(SimpleNamespace):
+    """A content block as the SDK returns it: attributes, and to_dict() for the fields set."""
+
+    def to_dict(self, *, mode: str = "python") -> dict[str, Any]:
+        assert mode == "json", "a stored block is JSON"
+        return copy.deepcopy(vars(self))
 
 
 class _FakeStream:
@@ -132,10 +152,13 @@ class _FakeStream:
     async def get_final_message(self) -> Any:
         provider = self._provider
         details: Any = provider.get("stop_details")
+        if "content" in provider:  # a loop turn's blocks: thinking, text, tool_use
+            content: list[Any] = [_FakeBlock(**copy.deepcopy(b)) for b in provider["content"]]
+        else:
+            text = provider.get("text", "".join(provider["deltas"]))
+            content = [SimpleNamespace(type="text", text=text)]
         return SimpleNamespace(
-            content=[
-                SimpleNamespace(type="text", text=provider.get("text", "".join(provider["deltas"])))
-            ],
+            content=content,
             model=provider["model"],
             stop_reason=provider["stop_reason"],
             usage=SimpleNamespace(**provider["usage"]),
@@ -289,6 +312,375 @@ async def test_stream_contract(case: dict[str, Any], monkeypatch: pytest.MonkeyP
         _assert_error(out.error, expect["error"])
     else:
         assert out.error is None, out.error
+
+
+# --- the shared contract: a loop turn of llm.chat (RFC-0011) -----------------------------
+
+
+class _Clock:
+    """The memory store's clock; a step's advance_s moves it."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _fake_redis() -> Any:
+    """A Redis of its own per test, with the Lua the store's compare-and-set runs."""
+    return fakeredis.FakeAsyncRedis(server=fakeredis.FakeServer(), decode_responses=True)
+
+
+async def _stored(store: Any, clock: _Clock, conversation: str | None) -> dict[str, Any] | None:
+    """The record a vector's store expectation describes, read from either store."""
+    if store is None or conversation is None:
+        return None
+    if isinstance(store, helper.MemoryStore):
+        entry = store._records.get(conversation)
+        if entry is None or entry[0] <= clock.now:
+            return None
+        record = helper.Transcript.from_json(entry[2])
+        ttl_s = round(entry[0] - clock.now)
+    else:
+        key = helper.TRANSCRIPT_PREFIX + conversation
+        text = await store._client.hget(key, "record")
+        if text is None:
+            return None
+        record = helper.Transcript.from_json(text)
+        ttl_s = round(await store._client.pttl(key) / 1000)
+    return {
+        "turn": record.turn,
+        "closed": record.closed,
+        "pending": record.pending,
+        "ttl_s": ttl_s,
+        "messages": len(record.messages),
+    }
+
+
+async def _loop_step(
+    route: str, body: Any, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Any, AppException | None]:
+    if route == "llm.stream":
+        out = _install_writer(monkeypatch)
+        await helper.llm_stream({}, _event(body))
+        return None, out.error
+    try:
+        return await helper.llm_chat({}, body), None
+    except AppException as exc:
+        return None, exc
+
+
+async def _run_loop_case(
+    case: dict[str, Any], monkeypatch: pytest.MonkeyPatch, kind: str, redis_client: Any = None
+) -> None:
+    """Run a case's steps against the memory store, or a Redis store (a fake unless a client is
+    given) where the case configures the memory one."""
+    config: dict[str, str] = case["config"]
+    clock = _Clock()
+    store: Any = None
+    if config.get("llm.transcript.store") == "memory" and kind == "memory":
+        store = helper.MemoryStore(clock)
+    elif config.get("llm.transcript.store") == "memory":
+        store = helper.RedisStore(redis_client or _fake_redis())
+    monkeypatch.setattr(helper, "_store", store)
+    ids = iter(case["conversation_ids"])
+    monkeypatch.setattr(helper, "_new_conversation_id", lambda: next(ids))
+    first = case["conversation_ids"][0] if case["conversation_ids"] else None
+    for index, step in enumerate(case["steps"]):
+        clock.now += step.get("advance_s", 0)
+        client = _FakeClient(step.get("provider"))
+        _install_backend(monkeypatch, client, config)
+        body = step["body"]
+        result, error = await _loop_step(case["route"], body, monkeypatch)
+        expect = step["expect"]
+        _assert_sdk(client, {"expect": expect, "provider": step.get("provider")})
+        if "error" in expect:
+            _assert_error(error, expect["error"])
+        else:
+            assert error is None, error
+            assert result == expect["result"], f"step {index}"
+        named = body.get("conversation") if isinstance(body, dict) else None
+        conversation = step.get("conversation") or named or first
+        assert await _stored(store, clock, conversation) == expect["store"], f"step {index}"
+
+
+def test_the_loop_vector_file_is_the_one_the_node_twin_runs() -> None:
+    digest = hashlib.sha256(_LOOP_VECTORS.read_bytes()).hexdigest()
+    assert digest == _LOOP_VECTORS_SHA256, "the shared loop vector file changed - update both packs"
+    assert LOOP_VECTORS["contract"] == "llm-chat-loop"
+    assert LOOP_VECTORS["version"] == 1
+    assert len({c["name"] for c in LOOP_CASES}) == len(LOOP_CASES), "case names are unique"
+
+
+@pytest.mark.parametrize("case", LOOP_CASES, ids=[c["name"] for c in LOOP_CASES])
+async def test_loop_contract(case: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    await _run_loop_case(case, monkeypatch, "memory")
+
+
+@pytest.mark.parametrize("case", LOOP_CASES_ON_REDIS, ids=[c["name"] for c in LOOP_CASES_ON_REDIS])
+async def test_loop_contract_on_the_redis_store(
+    case: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same turns with the Redis store under them: the store is invisible to the contract."""
+    await _run_loop_case(case, monkeypatch, "redis")
+
+
+# --- the loop turn: what a vector cannot pin -----------------------------------------------
+
+
+def test_a_stored_block_is_the_json_the_sdk_would_send_back() -> None:
+    """The record keeps each block as the SDK sends a returned block back - the fields the API
+    set and nothing else - so a thinking block's signature returns to the API unchanged."""
+    blocks = [
+        ThinkingBlock(type="thinking", thinking="", signature="sig-opaque"),
+        RedactedThinkingBlock(type="redacted_thinking", data="opaque"),
+        TextBlock(type="text", text="Checking the limit."),
+        ToolUseBlock(type="tool_use", id="toolu_01", name="credit_limit", input={"id": "C-1"}),
+    ]
+    assert [helper._block(b) for b in blocks] == [
+        {"type": "thinking", "thinking": "", "signature": "sig-opaque"},
+        {"type": "redacted_thinking", "data": "opaque"},
+        {"type": "text", "text": "Checking the limit."},
+        {"type": "tool_use", "id": "toolu_01", "name": "credit_limit", "input": {"id": "C-1"}},
+    ]
+
+
+_TURN = {
+    "kind": "message", "model": "claude-opus-5-5", "stop_reason": "tool_use",
+    "content": [
+        {"type": "thinking", "thinking": "", "signature": "sig-1"},
+        {"type": "tool_use", "id": "toolu_01", "name": "credit_limit", "input": {"id": "INPUT-MARKER-1"}},
+    ],
+    "usage": {"input_tokens": 40, "output_tokens": 9, "cache_creation_input_tokens": 30,
+              "cache_read_input_tokens": 0},
+    "request_id": "req_loop_trace",
+}  # fmt: skip
+_TOOL = {"name": "credit_limit", "description": "A customer's credit limit.",
+         "input_schema": {"type": "object"}}  # fmt: skip
+_LOOP_CONFIG = {"llm.transcript.store": "memory"}
+
+
+async def test_a_loop_turn_logs_status_and_usage_and_never_content(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(helper, "_store", helper.MemoryStore())
+    _install_backend(monkeypatch, _FakeClient(_TURN), _LOOP_CONFIG)
+    caplog.set_level(logging.DEBUG)
+    reply = await helper.llm_chat(
+        {}, {"prompt": "PROMPT-MARKER-2", "system": "SYSTEM-MARKER-3", "tools": [_TOOL]}
+    )
+    final = {**_TURN, "stop_reason": "end_turn",
+             "content": [{"type": "text", "text": "REPLY-MARKER-4"}]}  # fmt: skip
+    _install_backend(monkeypatch, _FakeClient(final), _LOOP_CONFIG)
+    results = [{"id": "toolu_01", "output": "RESULT-MARKER-5"}]
+    body = {"tools": [_TOOL], "conversation": reply["conversation"], "turn": 1, "results": results}
+    await helper.llm_chat({}, body)
+    assert "llm.chat model=claude-opus-5-5 status=tool_use turn=1" in caplog.text
+    assert "llm.chat model=claude-opus-5-5 status=done turn=2" in caplog.text
+    for marker in ("PROMPT", "SYSTEM", "INPUT", "REPLY", "RESULT"):
+        assert f"{marker}-MARKER" not in caplog.text, marker
+    assert reply["conversation"] not in caplog.text, "the reference to the transcript stays off"
+
+
+async def test_a_loop_turn_annotates_its_status_turn_and_cache_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(helper, "annotate_trace", lambda key, value: seen.__setitem__(key, value))
+    monkeypatch.setattr(helper, "_store", helper.MemoryStore())
+    _install_backend(monkeypatch, _FakeClient(_TURN), _LOOP_CONFIG)
+    await helper.llm_chat({}, {"prompt": "x", "tools": [_TOOL]})
+    assert seen == {
+        "llm_model": "claude-opus-5-5",
+        "llm_stop_reason": "tool_use",
+        "llm_input_tokens": "40",
+        "llm_output_tokens": "9",
+        "llm_request_id": "req_loop_trace",
+        "llm_status": "tool_use",
+        "llm_turn": "1",
+        "llm_cache_creation_input_tokens": "30",
+        "llm_cache_read_input_tokens": "0",
+    }
+
+
+class _BrokenStore:
+    """A store whose server is gone, or whose compare-and-set another writer won."""
+
+    name = "broken"
+
+    def __init__(self, *, load: Exception | None = None, save: Exception | bool = True) -> None:
+        self._load = load
+        self._save = save
+
+    async def load(self, _conversation: str) -> Any:
+        if self._load is not None:
+            raise self._load
+        return None
+
+    async def save(self, _conversation: str, _turn: int, _record: Any, _ttl_s: int) -> bool:
+        if isinstance(self._save, Exception):
+            raise self._save
+        return self._save
+
+
+async def test_a_store_that_cannot_be_reached_is_a_503_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_backend(monkeypatch, _FakeClient(_TURN), _LOOP_CONFIG)
+    refused = ConnectionError("Connection refused")
+    monkeypatch.setattr(helper, "_store", _BrokenStore(save=refused))
+    with pytest.raises(AppException) as raised:
+        await helper.llm_chat({}, {"prompt": "x", "tools": [_TOOL]})
+    assert raised.value.status == 503
+    assert raised.value.message == (
+        "transcript store unreachable - ConnectionError: Connection refused"
+    )
+    monkeypatch.setattr(helper, "_store", _BrokenStore(load=TimeoutError("Timeout reading")))
+    body = {"tools": [_TOOL], "conversation": "0" * 32, "turn": 1, "results": []}
+    with pytest.raises(AppException) as raised:
+        await helper.llm_chat({}, body)
+    assert raised.value.status == 503
+    assert "TimeoutError: Timeout reading" in raised.value.message
+
+
+async def test_a_turn_that_loses_the_compare_and_set_is_a_409(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two copies of one turn: both pass the read check, the second write is refused, so the
+    conversation never forks - the model was called, and the turn is reported as duplicated."""
+    client = _FakeClient(_TURN)
+    _install_backend(monkeypatch, client, _LOOP_CONFIG)
+    monkeypatch.setattr(helper, "_store", _BrokenStore(save=False))
+    monkeypatch.setattr(helper, "_new_conversation_id", lambda: "0" * 32)
+    with pytest.raises(AppException) as raised:
+        await helper.llm_chat({}, {"prompt": "x", "tools": [_TOOL]})
+    assert raised.value.status == 409
+    assert "moved on before turn 1 was saved - a duplicated turn" in raised.value.message
+    assert len(client.ledger.calls) == 1
+
+
+async def test_health_reports_the_transcript_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_backend(monkeypatch, _FakeClient(None), {"llm.transcript.store": "redis"})
+    info = await helper.llm_health({"type": "info"}, None)
+    assert info["transcript_store"] == "redis"
+
+
+def test_the_memory_store_is_built_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(helper, "_store", None)
+    monkeypatch.setattr(helper, "_prop", lambda key, default=None: _LOOP_CONFIG.get(key, default))
+    store = helper.get_store()
+    assert isinstance(store, helper.MemoryStore)
+    assert helper.get_store() is store
+
+
+# --- the Redis transcript store ------------------------------------------------------------
+
+
+def _record(turn: int, closed: bool = False) -> Any:
+    return helper.Transcript(
+        "claude-opus-5-5", [{"role": "user", "content": "x"}], turn, [], closed
+    )
+
+
+async def test_the_redis_store_keeps_one_hash_under_the_transcript_prefix() -> None:
+    """A Redis ACL can confine the helper's user to ~transcript:*, beside the graph's suspend
+    store under graph:*; the hash holds the turn count the compare-and-set reads."""
+    client = _fake_redis()
+    store = helper.RedisStore(client)
+    assert await store.save("a" * 32, 0, _record(1), 1800) is True
+    assert await client.keys("*") == ["transcript:" + "a" * 32]
+    assert await client.hget("transcript:" + "a" * 32, "turn") == "1"
+    assert 1799 <= await client.ttl("transcript:" + "a" * 32) <= 1800
+    loaded = await store.load("a" * 32)
+    assert loaded == _record(1)
+
+
+async def test_the_redis_store_writes_only_over_the_turn_it_expects() -> None:
+    store = helper.RedisStore(_fake_redis())
+    conversation = "b" * 32
+    assert await store.save(conversation, 0, _record(1), 60) is True
+    assert await store.save(conversation, 0, _record(1), 60) is False, "a new record exists"
+    assert await store.save(conversation, 2, _record(3), 60) is False, "the record holds turn 1"
+    assert await store.save(conversation, 1, _record(2), 60) is True
+    assert (await store.load(conversation)) == _record(2)
+    assert await store.save("c" * 32, 1, _record(2), 60) is False, "no record to append to"
+
+
+async def test_the_redis_store_deletes_a_record_saved_with_no_time_to_live() -> None:
+    """Retention 0: the run's end removes the record instead of writing it."""
+    client = _fake_redis()
+    store = helper.RedisStore(client)
+    conversation = "d" * 32
+    assert await store.save(conversation, 0, _record(1), 60) is True
+    assert await store.save(conversation, 1, _record(2, closed=True), 0) is True
+    assert await client.exists("transcript:" + conversation) == 0
+    assert await store.load(conversation) is None
+
+
+def test_the_redis_store_is_built_from_its_connection_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = {
+        "llm.transcript.store": "redis",
+        "llm.transcript.redis.host": "redis.internal",
+        "llm.transcript.redis.port": "6380",
+        "llm.transcript.redis.username": "llm-helper",
+        "llm.transcript.redis.password": "test-only-password",
+        "llm.transcript.redis.ssl": "true",
+        "llm.transcript.redis.database": "2",
+        "llm.transcript.redis.timeout.ms": "1500",
+    }
+    monkeypatch.setattr(helper, "_store", None)
+    monkeypatch.setattr(helper, "_prop", lambda key, default=None: settings.get(key, default))
+    store = helper.get_store()
+    assert isinstance(store, helper.RedisStore)
+    pool = store._client.connection_pool
+    kwargs = pool.connection_kwargs
+    assert (kwargs["host"], kwargs["port"], kwargs["db"]) == ("redis.internal", 6380, 2)
+    assert (kwargs["username"], kwargs["password"]) == ("llm-helper", "test-only-password")
+    assert kwargs["socket_timeout"] == 1.5
+    assert kwargs["decode_responses"] is True
+    assert pool.connection_class.__name__ == "SSLConnection"
+
+
+def test_the_redis_store_without_redis_is_a_503_that_names_the_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(helper, "_store", None)
+    monkeypatch.setattr(
+        helper,
+        "_prop",
+        lambda key, default=None: "redis" if key == "llm.transcript.store" else default,
+    )
+    monkeypatch.setattr(helper.importlib.util, "find_spec", lambda _name: None)
+    with pytest.raises(AppException) as raised:
+        helper.get_store()
+    assert raised.value.status == 503
+    assert "mercury-composable[redis]" in raised.value.message
+
+
+@pytest.mark.skipif(
+    not os.environ.get("LLM_TRANSCRIPT_REDIS_URL"),
+    reason="a live Redis: set LLM_TRANSCRIPT_REDIS_URL, e.g. redis://127.0.0.1:6379/15",
+)
+@pytest.mark.parametrize("case", LOOP_CASES_ON_REDIS, ids=[c["name"] for c in LOOP_CASES_ON_REDIS])
+async def test_loop_contract_on_a_live_redis(
+    case: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same turns on a real server: the Lua the fake runs is the script Redis runs. Only the
+    keys of the vectors' own conversations are touched."""
+    import redis.asyncio as redis_async
+
+    client = redis_async.from_url(os.environ["LLM_TRANSCRIPT_REDIS_URL"], decode_responses=True)
+    named = [s["body"].get("conversation") for s in case["steps"] if isinstance(s["body"], dict)]
+    keys = {helper.TRANSCRIPT_PREFIX + c for c in [*case["conversation_ids"], *named] if c}
+    try:
+        if keys:
+            await client.delete(*keys)
+        await _run_loop_case(case, monkeypatch, "redis", client)
+    finally:
+        if keys:
+            await client.delete(*keys)
+        await client.aclose()
 
 
 # --- progressive rendering: a token batch is never held back -----------------------------
