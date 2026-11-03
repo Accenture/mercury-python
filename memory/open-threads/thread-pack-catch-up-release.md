@@ -5,4 +5,4 @@
   tag's (SHA-256), the wheel's `__version__` 4.12.21. Lesson: a pack's published artifact is checked against its tag, file by file.
   Origin: 2026-10-02-001146.md; the record in 2026-10-07-012443.md.
   → serves: vision-mercury-python
-  <!-- id: pack-catch-up-release | created: 2026-10-01 | last_used: 2026-10-07 | uses: 2 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: pack-catch-up-release | created: 2026-10-01 | last_used: 2026-10-07 | uses: 2 | tier: archive-candidate | origin: 2026-10-02-001146 -->
