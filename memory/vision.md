@@ -3,7 +3,9 @@
 > The north star: the target future state of this package. **Ratified by the maintainer
 > (Eric) on 2026-08-22**, drafted with Claude Code from the ratified polyglot-initiative
 > design (D0–D8 plus the same-day scope refinements: minimalist utilities, `resources/` +
-> `-D` config parity). Treated as `core` (never decays) but re-confirmed on the
+> `-D` config parity). **Versioning amended 2026-11-03 (Eric):** the pack catches up with the
+> Java engine when functionality crosses from the engine to the language packs, and carries the Java
+> release number it caught up to. Treated as `core` (never decays) but re-confirmed on the
 > invariant-verification cadence — a vision can go stale. The **Blueprint** (Open Threads
 > tagged `(blueprint)` in `continuity.md`) tracks the gap from Current State to here;
 > Designs and Implementations trace back to this `id`. See `DECAY.md` §12.
@@ -22,9 +24,9 @@ The Python member of the Mercury Composable polyglot initiative (August 2026): a
 API host (`POST /api/event`), a thin `PostOffice` client, the standard event-envelope
 codec (verified against the engines' shared golden vectors), the primitive in-process
 event bus (route mailboxes + workers — dispatch, not orchestration), and engine-consistent
-minimalist utilities. **v4.12.1 is on PyPI** (`pip install mercury-composable`, published
-2026-09-01) — first public package; the 4.12.1 line carries the `llm.chat` / `llm.stream`
-AI nodes and a constrained sdist. Tests green including the golden vectors; cross-wrapper
+minimalist utilities. **v4.12.21 is on PyPI** (`pip install mercury-composable`, published
+2026-10-07; the first public package was v4.12.1, 2026-09-01); the 4.12.x line carries the
+`llm.chat` / `llm.stream` AI nodes and a constrained sdist. Tests green including the golden vectors; cross-wrapper
 interop proven at the v4.12.0 progressive-rendering milestone. The legacy language pack
 lives in git history only.
 
@@ -33,9 +35,11 @@ lives in git history only.
 ## What it should become
 
 - The **reference-quality wrapper** of the engines' documented wire format and
-  `/api/event` contract — already on PyPI, versioned by **protocol compatibility**
-  ("implements the standard wire format"), never coupled to engine releases; keep that
-  independent cadence.
+  `/api/event` contract — already on PyPI, compatible by **protocol** ("implements the
+  standard wire format") and numbered by the **Java release it caught up to**. The Java engine
+  is the reference implementation. The pack catches up with it when functionality crosses from
+  the engine to the language packs (telemetry, AI SDLC), so its number may trail Java further
+  than the Rust port's, which catches up closely after each Java release (Eric, 2026-11-03).
 - The **rapid-prototyping path**: `pip install mercury-composable` plus the
   `mercury-serve` one-liner; heavy libraries (pandas, ML) load once in a long-lived
   service.
@@ -75,7 +79,9 @@ teams, who gain polyglot reach with zero engine coupling.
   `PostOffice` only).
 - **Never subprocess or embedded-interpreter execution** (Option A shelved; helper-style
   embedding explicitly not planned).
-- **Never coupled to engine release cadence** or versioned beyond protocol compatibility.
+- **Never released on the engine's cadence for its own sake**: a Java release with nothing that
+  crosses to the language packs needs no pack release, and the pack never runs a version
+  sequence of its own (amended 2026-11-03, Eric).
 - **Not a license to scatter one application across processes** — polyglot where the
   language earns its place (the `kafka-mesh-opt-in` caution).
 
