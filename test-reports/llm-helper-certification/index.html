@@ -1595,7 +1595,7 @@
 pairs, the three layers, the progressive-rendering evidence and the findings — is the
 <a href="https://accenture.github.io/mercury-composable/test-reports/llm-helper-certification/">engine report</a>, which the
 Rust engine's docs carry too. The helper is
-<a href="https://github.com/Accenture/mercury-python/tree/main/examples/llm-helper"><code>examples/llm-helper</code></a>; its README holds the contract.</em></p>
+<a href="https://github.com/Accenture/mercury-python/tree/main/extensions/llm-helper"><code>extensions/llm-helper</code></a>; its README holds the contract.</em></p>
 <h2 id="verified-without-a-credential">Verified without a credential<a class="headerlink" href="#verified-without-a-credential" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>86 helper tests, no token spent</strong> (the whole suite: 187). <code>tests/test_llm_helper.py</code> runs a fake of the Python SDK
@@ -1734,7 +1734,7 @@ model generation. The full account of the surfaces and the gates is Finding 7 of
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.[dev]'</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pytest<span class="w"> </span>tests/test_llm_helper.py<span class="w">                              </span><span class="c1"># token-free</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>...<span class="w">                                  </span><span class="c1"># live: the credential reaches the helper only</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>mercury-serve<span class="w"> </span>examples/llm-helper/llm_helper.py<span class="w"> </span>-Dlog.format<span class="o">=</span>compact<span class="w"> </span>-Dllm.log.batches<span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>mercury-serve<span class="w"> </span>extensions/llm-helper/llm_helper.py<span class="w"> </span>-Dlog.format<span class="o">=</span>compact<span class="w"> </span>-Dllm.log.batches<span class="o">=</span><span class="nb">true</span>
 </code></pre></div>
 <p>The commands for the engines, the deploy folder and the <code>curl</code> calls for each layer are in the
 <a href="https://accenture.github.io/mercury-composable/test-reports/llm-helper-certification/#reproduce">engine report</a>.</p>
