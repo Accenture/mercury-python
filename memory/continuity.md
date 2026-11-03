@@ -138,8 +138,8 @@
   `GetFoundationModelAvailability` tells the four gates apart; the SDK's
   empty-chain error reads `Could not resolve AWS credentials from session` (mapped by its words); Bedrock sends no `request-id`.
   Closed [[llm-helper-bedrock-iam]].
-  **Extended 2026-11-02 (RFC-0011 build plan step 1; on branches, not merged):** the helper graduates to
-  `extensions/llm-helper/` (Eric), and a request with `tools` is one turn of the engines' agent loop: the transcript stays
+  **Extended 2026-11-02 (RFC-0011 build plan step 1; MERGED 2026-11-03, #46 merge `13cf394` and #47 merge `8f9ae34`):**
+  the helper graduates to `extensions/llm-helper/` (Eric), and a request with `tools` is one turn of the engines' agent loop: the transcript stays
   in the helper's store (`llm.transcript.store`: `memory` or `redis`), the loop holds `conversation` and `turn`, a stale or
   ended turn is a 409, the model is pinned at the first turn and no server-side fallback is sent; a second shared vector
   file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
@@ -167,8 +167,8 @@
   Node pack mirrors the layout. The demo and the helper share the default port 8086, so give one of them another with
   `-Drest.server.port` to run both. The demo stays provider-free and credential-free: no LLM code goes into it.
   **2026-11-02 (Eric):** the LLM helper graduates from an example to an extension, `extensions/llm-helper/` (same folder
-  shape: a README and its own `resources/`), so `examples/` holds the demo app; on branch `refactor/llm-helper-extension`
-  until merged, and the Node pack follows when its twin moves.
+  shape: a README and its own `resources/`), so `examples/` holds the demo app; merged as #46 (`13cf394`, 2026-11-03),
+  and the Node pack follows when its twin moves.
   <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
