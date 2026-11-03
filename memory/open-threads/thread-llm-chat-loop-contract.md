@@ -5,4 +5,4 @@
   and each rule it pins is proven by a negative control. The Node twin and the open items are tracked in mercury-composable
   `agent-loop-llm-run`. Origin 2026-11-02-235604.md; closed 2026-11-03-001129.md.
   → serves: vision-mercury-python
-  <!-- id: llm-chat-loop-contract | created: 2026-11-02 | last_used: 2026-11-03 | uses: 1 | tier: working | origin: 2026-11-02-235604 -->
+  <!-- id: llm-chat-loop-contract | created: 2026-11-02 | last_used: 2026-11-03 | uses: 2 | tier: active | origin: 2026-11-02-235604 -->

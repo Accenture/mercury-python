@@ -25,10 +25,16 @@
   The next catch-up release ([[pack-catch-up-4-12-25]]) is no longer held: the 2026-10-14 hold was lifted on 2026-10-29
   (Eric) and the pack releases when its work is ready.
 - **last_enabled:** 2026-08-22
-- **last_review:** 2026-09-23 | through 2026-09-23-004552.md (cadence — 10 sessions since; archived 1 faded fact
-  `decision-polyglot-reboot` + swept 3 completed threads past `archive_window` → 2026-Q3; tier changes via `refresh-metadata`;
-  invariants not due (29 sessions, cadence 40, none yet); stalled none). Prior: 2026-09-05 | through 2026-09-05-211409
-- **last_invariant_check:** (none yet)
+- **last_review:** 2026-11-03 | through 2026-11-03-010131.md (cadence — 10 sessions since; `refresh-metadata` refreshed the
+  footers; archived 1 faded fact `stack-mercury-serve-cli` and 1 superseded `decision-consumer-fork-readme` + swept 5 completed
+  threads past `archive_window` → 2026-Q4; declaration gaps none; two stale Stack & Tools lines corrected from `pyproject.toml`;
+  invariants DUE — the first re-verify raised as [[reverify-invariants-20261103]]; one Contradiction raised
+  ([[contradiction-vision-versioning-java-number]]); stalled none).
+  Prior: 2026-09-23 | through 2026-09-23-004552.md (cadence — archived 1 faded fact `decision-polyglot-reboot` + swept 3
+  completed threads → 2026-Q3; invariants not due (29 sessions, cadence 40, none yet); stalled none) · 2026-09-05 | through
+  2026-09-05-211409
+- **last_invariant_check:** 2026-11-03 | 2026-11-03-010131.md (PROMPTED, not yet confirmed — the first re-verify, due at 40
+  session files; [[reverify-invariants-20261103]] awaits Eric)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
 
 ## Stack & Tools
@@ -36,18 +42,18 @@
 > Canonical live home for the current stack — language version, dependencies, tool
 > versions. `instructions.md` keeps only a high-level descriptor and points here.
 
-- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.15
-  (PyPI 2026-09-23; lock-step with the engines' 4.12.15), wheel from
+- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.21
+  (PyPI 2026-10-07; the lock-step round with the engines' 4.12.21), wheel from
   `src/mercury_composable`
-  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-09-23 | uses: 6 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-11-03 | uses: 7 | tier: active | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
-  `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`);
-  optional extra: `llm` = `anthropic` >=1,<2 only (the LLM helper app's SDK — `pip install 'mercury-composable[llm]'`;
-  `google-genai` was removed 2026-10-01 with the Gemini provider, PR #38)
-  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-09-22 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
-- Developer runner: `mercury-serve` console script (`mercury_composable.cli:main`);
-  examples run via `mercury-serve app.py --port <n>` with `-D` overrides
-  <!-- id: stack-mercury-serve-cli | created: 2026-08-22 | last_used: 2026-09-01 | uses: 2 | tier: archive-candidate | origin: 2026-08-22-171555 -->
+  `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`), `ruff` >=0.9, and
+  the helper's backends for its tests (`anthropic[bedrock]`, `redis`, `fakeredis[lua]` >=2.26);
+  optional extras, all for the LLM helper (`extensions/llm-helper`; the package itself stays SDK-free): `llm` = `anthropic`
+  >=1,<2 (`pip install 'mercury-composable[llm]'`; `google-genai` was removed 2026-10-01 with the Gemini provider, PR #38),
+  `bedrock` = `anthropic[bedrock]` >=1,<2 (the AWS Bedrock backend, PR #43), `redis` = `redis` >=5,<9 (the transcript
+  store, PR #47)
+  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-03 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
 
@@ -77,11 +83,6 @@
 
 ## Key Decisions
 
-- **Two-audience root fork (Eric, 2026-08-22):** root `AGENTS.md` routes contributors to
-  `memory/PROTOCOL.md` and consumers (developers writing polyglot functions — the "AI
-  grammar" path) to `README.md`, which carries the quick start, function contract, and
-  wire-format guide.
-  <!-- id: decision-consumer-fork-readme | created: 2026-08-22 | last_used: 2026-09-05 | uses: 2 | tier: superseded | superseded-by: decision-consumer-fork-system-agents | origin: 2026-08-22-171555 -->
 - **Dedicated consumer surface (PR #23, merged `a12c56b6`, 2026-09-01):** root `AGENTS.md`'s
   consumer path now points to `system/AGENTS.md` — a version-matched guide index, key
   references, and efficient lookup strategy — instead of `README.md` directly; mirrors the
@@ -101,7 +102,7 @@
   **Kind rule since 2026-09-22 (PR #36 MERGED, `cbf1f7f6`):** SERVER iff the record's `service` is `http.request` — an
   engine edge's round-trip record — and every function execution is INTERNAL; a record's `from` no longer decides the kind
   (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
-  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-09-22 | uses: 2 | tier: active | origin: 2026-09-22-164128 -->
+  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-10-02 | uses: 3 | tier: archive-candidate | origin: 2026-09-22-164128 -->
 
 - **The LLM helper is a dedicated function host on the Anthropic SDK: the engines stay LLM-free, the AI node is a bounded
   function, and one contract is proven by a vector file shared with the Node pack (Eric's rulings, 2026-10-01; PR #38, merge
@@ -143,7 +144,7 @@
   in the helper's store (`llm.transcript.store`: `memory` or `redis`), the loop holds `conversation` and `turn`, a stale or
   ended turn is a 409, the model is pinned at the first turn and no server-side fallback is sent; a second shared vector
   file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
-  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
+  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-03 | uses: 6 | tier: active | origin: 2026-10-02-001146 -->
 
 ## Conventions
 
@@ -155,11 +156,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-09-22 | uses: 4 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-02 | uses: 6 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-09-22 | uses: 3 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-02 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
 - **Each example app lives in a folder of its own, with a README and its own `resources/` (Eric, 2026-10-01; PR #38).**
   `examples/demo-app/` (the minimal polyglot app: `hello.python`, `hello.declarative`, `hello.chain`, `hello.sync.chain`,
   `hello.tokens`, the private `demo.suffix.helper` and `demo.health`) and `examples/llm-helper/`; run one as
@@ -168,8 +169,8 @@
   `-Drest.server.port` to run both. The demo stays provider-free and credential-free: no LLM code goes into it.
   **2026-11-02 (Eric):** the LLM helper graduates from an example to an extension, `extensions/llm-helper/` (same folder
   shape: a README and its own `resources/`), so `examples/` holds the demo app; merged as #46 (`13cf394`, 2026-11-03),
-  and the Node pack follows when its twin moves.
-  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-10-01 | uses: 1 | tier: working | origin: 2026-10-02-001146 -->
+  and the Node pack followed the same day (mercury-nodejs #114, `62958b5`).
+  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-03 | uses: 4 | tier: active | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
   ran (`python app.py`) - and the working directory is never searched (Eric's rule, 2026-10-14; PR #45 merge `a3c5a26`).** The engines' classpath
@@ -181,7 +182,7 @@
   `python llm_helper.py` from the repository root started unconfigured during the Bedrock drive ([[llm-helper-app]]); pinned by
   subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
-  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-10-14 | uses: 1 | tier: working | origin: 2026-10-14-015420 -->
+  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-10-14 | uses: 1 | tier: active | origin: 2026-10-14-015420 -->
 
 ## Open Threads
 

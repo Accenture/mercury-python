@@ -7,4 +7,4 @@
   Blueprint gap or becomes a release convention (refreshed 2026-09-23).
   Cadence and supply-chain posture stay Eric-gated (design P5/D6).
   → serves: vision-mercury-python
-  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-09-23 | uses: 8 | tier: working | origin: 2026-08-22-173136 -->
+  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-10-02 | uses: 9 | tier: working | origin: 2026-08-22-173136 -->
