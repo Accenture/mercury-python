@@ -5,4 +5,4 @@
   enabled for one Bedrock surface and one model generation only - `GetFoundationModelAvailability` tells the gates apart - and the
   negative control is what found the mapping gap. origin: 2026-10-02-001146.
   → serves: vision-mercury-python
-  <!-- id: llm-helper-bedrock-iam | created: 2026-10-01 | last_used: 2026-10-16 | uses: 3 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: llm-helper-bedrock-iam | created: 2026-10-01 | last_used: 2026-10-16 | uses: 3 | tier: archive-candidate | origin: 2026-10-02-001146 -->

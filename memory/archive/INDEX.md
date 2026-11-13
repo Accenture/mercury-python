@@ -15,3 +15,5 @@
 - ot-vision-bootstrap — Vision ratified by Eric, 2026-08-22 (D0–D8 + same-day refinements). First Blueprint — faded — 2026-Q4.md
 - thread-docs-site — Docs site "Composable for Python" live at accenture.github.io/mercury-python. — faded — 2026-Q4.md
 - thread-primitive-event-bus — Primitive in-process event bus — single dispatch pipeline (FIFO + `instances` — faded — 2026-Q4.md
+- decision-consumer-fork-system-agents — Dedicated consumer surface (PR #23, merged `a12c56b6`, 2026-09-01): root `AGENTS.md`'s — faded — 2026-Q4.md
+- ot-consumer-surface — Dedicated consumer AI surface: `system/AGENTS.md` (version-matched guide index, — completed thread swept (older than archive_window) — 2026-Q4.md

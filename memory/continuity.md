@@ -25,11 +25,15 @@
   The next catch-up release ([[pack-catch-up-4-12-25]]) is no longer held: the 2026-10-14 hold was lifted on 2026-10-29
   (Eric) and the pack releases when its work is ready.
 - **last_enabled:** 2026-08-22
-- **last_review:** 2026-11-03 | through 2026-11-03-010131.md (cadence — 10 sessions since; `refresh-metadata` refreshed the
-  footers; archived 1 faded fact `stack-mercury-serve-cli` and 1 superseded `decision-consumer-fork-readme` + swept 5 completed
-  threads past `archive_window` → 2026-Q4; declaration gaps none; two stale Stack & Tools lines corrected from `pyproject.toml`;
-  invariants DUE — the first re-verify raised as [[reverify-invariants-20261103]]; one Contradiction raised
-  ([[contradiction-vision-versioning-java-number]]); stalled none).
+- **last_review:** 2026-11-13 | through 2026-11-13-030139.md (on command — 5 sessions since 2026-11-03-010131, not yet due;
+  `refresh-metadata` refreshed 3 footers, tier changes 2 (`conv-resources-next-to-the-application-file` and
+  `llm-helper-bedrock-iam` → archive-candidate); archived 1 faded fact `decision-consumer-fork-system-agents` (25 sessions;
+  step 6: the one window commit on its paths, `5fddcdc`, renamed the helper's path in `system/AGENTS.md` and relied on
+  nothing the fact states) + swept 1 completed thread `ot-consumer-surface` (25) → 2026-Q4; one stale statement corrected
+  ([[pack-catch-up-4-12-25]]: the Java number is 4.12.30); invariants not due (3 of 40); stalled none; contradictions none;
+  live facts 24 → 22. Smoke test not run.)
+  Prior: 2026-11-03 | through 2026-11-03-010131.md (cadence — archived 1 faded + 1 superseded fact, swept 5 threads;
+  invariants DUE → [[reverify-invariants-20261103]]; one Contradiction raised)
   Prior: 2026-09-23 | through 2026-09-23-004552.md (cadence — archived 1 faded fact `decision-polyglot-reboot` + swept 3
   completed threads → 2026-Q3; invariants not due (29 sessions, cadence 40, none yet); stalled none) · 2026-09-05 | through
   2026-09-05-211409
@@ -88,12 +92,6 @@
   <!-- id: stateless-functions-contract | created: 2026-08-22 | last_used: 2026-08-22 | uses: 1 | tier: core | origin: 2026-08-22-171555 -->
 
 ## Key Decisions
-
-- **Dedicated consumer surface (PR #23, merged `a12c56b6`, 2026-09-01):** root `AGENTS.md`'s
-  consumer path now points to `system/AGENTS.md` — a version-matched guide index, key
-  references, and efficient lookup strategy — instead of `README.md` directly; mirrors the
-  `system/AGENTS.md` convention from the mercury-composable and mercury (Rust) siblings.
-  <!-- id: decision-consumer-fork-system-agents | created: 2026-09-05 | last_used: 2026-09-05 | uses: 1 | tier: archive-candidate | supersedes: decision-consumer-fork-readme | origin: 2026-09-05-212856 -->
 
 - **The OpenTelemetry forwarder is a zero-dependency port of the Rust engine's hand-written OTLP encoder, attached
   at the engines' extension route (Eric, 2026-09-22).** `mercury_composable.otel`: with `otel.forwarding=true` the
@@ -188,7 +186,7 @@
   `python llm_helper.py` from the repository root started unconfigured during the Bedrock drive ([[llm-helper-app]]); pinned by
   subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
-  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-10-14 | uses: 1 | tier: active | origin: 2026-10-14-015420 -->
+  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-10-14 | uses: 1 | tier: archive-candidate | origin: 2026-10-14-015420 -->
 
 - **The legacy language pack's releases v1.11.39 to v2.5.0 live here as tags and GitHub releases; their branches are gone
   (Eric, 2026-11-13).** Before the August 2026 repurposing this repository held the legacy Mercury language pack for
