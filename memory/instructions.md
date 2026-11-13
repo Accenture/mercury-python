@@ -9,7 +9,8 @@ the official Rust port) from Event Script flows and MiniGraph knowledge graphs �
 orchestration code in Python at all. It provides an Event API host (`POST /api/event`), a
 thin `PostOffice` client, the standard event-envelope wire-format codec, and the engines'
 minimalist utilities (config, logging, distributed-trace context). Orchestration stays in
-the engines by design. The legacy pre-composable language pack lives in git history only.
+the engines by design. The legacy pre-composable language pack lives in tagged releases
+(v1.11.39–v2.5.0).
 
 **Type:** Library — polyglot function host + client (PyPI package `mercury-composable`)
 **Primary language:** Python (async-first; sync handlers run in a thread-pool executor)

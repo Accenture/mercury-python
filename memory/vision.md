@@ -6,6 +6,7 @@
 > `-D` config parity). **Versioning amended 2026-11-03 (Eric):** the pack catches up with the
 > Java engine when functionality crosses from the engine to the language packs, and carries the Java
 > release number it caught up to. **Subprocesses allowed for stdio MCP 2026-11-03 (Eric).**
+> **Wording refreshed 2026-11-13 (Eric):** the legacy language pack lives in tagged releases.
 > Treated as `core` (never decays) but re-confirmed on the
 > invariant-verification cadence — a vision can go stale. The **Blueprint** (Open Threads
 > tagged `(blueprint)` in `continuity.md`) tracks the gap from Current State to here;
@@ -29,7 +30,7 @@ minimalist utilities. **v4.12.21 is on PyPI** (`pip install mercury-composable`,
 2026-10-07; the first public package was v4.12.1, 2026-09-01); the 4.12.x line carries the
 `llm.chat` / `llm.stream` AI nodes and a constrained sdist. Tests green including the golden vectors; cross-wrapper
 interop proven at the v4.12.0 progressive-rendering milestone. The legacy language pack
-lives in git history only.
+lives in tagged releases (v1.11.39–v2.5.0).
 
 **Type:** Python library — polyglot function host + client
 
