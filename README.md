@@ -28,7 +28,7 @@ for deterministic function generation.
 
 > **Status:** v4.12.21 is on PyPI — `pip install mercury-composable`. This repository was
 > repurposed in August 2026 for the polyglot initiative. The legacy Mercury language-pack
-> implementation remains in git history.
+> implementation remains in tagged releases.
 
 ## Quick start
 
