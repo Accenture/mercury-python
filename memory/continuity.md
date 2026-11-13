@@ -21,7 +21,7 @@
   line adds the OpenTelemetry forwarder (opt-in, no SDK), the SERVER-iff-`http.request` span-kind rule and the
   `gemini-flash-latest` default; the 4.12.1 line of 2026-09-01, the first public package, carried the llm.chat/llm.stream AI
   nodes and the constrained sdist) — the Python member of the Mercury Composable polyglot initiative: a lightweight
-  Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in git history only).
+  Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in tagged releases v1.11.39–v2.5.0).
   The next catch-up release ([[pack-catch-up-4-12-25]]) is no longer held: the 2026-10-14 hold was lifted on 2026-10-29
   (Eric) and the pack releases when its work is ready.
 - **last_enabled:** 2026-08-22
@@ -189,6 +189,18 @@
   subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
   <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-10-14 | uses: 1 | tier: active | origin: 2026-10-14-015420 -->
+
+- **The legacy language pack's releases v1.11.39 to v2.5.0 live here as tags and GitHub releases; their branches are gone
+  (Eric, 2026-11-13).** Before the August 2026 repurposing this repository held the legacy Mercury language pack for
+  Python, whose releases were cut as `release/*` branches; tags began at `v4.12.0`. Each branch tip now has an annotated
+  tag `vX.Y.Z`, the tagger date the release commit's, and a GitHub release titled with the tag, its notes the version's
+  CHANGELOG section after a line saying it was published retroactively, not marked latest: 13 tags and releases, 17 of
+  each in all, `v4.12.21` still Latest. 1.11.39's section is read from the CHANGELOG at `v1.12.4` (added after its tag);
+  1.12.31 never had one, and its notes say so. The 13 branches were then deleted; GitHub keeps only `main` and
+  `gh-pages`. Twins: mercury-composable `historical-releases-tags-and-pages`, mercury
+  `historical-releases-tags-and-pages-rust`. **How to apply:** find a legacy release by its tag or release page, never a
+  branch; a release published after the fact passes `--latest=false`.
+  <!-- id: historical-releases-tags-and-pages-python | created: 2026-11-13 | last_used: 2026-11-13 | uses: 1 | tier: working | origin: 2026-11-13-025101 -->
 
 ## Open Threads
 
