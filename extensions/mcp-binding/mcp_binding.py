@@ -58,6 +58,7 @@ from mercury_composable import (
     app_config,
     default_registry,
     get_logger,
+    get_trace,
     platform,
     preload,
 )
@@ -426,12 +427,14 @@ async def _list_tools(session: ClientSession) -> list[dict[str, Any]]:
             return offered
 
 
-# --- the application: boot, the routes and the health check ------------------------------
+# --- the application: boot, the tool function and the health check ------------------------------
 
 
 class Binding:
     def __init__(self) -> None:
         self.servers: dict[str, Server] = {}
+        # what each bound route serves - the server and the allowlisted tool - filled at boot
+        self.routes: dict[str, tuple[Server, ToolBinding]] = {}
 
     async def boot(self) -> None:
         """Connect every configured server, verify its allowlist and register the routes - before
@@ -442,33 +445,50 @@ class Binding:
                 server = Server(spec)
                 await server.start()
                 self.servers[spec.name] = server
-                for binding, _tool in server.bound:
-                    default_registry.register(binding.route, _handler(server, binding), instances=spec.instances)
-                    log.info("MCP server %s: tool %s served as %s", spec.name, binding.name, binding.route)
-            log.info("MCP binding ready - %d server(s), %d route(s)", len(self.servers),
-                     sum(len(s.bound) for s in self.servers.values()))
+                for tool, _schema in server.bound:
+                    # the route is an alias of mcp_tool - the one function under the configured
+                    # name, the engines' Platform.register shape - with the server's instances
+                    self.routes[tool.route] = (server, tool)
+                    default_registry.register(tool.route, mcp_tool, instances=spec.instances)
+                    log.info("MCP server %s: tool %s served as %s", spec.name, tool.name, tool.route)
+            log.info("MCP binding ready - %d server(s), %d route(s)", len(self.servers), len(self.routes))
         except Exception as exc:  # noqa: BLE001 - any boot failure stops the application, by name
             leaf = _leaf(exc)
             log.error("MCP binding cannot start - %s", leaf)
             await self.shutdown()
             raise SystemExit(1) from leaf
 
+    def bound(self, route: str | None) -> tuple[Server, ToolBinding]:
+        """The server and the allowlisted tool behind a bound route; a 404 for any other route."""
+        found = self.routes.get(route or "")
+        if found is None:
+            raise AppException(404, f"No MCP tool is bound to the route {route or '(none)'}")
+        return found
+
     async def shutdown(self) -> None:
         for server in list(self.servers.values()):
             await server.close()
         self.servers.clear()
-
-
-def _handler(server: Server, binding: ToolBinding):
-    async def call(_headers: dict[str, str], body: Body) -> Any:
-        if not isinstance(body, dict):
-            raise AppException(400, f"The arguments of {binding.name} must be a map")
-        return await server.call(binding.name, body)
-    call.__name__ = f"mcp_{binding.name}"
-    return call
+        self.routes.clear()
 
 
 binding = Binding()
+
+
+@preload(route="mcp.tool", instances=DEFAULT_INSTANCES, private=True)
+async def mcp_tool(_headers: dict[str, str], body: Body) -> Any:
+    """The one function behind every bound route. The boot registers each allowlisted tool's route
+    as an alias of this function (the engines' ``Platform.register``: one function, several
+    routes), so a call learns the route it was addressed to from its execution context -
+    ``get_trace().route``, the pack's counterpart of the engines' read-only ``my_route`` header -
+    and the route names the server and the remote tool. The event body is the tool's arguments,
+    a map; the reply is the result as ``tool_result`` shapes it. ``mcp.tool`` itself is private
+    and bound to no tool: it declares the function, and a call to it by that name is a 404."""
+    info = get_trace()
+    server, tool = binding.bound(info.route if info else None)
+    if not isinstance(body, dict):
+        raise AppException(400, f"The arguments of {tool.name} must be a map")
+    return await server.call(tool.name, body)
 
 
 @preload(route="mcp.health", instances=5, private=True)

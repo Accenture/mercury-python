@@ -4,7 +4,8 @@ The shared contract file tests/vectors/mcp-binding-vectors.json (byte-identical 
 the pure half: the input-schema digest, the allowlist verification and the result mapping. The tests
 after the vector runs drive the real transports against the fixture server of tests/fixtures
 (a small MCP server on the official SDK, over stdio and over streamable HTTP): the boot that registers
-one route per allowlisted tool and fails fast by name, the calls through the registered handlers, the
+one route per allowlisted tool and fails fast by name, the calls through the bound routes (local RPC
+through the bus, as the host dispatches them: every route is an alias of the one @preload function), the
 credential references that reach the subprocess and never a log, the health route, the describe
 output, and the platform's startup hook that runs the boot before the first request.
 """
@@ -21,14 +22,23 @@ import socket
 import subprocess
 import sys
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+import pytest_asyncio
 import yaml
 from aiohttp import web
 
-from mercury_composable import AppException, app_config, default_registry, platform
+from mercury_composable import (
+    AppException,
+    EventEnvelope,
+    PostOffice,
+    app_config,
+    default_registry,
+    platform,
+)
 
 _TESTS = Path(__file__).resolve().parent
 _BINDING = _TESTS.parent / "extensions" / "mcp-binding" / "mcp_binding.py"
@@ -125,56 +135,76 @@ def _stdio(offered: dict[str, dict[str, Any]], tools: dict[str, str], **extra: A
     return entry
 
 
-async def _call(route: str, body: Any) -> Any:
-    service = default_registry.get(route)
-    assert service is not None, f"{route} is not registered"
-    return await service.handler({}, body)
+@pytest_asyncio.fixture
+async def po() -> AsyncIterator[PostOffice]:
+    """Local RPC through the registry's bus, the path a request takes behind the HTTP host: the bound
+    route's alias dispatches mcp_tool with the route in its execution context."""
+    office = PostOffice(registry=default_registry)
+    yield office
+    # the bus binds a route's workers to the loop of their first use - drop them for the next test's loop
+    await default_registry.bus.close()
+
+
+async def _call(po: PostOffice, route: str, body: Any) -> EventEnvelope:
+    assert default_registry.get(route) is not None, f"{route} is not registered"
+    return await po.request(route, body=body, timeout_ms=10000)
 
 
 @pytest.fixture
 def servers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Point the binding at a temporary server file and give the test a fresh Binding."""
+    """Point the binding at a temporary server file and give the test a fresh Binding, installed as
+    the module's one instance - the one mcp_tool and mcp_health read."""
     def point(entries: dict[str, Any]) -> Any:
         path = _servers_file(tmp_path, entries)
         app_config().set("mcp.servers", str(path))
-        return binding.Binding()
+        app = binding.Binding()
+        monkeypatch.setattr(binding, "binding", app)
+        return app
     yield point
     app_config().set("mcp.servers", binding.DEFAULT_SERVERS_FILE)
 
 
 @pytest.mark.asyncio
 async def test_boot_registers_one_route_per_allowlisted_tool_and_calls_them(
-        offered: dict[str, dict[str, Any]], servers: Any) -> None:
-    app = servers({"fixture": _stdio(offered, {"echo": "fixture.echo", "add": "fixture.add", "fail": "fixture.fail"})})
+        offered: dict[str, dict[str, Any]], servers: Any, po: PostOffice) -> None:
+    app = servers({"fixture": _stdio(offered, {"echo": "fixture.echo", "add": "fixture.add", "fail": "fixture.fail"},
+                                     instances=3)})
     await app.boot()
     try:
         assert sorted(app.servers) == ["fixture"]
         assert [b.route for b, _ in app.servers["fixture"].bound] == ["fixture.echo", "fixture.add", "fixture.fail"]
-        assert await _call("fixture.echo", {"text": "hello"}) == "hello"
-        assert await _call("fixture.add", {"a": 1, "b": 2}) == {"sum": 3}
-        with pytest.raises(AppException) as failure:
-            await _call("fixture.fail", {"reason": "the vault is closed"})
-        assert failure.value.status == 400
-        assert "the vault is closed" in failure.value.message
-        with pytest.raises(AppException) as not_a_map:
-            await _call("fixture.echo", "hello")
-        assert not_a_map.value.status == 400
-        assert "must be a map" in not_a_map.value.message
+        # the composable shape: one @preload function, each bound route a public alias of it with the
+        # server's instances; the declared route itself is private and bound to no tool
+        for route in ("fixture.echo", "fixture.add", "fixture.fail"):
+            service = default_registry.get(route)
+            assert service is not None and service.handler is binding.mcp_tool and not service.private
+            assert service.instances == 3
+        declared = default_registry.get("mcp.tool")
+        assert declared is not None and declared.handler is binding.mcp_tool and declared.private
+        echo = await _call(po, "fixture.echo", {"text": "hello"})
+        assert echo.get_status() == 200 and echo.body == "hello"
+        assert (await _call(po, "fixture.add", {"a": 1, "b": 2})).body == {"sum": 3}
+        failed = await _call(po, "fixture.fail", {"reason": "the vault is closed"})
+        assert failed.get_status() == 400 and "the vault is closed" in str(failed.body)
+        not_a_map = await _call(po, "fixture.echo", "hello")
+        assert not_a_map.get_status() == 400 and "must be a map" in str(not_a_map.body)
+        unbound = await _call(po, "mcp.tool", {"text": "no tool here"})
+        assert unbound.get_status() == 404 and "No MCP tool is bound to the route mcp.tool" in str(unbound.body)
     finally:
         await app.shutdown()
-    assert not app.servers
+    assert not app.servers and not app.routes
 
 
 @pytest.mark.asyncio
-async def test_a_slow_tool_is_a_408_within_the_servers_timeout(offered: dict[str, dict[str, Any]], servers: Any) -> None:
+async def test_a_slow_tool_is_a_408_within_the_servers_timeout(offered: dict[str, dict[str, Any]], servers: Any,
+                                                               po: PostOffice) -> None:
     app = servers({"fixture": _stdio(offered, {"slow": "fixture.slow"}, timeout_ms=1000)})
     await app.boot()
     try:
         started = time.monotonic()
-        with pytest.raises(AppException) as failure:
-            await _call("fixture.slow", {"seconds": 5})
-        assert failure.value.status == 408, failure.value.message
-        assert "within 1000 ms" in failure.value.message
+        reply = await _call(po, "fixture.slow", {"seconds": 5})
+        assert reply.get_status() == 408, reply.body
+        assert "within 1000 ms" in str(reply.body)
         assert time.monotonic() - started < 4
     finally:
         await app.shutdown()
@@ -208,15 +238,15 @@ async def test_a_changed_schema_fails_the_boot_by_name(offered: dict[str, dict[s
 @pytest.mark.asyncio
 async def test_credential_references_reach_the_subprocess_and_never_a_log(
         offered: dict[str, dict[str, Any]], servers: Any, monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture) -> None:
+        caplog: pytest.LogCaptureFixture, po: PostOffice) -> None:
     monkeypatch.setenv("FIXTURE_TOKEN", "a-value-that-must-not-appear")
     app = servers({"fixture": _stdio(offered, {"env_present": "fixture.env.present"},
                                      env={"FIXTURE_FORWARDED": "${FIXTURE_TOKEN}"})})
     with caplog.at_level(logging.DEBUG):
         await app.boot()
         try:
-            assert await _call("fixture.env.present", {"name": "FIXTURE_FORWARDED"}) == {"present": True}
-            assert await _call("fixture.env.present", {"name": "FIXTURE_TOKEN"}) == {"present": False}, \
+            assert (await _call(po, "fixture.env.present", {"name": "FIXTURE_FORWARDED"})).body == {"present": True}
+            assert (await _call(po, "fixture.env.present", {"name": "FIXTURE_TOKEN"})).body == {"present": False}, \
                 "only the listed variables reach the subprocess, not the whole environment"
         finally:
             await app.shutdown()
@@ -309,7 +339,8 @@ def http_fixture_port():
 
 @pytest.mark.asyncio
 async def test_the_http_transport_serves_the_same_routes(offered: dict[str, dict[str, Any]], servers: Any,
-                                                         monkeypatch: pytest.MonkeyPatch, http_fixture_port: int) -> None:
+                                                         monkeypatch: pytest.MonkeyPatch, http_fixture_port: int,
+                                                         po: PostOffice) -> None:
     monkeypatch.setenv("FIXTURE_HTTP_TOKEN", "bearer-value")
     app = servers({"remote": {
         "transport": "http", "url": f"http://127.0.0.1:{http_fixture_port}/mcp",
@@ -319,8 +350,8 @@ async def test_the_http_transport_serves_the_same_routes(offered: dict[str, dict
     }})
     await app.boot()
     try:
-        assert await _call("remote.echo", {"text": "over http"}) == "over http"
-        assert await _call("remote.add", {"a": 20, "b": 22}) == {"sum": 42}
+        assert (await _call(po, "remote.echo", {"text": "over http"})).body == "over http"
+        assert (await _call(po, "remote.add", {"a": 20, "b": 22})).body == {"sum": 42}
     finally:
         await app.shutdown()
 
@@ -330,14 +361,12 @@ async def test_health_reports_each_server_and_its_connection(offered: dict[str, 
     app = servers({"fixture": _stdio(offered, {"echo": "fixture.echo"})})
     await app.boot()
     try:
-        binding.binding.servers = app.servers
         info = await binding.mcp_health({"type": "info"}, {})
         assert info["service"] == "mcp.binding"
         assert info["servers"] == [{"name": "fixture", "transport": "stdio", "tools": 1, "connected": True}]
         assert await binding.mcp_health({"type": "health"}, {}) == "mcp.binding is running fine"
     finally:
         await app.shutdown()
-    binding.binding.servers = app.servers
     assert (await binding.mcp_health({"type": "info"}, {}))["servers"] == []
     lost = binding.Server(binding.ServerSpec(name="gone", transport="stdio", tools=(), command="x"))
     binding.binding.servers = {"gone": lost}

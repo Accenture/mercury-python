@@ -161,7 +161,14 @@
   reply is the structured content else the blocks' text; `is_error` is a 400 carrying the text (the loop returns it to the
   model), a timeout 408, a protocol failure 502, a lost session 503. The pure half (digest, verification, result mapping) is
   pinned by `tests/vectors/mcp-binding-vectors.json`, shared byte-identical with the Node twin; the transports by the fixture
-  server `tests/fixtures/mcp_test_server.py`. **How to apply:** a new MCP tool for an agent is a server entry and an allowlist
+  server `tests/fixtures/mcp_test_server.py`. **The shape (2026-11-14, Eric's direction):** every bound route is an alias of
+  ONE `@preload` function, `mcp.tool` - private, bound to no tool - registered at boot with the server's `instances` through
+  `default_registry.register`, the pack's counterpart of the engines' `Platform.register`; the function reads the route it
+  was called as from `get_trace().route`, the pack's counterpart of the engines' read-only `my_route` header (the host strips
+  `my_*` headers at ingress and adds none). A generic client - one route, the server and the tool encoded in the call - was
+  suggested and set aside the same day: ADR-0033 rejects it as alternative (c), since the catalog cannot certify a target
+  hidden in the call; the certifiable form is an optional `headers` map on the catalog row, an engine change in both
+  engines, not taken. **How to apply:** a new MCP tool for an agent is a server entry and an allowlist
   row here plus a catalog row on the graph, never engine code; a schema change is a digest the developer re-reviews; a
   credential is a reference in the server file, resolved from this process's environment.
   <!-- id: mcp-binding-route-per-tool | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: working | origin: 2026-11-14-073523 -->

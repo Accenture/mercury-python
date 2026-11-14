@@ -60,7 +60,9 @@
    `tests/vectors/mcp-binding-vectors.json` (the Node.js twin runs the same bytes) pins the digest, the allowlist
    verification and the result mapping; the rest of the tests drive a fixture MCP server of this repository over both
    transports, and the HTTP transport was driven on 2026-11-14 against a public MCP server (the Mermaid Chart endpoint): `describe`
-   listed its tool with the digest, and a bound route returned the server's structured content. **With it, `Platform` gains `on_startup(callback)` and `on_cleanup(callback)`** - async callbacks run
+   listed its tool with the digest, and a bound route returned the server's structured content. Every bound route is an alias of one `@preload` function,
+   `mcp.tool` (private, bound to no tool), registered at boot with the server's `instances`; the function reads the route it
+   was called as from its execution context (`get_trace().route`). **With it, `Platform` gains `on_startup(callback)` and `on_cleanup(callback)`** - async callbacks run
    inside the server's event loop before the first request and at shutdown, the place for an extension's asynchronous
    boot work - and `Platform.create_app()`, the hook-bearing application `run` serves and a test may serve with
    aiohttp's runner. **Upgrade note:** none - nothing changes for an application that registers no callback.
