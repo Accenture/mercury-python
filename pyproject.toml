@@ -46,12 +46,16 @@ bedrock = ["anthropic[bedrock]>=1,<2"]
 # Redis as the helper's transcript store (llm.transcript.store: redis) - an agent loop's turns
 # can then land on any replica; a single process keeps its transcripts in memory without it
 redis = ["redis>=5,<9"]
+# the MCP binding (extensions/mcp-binding) - the official MCP SDK's client, one route per
+# allowlisted remote tool; the package itself stays SDK-free
+mcp = ["mcp>=2,<3"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "ruff>=0.9",
     "anthropic[bedrock]>=1,<2",
     "redis>=5,<9",
+    "mcp>=2,<3",
     # the store's compare-and-set is a Lua script; the [lua] extra runs it in the fake
     "fakeredis[lua]>=2.26",
 ]

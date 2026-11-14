@@ -217,7 +217,8 @@ A function always runs in this process, never in a subprocess or an embedded int
 The one subprocess the pack may start is an **MCP server reached over stdio**: the pack runs it
 as a child process and talks to it over its standard input and output. That is why the MCP
 clients of the engines' agent loop (RFC-0011) live in the language packs: no engine starts a
-child process. The stdio MCP binding itself is still to come.
+child process. The MCP binding in `extensions/mcp-binding/` is that client: one composable route per
+allowlisted remote tool, over stdio or streamable HTTP, on the official MCP SDK.
 
 The LLM helper in `extensions/llm-helper/` is an application on this package, not part of it.
 Its `llm.chat` is configurable: a stateless chat, or one turn of a multi-turn tool-use loop whose

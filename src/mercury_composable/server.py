@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable, Callable
 
 from aiohttp import web
 
@@ -277,26 +278,56 @@ class Platform:
 
     def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
+        self._startup: list[Callable[[], Awaitable[None]]] = []
+        self._cleanup: list[Callable[[], Awaitable[None]]] = []
+
+    def on_startup(self, callback: Callable[[], Awaitable[None]]) -> None:
+        """Run an async callback inside the server's event loop before the first request is
+        served - the place for an extension's asynchronous boot work, such as connecting to a
+        peer and registering the routes it serves. A callback that raises stops the application
+        before it listens, so a boot failure is a failure to start, never a run-time surprise."""
+        self._startup.append(callback)
+
+    def on_cleanup(self, callback: Callable[[], Awaitable[None]]) -> None:
+        """Run an async callback when the application shuts down, after the last request."""
+        self._cleanup.append(callback)
+
+    def create_app(self) -> web.Application:
+        """The Event API application with this platform's startup and cleanup callbacks
+        attached, and the opt-in OpenTelemetry forwarder activated on its extension route;
+        ``run`` serves it, and a test may serve it with aiohttp's own runner."""
+        config = app_config()
+        # the opt-in OpenTelemetry forwarder registers on the extension route
+        # before the route list is announced; its HTTP client closes with the app
+        exporter = otel.activate(config, self.registry)
+        app = EventApiServer(self.registry).create_app()
+        for callback in self._startup:
+            app.on_startup.append(_lifecycle(callback))
+        for callback in self._cleanup:
+            app.on_cleanup.append(_lifecycle(callback))
+        if exporter is not None:
+            async def _close_exporter(_app: web.Application) -> None:
+                await exporter.close()
+            app.on_cleanup.append(_close_exporter)
+        return app
 
     def run(self, port: int | None = None, host: str = "127.0.0.1") -> None:
         config = app_config()
         app_name = config.get_property("application.name", "application")
         actual_port = int(port if port is not None else config.get("rest.server.port", 8085))
-        # the opt-in OpenTelemetry forwarder registers on the extension route
-        # before the route list is announced; its HTTP client closes with the app
-        exporter = otel.activate(config, self.registry)
-        server = EventApiServer(self.registry)
+        app = self.create_app()
         for route, service in sorted(self.registry.routes().items()):
             visibility = "PRIVATE" if service.private else "PUBLIC"
             log.info("Loaded %s %s, instances=%d", visibility, route, service.instances)
         log.info("Configuration: %s", config.source)
         log.info("%s - Event API service started on port %d", app_name, actual_port)
-        app = server.create_app()
-        if exporter is not None:
-            async def _close_exporter(_app: web.Application) -> None:
-                await exporter.close()
-            app.on_cleanup.append(_close_exporter)
         web.run_app(app, host=host, port=actual_port, print=None, handle_signals=True)
+
+
+def _lifecycle(callback: Callable[[], Awaitable[None]]) -> Callable[[web.Application], Awaitable[None]]:
+    async def run(_app: web.Application) -> None:
+        await callback()
+    return run
 
 
 platform = Platform()

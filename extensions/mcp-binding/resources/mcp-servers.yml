@@ -1,0 +1,47 @@
+# MCP servers by name. A graph never carries a command line or a URL: its tool catalog names the
+# ROUTE each remote tool is served as, and this file maps the route to the server and the tool.
+#
+# Every allowlisted tool pins the SHA-256 digest of its input schema (canonical JSON: keys sorted,
+# no spaces). Boot fails when the server no longer offers the tool or its schema changed, so a
+# server-side change stops a deploy instead of becoming run-time errors. Print the digests, and a
+# catalog row to review and paste onto the graph, with:
+#
+#     python extensions/mcp-binding/mcp_binding.py describe [server ...]
+#
+# Credentials are references: a ${NAME} placeholder resolves from this process's environment at
+# boot (${NAME:default} with a default) and is never logged. A stdio server runs as a subprocess of
+# this process with the SDK's minimal default environment plus the variables listed under env; an
+# http server is reached at its URL with the headers listed.
+#
+# Keys per server: transport (stdio | http), command, args, env, cwd (stdio), url, headers (http),
+# timeout_ms (per call, at least 1000; default mcp.call.timeout.ms), instances (per route, default
+# 10), tools (remote tool name -> {route, schema_sha256}). Unknown keys are refused by name.
+#
+servers: {}
+  # Replace the empty map with your servers. The samples below are the shape, not a running
+  # configuration: fill the digests from `describe` before starting the binding, or the boot
+  # refuses them by name. With no server configured the binding starts and serves no tool route.
+  #
+  # documents:
+  #   transport: stdio
+  #   command: npx
+  #   args: ['-y', '@modelcontextprotocol/server-filesystem', '/srv/documents']
+  #   tools:
+  #     read_text_file:
+  #       route: docs.read.text.file
+  #       schema_sha256: '<64 hex from describe>'
+  #     list_directory:
+  #       route: docs.list.directory
+  #       schema_sha256: '<64 hex from describe>'
+  #
+  # tracker:
+  #   transport: http
+  #   url: 'https://mcp.example.internal/mcp'
+  #   headers:
+  #     Authorization: 'Bearer ${TRACKER_MCP_TOKEN}'
+  #   timeout_ms: 20000
+  #   tools:
+  #     create_issue:
+  #       route: tracker.create.issue
+  #       schema_sha256: '<64 hex from describe>'
+  #
