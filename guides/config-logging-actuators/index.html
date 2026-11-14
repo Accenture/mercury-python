@@ -1636,11 +1636,27 @@ one way in the aggregator:</p>
 (pretty-printed) and <code>compact</code> (single-line JSONL for log aggregators). The level
 comes from the <code>LOG_LEVEL</code> environment variable when set, else <code>log.level</code>.</p>
 <h2 id="distributed-tracing-the-opentelemetry-forwarder-opt-in">Distributed tracing — the OpenTelemetry forwarder (opt-in)<a class="headerlink" href="#distributed-tracing-the-opentelemetry-forwarder-opt-in" title="Permanent link">&para;</a></h2>
-<p>Every traced, non-RPC execution emits the engines' distributed-trace dataset on the
-<code>distributed.tracing</code> log stream — <code>{"trace": {...}, "annotations": {...}}</code>, the record the
-Java engine logs — so a log aggregation already stitches the span tree across all four
-runtimes. The forwarder is the second sink, for backends that take spans directly:
-Dynatrace, Splunk, an OpenTelemetry Collector.</p>
+<p>Every traced execution leaves one distributed-trace dataset on the <code>distributed.tracing</code>
+log stream — <code>{"trace": {...}, "annotations": {...}}</code>, the record the Java engine logs — so
+a log aggregation already stitches the span tree across all four runtimes. Who emits it
+follows the engines' rules, so a span lineage stays continuous from an engine into this host:</p>
+<ul>
+<li>a function execution that is not an RPC emits its own record when it finishes, parented
+  onto the caller's span;</li>
+<li>an RPC round trip is recorded by the caller's side, never by the responder (the engines'
+  <code>InboxBase</code>): the <code>PostOffice</code> records a local call with the responder's span, which rides
+  the reply, the caller's span as parent, the responder's <code>exec_time</code> and the <code>round_trip</code>
+  it measured;</li>
+<li>a traced call arriving at <code>/api/event</code> leaves what a Java or Rust callee leaves for it:
+  <code>http.request</code> (<code>POST /api/event</code>, the edge's round trip, parented onto the caller's span —
+  the envelope's span, else the <code>traceparent</code> header's; the backend's SERVER span),
+  <code>event.api.service</code> (the ingress, parented onto the edge) and, for an RPC, the function's
+  round-trip record parented onto the service; a drop-n-forget or streaming function emits
+  its own record under the service. A refused call (403, 404) and a timeout (408) leave the
+  edge record with that status. An untraced call records nothing.</li>
+</ul>
+<p>The forwarder is the second sink, for backends that take spans directly: Dynatrace, Splunk,
+an OpenTelemetry Collector.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">otel.forwarding</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">otel.exporter.otlp.endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">'https://&lt;tenant&gt;.live.dynatrace.com/api/v2/otlp/v1/traces'</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">otel.exporter.otlp.headers</span><span class="p">:</span><span class="w"> </span><span class="s">'Authorization=Api-Token</span><span class="nv"> </span><span class="s">${DT_TOKEN}'</span>
