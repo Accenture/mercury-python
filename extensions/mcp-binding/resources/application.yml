@@ -1,0 +1,39 @@
+# The MCP binding's configuration - the engines' "resources" convention.
+# mercury-serve (and a direct `python mcp_binding.py`) loads resources/application.yml from the
+# resources folder next to the application file (this one), never from the working directory.
+# Any key can be overridden at run time with the engines' -D syntax, e.g.:
+#   mercury-serve extensions/mcp-binding/mcp_binding.py -Dmcp.servers=/etc/mercury/mcp-servers.yml
+
+application.name: 'mcp-binding'
+info.app.description: 'Mercury Composable MCP binding (one composable route per allowlisted MCP tool)'
+
+rest.server.port: 8088
+
+# text (default) | json (pretty-printed) | compact (single-line JSONL)
+log.format: text
+log.level: INFO
+
+# Actuator /health dependencies - routes of health check functions speaking the engines'
+# type=info / type=health contract (mcp.health in mcp_binding.py). It reports each configured
+# server, its tool count and whether its session is connected.
+mandatory.health.dependencies: 'mcp.health'
+
+# Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
+show.env.variables: 'LOG_LEVEL'
+show.application.properties: 'application.name, rest.server.port, mcp.servers, mcp.call.timeout.ms'
+
+# --- the binding's settings -----------------------------------------------------------------
+# The server file: the servers by name, each with its transport, its credential references and its
+# allowlist of remote tools mapped to routes (see mcp-servers.yml next to this file). A relative
+# path is read from this resources folder.
+mcp.servers: 'mcp-servers.yml'
+# how long one tools/call may take, unless a server sets its own timeout_ms (at least 1000)
+mcp.call.timeout.ms: 30000
+
+# OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin. Switch it on
+# at run time with -Dotel.forwarding=true; the endpoint and credential come from the
+# environment. Header names are logged, never values.
+otel.forwarding: false
+otel.exporter.otlp.endpoint: '${OTLP_API_ENDPOINT:http://localhost:4318/v1/traces}'
+otel.exporter.otlp.headers: '${OTLP_AUTH_HEADER} ${OTLP_TOKEN}'
+otel.service.name: '${OTLP_SERVICE_NAME:mcp-binding}'

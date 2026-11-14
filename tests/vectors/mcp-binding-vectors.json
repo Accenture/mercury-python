@@ -1,0 +1,522 @@
+{
+  "contract": "mcp-binding",
+  "version": 1,
+  "description": "The MCP binding's shared vectors (RFC-0011 / ADR-0033, build plan step 4): the pure half of the binding, run by mercury-python and mercury-nodejs against the same file. digest_cases pin the canonical JSON a tool's input schema is hashed as (keys sorted, no spaces, Unicode kept, SHA-256 hex). verify_cases pin how an allowlist is matched against the tools a server offers (tools/list as plain maps: name, description, input_schema) - the bound routes in allowlist order, or the exact error that stops the boot. result_cases pin how a CallToolResult (content, structured_content, is_error) becomes a route's reply or its error (status and exact message). No server is started by these cases; the transports are tested by each pack with a fixture server.",
+  "digest_cases": [
+    {
+      "name": "an empty object schema",
+      "schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "sha256": "efddc7bd8bbcef73a14eb1ace1ffdaec81e518ef1e13c1e9271d0b8acb694a49"
+    },
+    {
+      "name": "key order does not matter",
+      "schema": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ]
+      },
+      "sha256": "923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
+    },
+    {
+      "name": "unicode is hashed as unicode, not escaped",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "größe": {
+            "type": "number",
+            "description": "Größe in m²"
+          }
+        }
+      },
+      "sha256": "941a30e2610da07a5943b278d3c10279c177f6fd92989a7757bc685c67a2c3e8"
+    },
+    {
+      "name": "a nested schema with every value kind",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "high"
+            ]
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "sha256": "3b47472833fac74ebc509de9790f13829ea4ed62f413f4d774d7936e063207cd"
+    }
+  ],
+  "verify_cases": [
+    {
+      "name": "verify/every-allowlisted-tool-is-offered-and-unchanged",
+      "server": {
+        "name": "docs",
+        "tools": {
+          "read_text_file": {
+            "route": "docs.read.text.file",
+            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+          },
+          "list_directory": {
+            "route": "docs.list.directory",
+            "schema_sha256": "923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
+          }
+        }
+      },
+      "offered": [
+        {
+          "name": "read_text_file",
+          "description": "Read a text file.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "the file's path"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_directory",
+          "description": "List a directory.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "bound": [
+          "docs.read.text.file",
+          "docs.list.directory"
+        ]
+      }
+    },
+    {
+      "name": "verify/a-tool-the-server-offers-but-the-allowlist-omits-is-ignored",
+      "server": {
+        "name": "docs",
+        "tools": {
+          "read_text_file": {
+            "route": "docs.read.text.file",
+            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+          }
+        }
+      },
+      "offered": [
+        {
+          "name": "read_text_file",
+          "description": "Read a text file.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "the file's path"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_directory",
+          "description": "List a directory.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "bound": [
+          "docs.read.text.file"
+        ]
+      }
+    },
+    {
+      "name": "verify/a-missing-tool-names-itself-and-what-is-offered",
+      "server": {
+        "name": "docs",
+        "tools": {
+          "write_file": {
+            "route": "docs.write.file",
+            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+          }
+        }
+      },
+      "offered": [
+        {
+          "name": "read_text_file",
+          "description": "Read a text file.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "the file's path"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_directory",
+          "description": "List a directory.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "error": "MCP server docs does not offer the tool write_file - it offers list_directory, read_text_file"
+      }
+    },
+    {
+      "name": "verify/a-server-with-no-tools",
+      "server": {
+        "name": "docs",
+        "tools": {
+          "read_text_file": {
+            "route": "docs.read.text.file",
+            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+          }
+        }
+      },
+      "offered": [],
+      "expect": {
+        "error": "MCP server docs does not offer the tool read_text_file - it offers no tools"
+      }
+    },
+    {
+      "name": "verify/a-changed-schema-names-the-tool-and-both-digests",
+      "server": {
+        "name": "docs",
+        "tools": {
+          "read_text_file": {
+            "route": "docs.read.text.file",
+            "schema_sha256": "923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
+          }
+        }
+      },
+      "offered": [
+        {
+          "name": "read_text_file",
+          "description": "Read a text file.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "the file's path"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_directory",
+          "description": "List a directory.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "error": "MCP server docs changed the input schema of read_text_file - its digest is now 6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479, the configuration pins 923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
+      }
+    },
+    {
+      "name": "verify/the-first-failure-in-allowlist-order-stops-the-boot",
+      "server": {
+        "name": "docs",
+        "tools": {
+          "list_directory": {
+            "route": "docs.list.directory",
+            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+          },
+          "write_file": {
+            "route": "docs.write.file",
+            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+          }
+        }
+      },
+      "offered": [
+        {
+          "name": "read_text_file",
+          "description": "Read a text file.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "the file's path"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_directory",
+          "description": "List a directory.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "error": "MCP server docs changed the input schema of list_directory - its digest is now 923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b, the configuration pins 6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+      }
+    }
+  ],
+  "result_cases": [
+    {
+      "name": "result/text-content-is-the-reply",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "hello"
+          }
+        ],
+        "structured_content": null,
+        "is_error": false
+      },
+      "expect": {
+        "reply": "hello"
+      }
+    },
+    {
+      "name": "result/several-text-blocks-join-with-newlines",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "line 1"
+          },
+          {
+            "type": "text",
+            "text": "line 2"
+          }
+        ],
+        "structured_content": null,
+        "is_error": false
+      },
+      "expect": {
+        "reply": "line 1\nline 2"
+      }
+    },
+    {
+      "name": "result/structured-content-wins-over-text",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"sum\": 3}"
+          }
+        ],
+        "structured_content": {
+          "sum": 3
+        },
+        "is_error": false
+      },
+      "expect": {
+        "reply": {
+          "sum": 3
+        }
+      }
+    },
+    {
+      "name": "result/an-empty-result-is-an-empty-text",
+      "result": {
+        "content": [],
+        "structured_content": null,
+        "is_error": false
+      },
+      "expect": {
+        "reply": ""
+      }
+    },
+    {
+      "name": "result/a-non-text-block-is-named-by-its-type",
+      "result": {
+        "content": [
+          {
+            "type": "image",
+            "data": "aGk=",
+            "mimeType": "image/png"
+          },
+          {
+            "type": "text",
+            "text": "caption"
+          }
+        ],
+        "structured_content": null,
+        "is_error": false
+      },
+      "expect": {
+        "reply": "[image]\ncaption"
+      }
+    },
+    {
+      "name": "result/a-resource-link-carries-its-uri",
+      "result": {
+        "content": [
+          {
+            "type": "resource_link",
+            "uri": "file:///srv/docs/a.md",
+            "name": "a.md"
+          }
+        ],
+        "structured_content": null,
+        "is_error": false
+      },
+      "expect": {
+        "reply": "[resource_link] file:///srv/docs/a.md"
+      }
+    },
+    {
+      "name": "result/an-embedded-resource-carries-its-uri",
+      "result": {
+        "content": [
+          {
+            "type": "resource",
+            "resource": {
+              "uri": "file:///srv/docs/a.md",
+              "text": "..."
+            }
+          }
+        ],
+        "structured_content": null,
+        "is_error": false
+      },
+      "expect": {
+        "reply": "[resource] file:///srv/docs/a.md"
+      }
+    },
+    {
+      "name": "result/is-error-is-a-400-carrying-the-text",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "No such file: /srv/docs/missing.md"
+          }
+        ],
+        "structured_content": null,
+        "is_error": true
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message": "No such file: /srv/docs/missing.md"
+        }
+      }
+    },
+    {
+      "name": "result/is-error-without-text-still-names-itself",
+      "result": {
+        "content": [],
+        "structured_content": null,
+        "is_error": true
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message": "The tool reported an error without a message"
+        }
+      }
+    },
+    {
+      "name": "result/is-error-with-structured-content-is-still-an-error",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "denied"
+          }
+        ],
+        "structured_content": {
+          "code": "denied"
+        },
+        "is_error": true
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message": "denied"
+        }
+      }
+    }
+  ]
+}
