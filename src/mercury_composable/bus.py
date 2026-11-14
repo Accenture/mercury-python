@@ -161,6 +161,32 @@ def _emit_trace(delivery: _Delivery, info: TraceInfo, start: str,
     return dataset
 
 
+def round_trip_record(*, service: str, sender: str | None, trace_id: str, trace_path: str | None,
+                      reply: EventEnvelope, parent_span_id: str | None, start: str,
+                      round_trip_ms: float) -> dict[str, Any]:
+    """The caller-side record of an RPC round trip - the engines' InboxBase record. Its
+    span is the responder's own (the reply carries it), its parent the caller's span, its
+    exec_time the responder's and its round_trip the wait measured by the caller; the
+    worker-side record of an RPC-served execution is suppressed, so this is the one record
+    for that span (the wire-format contract's rpc tag)."""
+    from .actuator import app_origin  # late: actuator imports the registry chain
+    trace: dict[str, Any] = {
+        "origin": app_origin(), "id": trace_id, "path": trace_path, "service": service,
+        "start": start, "exec_time": reply.exec_time, "round_trip": round(round_trip_ms, 3),
+        "status": reply.get_status(), "success": not reply.has_error(),
+    }
+    if sender:
+        trace["from"] = sender
+    if reply.span_id:
+        trace["span_id"] = reply.span_id
+    if parent_span_id:
+        trace["parent_span_id"] = parent_span_id
+    if reply.has_error():
+        # for data privacy, only a recognized error message is shown (the engines' InboxBase)
+        trace["exception"] = reply.body if isinstance(reply.body, str) else "***"
+    return trace
+
+
 class EventBus:
     """Per-registry bus: one FIFO mailbox and N workers per registered route."""
 
@@ -320,6 +346,10 @@ class EventBus:
             _reset_trace(token)
         reply.sender = reply.sender or service.route
         reply.exec_time = round((time.perf_counter() - start) * 1000, 3)
+        if info.span_id:
+            # the responder's span rides the reply, so the caller's round-trip record chains
+            # onto it - the engines' WorkerHandler contract
+            reply.span_id = info.span_id
         if info.annotations:
             reply.annotations.update(info.annotations)
         self._forward(_emit_trace(delivery, info, start_iso, reply.exec_time,
@@ -370,6 +400,17 @@ class EventBus:
                                   status, error is None, str(error) if error else None))
         # an interceptor's own outcome is never auto-replied
         return EventEnvelope()
+
+    def emit(self, trace: dict[str, Any], annotations: dict[str, Any] | None = None) -> None:
+        """Emit one distributed-trace dataset the engines' way: the record on the telemetry
+        log stream, then the extension route. The caller-side records - an RPC round trip
+        recorded by the PostOffice, the edge records of a call through /api/event - come
+        through here; a worker-side record is emitted by the execution itself."""
+        dataset: dict[str, Any] = {"trace": trace}
+        if annotations:
+            dataset["annotations"] = dict(annotations)
+        telemetry_log.info(dataset)
+        self._forward(dataset)
 
     def _forward(self, dataset: dict[str, Any] | None) -> None:
         """Hand an emitted dataset to the engines' extension route when a

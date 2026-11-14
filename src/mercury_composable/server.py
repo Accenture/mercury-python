@@ -19,21 +19,33 @@ Behavior mirrors the Java engine's EventApiService:
 - The host also serves the engines' actuator endpoints (``/info``,
   ``/info/routes``, ``/env``, ``/health``, ``/livenessprobe``) for
   operations and Kubernetes probes - see :mod:`mercury_composable.actuator`.
+- A traced call leaves the records a Java or Rust callee leaves for the same
+  call, so a span lineage stays continuous into this host: ``http.request``
+  (``POST /api/event``, the edge's round trip, parented onto the caller's span
+  - the envelope's span, else the ``traceparent`` header's), ``event.api.service``
+  (the ingress, parented onto the edge) and, for an RPC, the function's
+  round-trip record with the responder's span (the caller side's record in
+  the engines); a drop-n-forget or streaming function emits its own record,
+  parented onto the service. An untraced call records nothing.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
+import secrets
+import time
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from aiohttp import web
 
 from . import otel
-from .actuator import Actuator
-from .bus import DeliveryTimeout
+from .actuator import Actuator, app_origin
+from .bus import DeliveryTimeout, EventBus, round_trip_record
 from .config import app_config
-from .envelope import EventEnvelope
+from .envelope import EventEnvelope, iso_utc
 from .event_stream import (
     DATA,
     STREAM_CALLER_REQUIRED,
@@ -54,6 +66,10 @@ X_ASYNC = "x-async"
 X_EVENT_API = "x-event-api"
 # the engines' reserved route name for the Event-over-HTTP ingress
 EVENT_API_SERVICE = "event.api.service"
+# the edge's own service name and path in its round-trip record (the engines' REST edge)
+HTTP_REQUEST = "http.request"
+EDGE_PATH = "POST /api/event"
+TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
 
 log = get_logger("mercury.server")
 
@@ -61,6 +77,71 @@ log = get_logger("mercury.server")
 def _transport_error(status: int, message: str) -> web.Response:
     reply = EventEnvelope().set_status(status).set_body(message)
     return web.Response(status=status, body=reply.to_bytes(), content_type=OCTET_STREAM)
+
+
+def _caller_span(request: web.Request, event: EventEnvelope) -> str | None:
+    """The remote caller's span: the one on the envelope (the engines' PostOffice stamps
+    the calling function's span), else the W3C traceparent header's."""
+    if event.span_id:
+        return event.span_id
+    match = TRACEPARENT.match((request.headers.get("traceparent") or "").strip().lower())
+    return match.group(2) if match else None
+
+
+class _Edge:
+    """The trace records of one traced call through the /api/event edge - what a Java or
+    Rust callee leaves for the same call: ``http.request`` (the edge's round trip, the
+    backend's SERVER span, parented onto the caller's span) and ``event.api.service`` (the
+    ingress, parented onto the edge); the relayed event carries the service's span, so the
+    function parents onto it. An RPC adds the function's round-trip record - the caller
+    side's record in the engines (InboxBase) - with the responder's span from the reply."""
+
+    def __init__(self, bus: EventBus, event: EventEnvelope, caller_span: str | None) -> None:
+        self.bus = bus
+        self.trace_id = event.trace_id or ""
+        self.trace_path = event.trace_path
+        self.route = event.to or ""
+        self.caller_span = caller_span
+        self.edge_span = secrets.token_hex(8)
+        self.service_span = secrets.token_hex(8)
+        self.start = iso_utc()
+        self.started = time.perf_counter()
+
+    def _elapsed(self) -> float:
+        return round((time.perf_counter() - self.started) * 1000, 3)
+
+    def record_service(self) -> None:
+        """The ingress record, when the event is handed on - the engines' EventApiService
+        execution, parented onto the edge."""
+        self.bus.emit({
+            "origin": app_origin(), "id": self.trace_id, "path": EDGE_PATH, "service": EVENT_API_SERVICE,
+            "start": self.start, "from": HTTP_REQUEST, "exec_time": self._elapsed(), "status": 200,
+            "success": True, "span_id": self.service_span, "parent_span_id": self.edge_span,
+        })
+
+    def record_function(self, sender: str | None, reply: EventEnvelope, dispatched: str,
+                        started: float) -> None:
+        """The RPC's round-trip record, parented onto the service - the engines' InboxBase
+        record for the relayed call."""
+        self.bus.emit(round_trip_record(service=self.route, sender=sender, trace_id=self.trace_id,
+                                        trace_path=self.trace_path, reply=reply,
+                                        parent_span_id=self.service_span, start=dispatched,
+                                        round_trip_ms=(time.perf_counter() - started) * 1000),
+                      reply.annotations)
+
+    def record_edge(self, status: int, error: str | None = None) -> None:
+        """The edge's round-trip record when the response is complete - the engines' REST
+        edge: the whole call under the caller's span, the HTTP status sent."""
+        trace: dict[str, Any] = {
+            "origin": app_origin(), "id": self.trace_id, "path": EDGE_PATH, "service": HTTP_REQUEST,
+            "start": self.start, "exec_time": self._elapsed(), "status": status, "success": status < 400,
+            "span_id": self.edge_span,
+        }
+        if self.caller_span:
+            trace["parent_span_id"] = self.caller_span
+        if status >= 400 and error:
+            trace["exception"] = error
+        self.bus.emit(trace)
 
 
 def _handler_headers(event: EventEnvelope) -> dict[str, str]:
@@ -94,20 +175,28 @@ class EventApiServer:
             return _transport_error(400, str(e))
         if not event.to:
             return _transport_error(400, "Missing routing path")
+        bus = self.registry.bus
+        edge = _Edge(bus, event, _caller_span(request, event)) if event.trace_id else None
         service = self.registry.get(event.to)
         if service is None:
-            return _transport_error(404, f"Route {event.to} not found")
+            return self._refuse(edge, 404, f"Route {event.to} not found")
         if service.private:
-            return _transport_error(403, f"{event.to} is private")
+            return self._refuse(edge, 403, f"{event.to} is private")
         if not event.sender:
             # the engines' EventApiService parity: its PostOffice fills the
             # sender with its own route when the wire envelope carries none
             event.set_from(EVENT_API_SERVICE)
+        if edge:
+            # the relayed event carries the service's span, so the function
+            # parents onto it - the engines' relay
+            event.set_span_id(edge.service_span)
+            edge.record_service()
         headers = _handler_headers(event)
-        bus = self.registry.bus
         if is_async:
             ack = bus.publish(service, headers, event.body, trace_id=event.trace_id,
                               trace_path=event.trace_path, cid=event.cid, envelope=event)
+            if edge:
+                edge.record_edge(202)
             return web.Response(status=202, body=ack.to_bytes(), content_type=OCTET_STREAM)
         if service.interceptor:
             # interceptor dispatch (the reply_to mechanism): the handler
@@ -115,21 +204,38 @@ class EventApiServer:
             # reply address and answers manually - single-shot or streaming
             capable = TEXT_EVENT_STREAM in (request.headers.get("accept") or "")
             return await self._dispatch_interceptor(request, service, event, headers,
-                                                    ttl, capable)
+                                                    ttl, capable, edge)
+        dispatched, started = iso_utc(), time.perf_counter()
         try:
             reply = await bus.deliver(service, headers, event.body, ttl,
                                       trace_id=event.trace_id, trace_path=event.trace_path,
                                       cid=event.cid, envelope=event)
         except DeliveryTimeout:
             log.warning("Event %s timeout for %d ms (trace_id=%s)", event.to, ttl, event.trace_id)
+            if edge:
+                timeout = EventEnvelope().set_status(408).set_body(f"Timeout for {ttl} ms")
+                edge.record_function(event.sender, timeout, dispatched, started)
+                edge.record_edge(408, f"Timeout for {ttl} ms")
             return _transport_error(408, f"Timeout for {ttl} ms")
         log.info("Handled %s status=%d exec_time=%sms trace_id=%s",
                  event.to, reply.get_status(), reply.exec_time, event.trace_id)
+        if edge:
+            edge.record_function(event.sender, reply, dispatched, started)
+            edge.record_edge(200)
         return web.Response(status=200, body=reply.to_bytes(), content_type=OCTET_STREAM)
+
+    @staticmethod
+    def _refuse(edge: _Edge | None, status: int, message: str) -> web.Response:
+        """A transport refusal, recorded at the edge when the call was traced."""
+        if edge:
+            edge.record_service()
+            edge.record_edge(status, message)
+        return _transport_error(status, message)
 
     async def _dispatch_interceptor(self, request: web.Request, service: ServiceDef,
                                     event: EventEnvelope, headers: dict[str, str],
-                                    ttl: int, capable: bool) -> web.StreamResponse:
+                                    ttl: int, capable: bool,
+                                    edge: _Edge | None = None) -> web.StreamResponse:
         """Dispatch to an interceptor and classify its first reply exactly like
         the engines: unmarked = the classic single-shot response, byte
         identical; marked = the envelope-mode SSE dialect for a caller that
@@ -149,7 +255,8 @@ class EventApiServer:
             if event.trace_id:
                 handler_event.set_trace(event.trace_id, event.trace_path or service.route)
             if event.span_id:
-                # the caller's span - the handler's span parents onto it
+                # the service's span (the caller's when the call is untraced at the
+                # edge) - the handler's span parents onto it
                 handler_event.set_span_id(event.span_id)
             if event.sender:
                 handler_event.set_from(event.sender)
@@ -159,6 +266,8 @@ class EventApiServer:
             except asyncio.TimeoutError:
                 log.warning("Event %s timeout for %d ms (trace_id=%s)",
                             event.to, ttl, event.trace_id)
+                if edge:
+                    edge.record_edge(408, f"Timeout for {ttl} ms")
                 return _transport_error(408, f"Timeout for {ttl} ms")
             marker = stream_signal(first)
             if marker is None:
@@ -166,19 +275,28 @@ class EventApiServer:
                 # error contract for an uncaught interceptor exception)
                 log.info("Handled %s status=%d exec_time=%sms trace_id=%s",
                          event.to, first.get_status(), first.exec_time, event.trace_id)
+                if edge:
+                    edge.record_edge(200)
                 return web.Response(status=200, body=first.to_bytes(),
                                     content_type=OCTET_STREAM)
             if not capable:
                 # a streaming reply cannot ride a single-shot response
+                if edge:
+                    edge.record_edge(406, STREAM_CALLER_REQUIRED)
                 return _transport_error(406, STREAM_CALLER_REQUIRED)
-            return await self._stream_response(request, queue, first, marker, ttl)
+            response, status = await self._stream_response(request, queue, first, marker, ttl)
+            if edge:
+                # the engines' edge: a stream failing in-band after its head reports
+                # the failure's own status
+                edge.record_edge(status)
+            return response
         finally:
             bus.close_sink(sink_route)
 
     async def _stream_response(self, request: web.Request,
                                queue: asyncio.Queue[EventEnvelope],
                                first: EventEnvelope, first_marker: str,
-                               ttl: int) -> web.StreamResponse:
+                               ttl: int) -> tuple[web.StreamResponse, int]:
         """Render the envelope-mode SSE dialect: envelope frames for the head,
         the terminals and non-text segments; raw frames for plain text. The
         x-ttl allowance (overridable by the producer's head control, in
@@ -196,19 +314,22 @@ class EventApiServer:
         response.headers["content-type"] = TEXT_EVENT_STREAM
         response.headers.setdefault("cache-control", "no-cache")
         await response.prepare(request)
+        status = first.get_status()
         try:
             await response.write(envelope_frame(first))
             if first_marker == DATA:
-                await self._stream_segments(response, queue, idle_ms)
+                status = await self._stream_segments(response, queue, idle_ms)
         except ConnectionError:
             # a disconnected client ends the stream; late segments are no-op drops
             log.debug("Client disconnected from event stream")
         with contextlib.suppress(ConnectionError):
             await response.write_eof()
-        return response
+        return response, status
 
     async def _stream_segments(self, response: web.StreamResponse,
-                               queue: asyncio.Queue[EventEnvelope], idle_ms: int) -> None:
+                               queue: asyncio.Queue[EventEnvelope], idle_ms: int) -> int:
+        """Render the segments until the terminal; the status returned is the stream's
+        outcome - 200, or an in-band failure's own status - for the edge's record."""
         ping_ms = keep_alive_ms()
         while True:
             event = await self._next_segment(response, queue, idle_ms, ping_ms)
@@ -217,7 +338,7 @@ class EventApiServer:
                 seconds = idle_ms // 1000
                 frame = envelope_frame(exception_envelope(408, f"Timeout for {seconds} seconds"))
                 await response.write(frame)
-                return
+                return 408
             marker = stream_signal(event)
             if marker == DATA:
                 frame = data_frame(event, first_frame=False)
@@ -227,14 +348,14 @@ class EventApiServer:
                 # eof or exception: the terminal envelope frame ends the
                 # response cleanly - no cosmetic frames on this wire
                 await response.write(envelope_frame(event))
-                return
+                return event.get_status() if event.has_error() else 200
             elif event.has_error():
                 # the bus's error contract for an uncaught interceptor
                 # exception mid-stream - fail in-band with the exact status
                 message = str(event.body) if event.body is not None else "Stream failed"
                 frame = envelope_frame(exception_envelope(event.get_status(), message))
                 await response.write(frame)
-                return
+                return event.get_status()
             else:
                 log.warning("Dropping event - invalid %s signal", "x-event-stream")
 

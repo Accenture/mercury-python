@@ -133,6 +133,16 @@ is a service of its own, with its own mailbox and workers. A call learns the rou
 context (`get_trace().route`, the pack's counterpart of the engines' read-only `my_route` header), which names the server
 and the remote tool; a call to `mcp.tool` by its own name is a 404.
 
+**Tracing.** A trace names the bound route, never `mcp.tool`: every trace field comes from the service entry the event
+was addressed to, so the route's own record, the execution context's route, the reply's sender and the host's `Handled`
+log line all read `diagram.render.mcp`. A traced call from an engine leaves the records a Java or Rust callee leaves (the
+pack's guide `docs/guides/config-logging-actuators.md`): the edge's round trip `http.request` (`POST /api/event`),
+parented onto the engine function that called; `event.api.service` under it; and the route's round-trip record under
+that, carrying the execution's span, its `exec_time` and the `round_trip` - the MCP server's `tools/call` is inside that
+`exec_time`, not a span of its own. Driven live through the Java Playground's `diagram-assistant` graph on 2026-11-14,
+the lineage is continuous from the engine's `diagram.render` into this route; the record is the engines'
+`docs/test-reports/agent-loop-trace-lineage.md`.
+
 ## Security
 
 - **No engine runs a child process.** The MCP client, the subprocess and the credentials live here, in the pack, behind

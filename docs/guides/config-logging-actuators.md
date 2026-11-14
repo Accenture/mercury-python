@@ -49,11 +49,27 @@ comes from the `LOG_LEVEL` environment variable when set, else `log.level`.
 
 ## Distributed tracing — the OpenTelemetry forwarder (opt-in)
 
-Every traced, non-RPC execution emits the engines' distributed-trace dataset on the
-`distributed.tracing` log stream — `{"trace": {...}, "annotations": {...}}`, the record the
-Java engine logs — so a log aggregation already stitches the span tree across all four
-runtimes. The forwarder is the second sink, for backends that take spans directly:
-Dynatrace, Splunk, an OpenTelemetry Collector.
+Every traced execution leaves one distributed-trace dataset on the `distributed.tracing`
+log stream — `{"trace": {...}, "annotations": {...}}`, the record the Java engine logs — so
+a log aggregation already stitches the span tree across all four runtimes. Who emits it
+follows the engines' rules, so a span lineage stays continuous from an engine into this host:
+
+- a function execution that is not an RPC emits its own record when it finishes, parented
+  onto the caller's span;
+- an RPC round trip is recorded by the caller's side, never by the responder (the engines'
+  `InboxBase`): the `PostOffice` records a local call with the responder's span, which rides
+  the reply, the caller's span as parent, the responder's `exec_time` and the `round_trip`
+  it measured;
+- a traced call arriving at `/api/event` leaves what a Java or Rust callee leaves for it:
+  `http.request` (`POST /api/event`, the edge's round trip, parented onto the caller's span —
+  the envelope's span, else the `traceparent` header's; the backend's SERVER span),
+  `event.api.service` (the ingress, parented onto the edge) and, for an RPC, the function's
+  round-trip record parented onto the service; a drop-n-forget or streaming function emits
+  its own record under the service. A refused call (403, 404) and a timeout (408) leave the
+  edge record with that status. An untraced call records nothing.
+
+The forwarder is the second sink, for backends that take spans directly: Dynatrace, Splunk,
+an OpenTelemetry Collector.
 
 ```yaml
 otel.forwarding: true
