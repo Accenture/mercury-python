@@ -238,26 +238,60 @@ async def test_business_cid_rides_the_streaming_hop(stream_host: tuple[str, Func
     assert events[-1].body["my_correlation_id"] == "biz-42"
 
 
-async def test_span_lineage_continues_across_the_hop(stream_host: tuple[str, FunctionRegistry]):
-    # the engines' span model: the caller's span rides the outbound envelope;
-    # the receiving execution mints its own span with the caller's as parent
+def _traces(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
+    """The trace sections of the distributed.tracing records a test captured."""
+    out: list[dict[str, Any]] = []
+    for r in caplog.records:
+        if r.name == "distributed.tracing" and isinstance(r.msg, dict):
+            section = r.msg.get("trace")
+            if isinstance(section, dict):
+                out.append(section)
+    return out
+
+
+def _one(traces: list[dict[str, Any]], service: str) -> dict[str, Any]:
+    found = [t for t in traces if t["service"] == service]
+    assert len(found) == 1, f"{service}: {[t['service'] for t in traces]}"
+    return found[0]
+
+
+async def test_span_lineage_continues_across_the_hop(stream_host: tuple[str, FunctionRegistry],
+                                                     caplog: pytest.LogCaptureFixture):
+    # the engines' callee shape: the caller's span rides the outbound envelope; the host
+    # records the /api/event edge's round trip under it (http.request, the backend's SERVER
+    # span), the ingress under the edge (event.api.service), and the producer mints its own
+    # span under the ingress - one connected tree, as a Java or Rust callee leaves it
     url, _ = stream_host
     caller_span = "ab" * 8
-    async with PostOffice() as po:
-        with trace_context("4bf92f3577b34da6a3ce929d0e0e4746", "TEST /lineage",
-                           span_id=caller_span):
-            events = await collect(po, "unit.tokens", url, mode="biz")
+    with caplog.at_level("INFO", logger="distributed.tracing"):
+        async with PostOffice() as po:
+            with trace_context("4bf92f3577b34da6a3ce929d0e0e4746", "TEST /lineage",
+                               span_id=caller_span):
+                events = await collect(po, "unit.tokens", url, mode="biz")
+                await asyncio.sleep(0.05)  # the edge's record follows the response
     body = events[-1].body
-    assert body["parent_span_id"] == caller_span
-    assert body["span_id"] != caller_span
-    assert re.fullmatch(r"[0-9a-f]{16}", body["span_id"]), "16-hex W3C-shaped span"
+    traces = _traces(caplog)
+    edge = _one(traces, "http.request")
+    ingress = _one(traces, "event.api.service")
+    producer = _one(traces, "unit.tokens")
+    assert edge["parent_span_id"] == caller_span
+    assert edge["path"] == "POST /api/event"
+    assert ingress["parent_span_id"] == edge["span_id"]
+    assert ingress["from"] == "http.request"
+    assert producer["parent_span_id"] == ingress["span_id"]
+    assert body["span_id"] == producer["span_id"]
+    assert body["parent_span_id"] == ingress["span_id"]
+    for record in (edge, ingress, producer):
+        assert re.fullmatch(r"[0-9a-f]{16}", record["span_id"]), "16-hex W3C-shaped span"
+    assert edge["exec_time"] >= producer["exec_time"], "the round trip covers the execution"
 
 
 async def test_trace_dataset_emitted_with_engine_shape(
         stream_host: tuple[str, FunctionRegistry],
         caplog: pytest.LogCaptureFixture):
-    # non-RPC executions emit the engines' distributed-trace dataset record;
-    # RPC round-trips are suppressed (their metrics fold into the caller)
+    # every traced execution leaves one record, the engines' way: a non-RPC execution emits
+    # its own; an RPC round trip is recorded by the caller's side (the PostOffice here, with
+    # the responder's span from the reply and the round trip), never by the responder
     url, registry = stream_host
     caller_span = "cd" * 8
     with caplog.at_level("INFO", logger="distributed.tracing"):
@@ -268,29 +302,70 @@ async def test_trace_dataset_emitted_with_engine_shape(
                 rpc = await PostOffice(registry=registry).request(
                     "unit.biz", None, timeout_ms=5000)
                 assert rpc.get_status() == 200
-    def trace_of(message: object) -> dict[str, Any] | None:
-        # a dataset record's message is {"trace": {...}[, "annotations": ...]}
-        section = message.get("trace") if isinstance(message, dict) else None
-        return section if isinstance(section, dict) else None
-
-    sections = (trace_of(r.msg) for r in caplog.records
-                if r.name == "distributed.tracing")
-    traces = [t for t in sections if t is not None]
-    services = [t["service"] for t in traces]
-    assert "unit.biz" not in services, "RPC legs emit no dataset (engine parity)"
-    tokens = [t for t in traces if t["service"] == "unit.tokens"]
-    assert len(tokens) == 1
-    trace = tokens[0]
-    assert trace["id"] == "4bf92f3577b34da6a3ce929d0e0e4747"
-    assert trace["path"] == "TEST /telemetry"
-    assert trace["parent_span_id"] == caller_span
-    assert trace["success"] is True
-    assert trace["status"] == 200
+                await asyncio.sleep(0.05)  # the edge's record follows the response
+    traces = _traces(caplog)
+    biz = _one(traces, "unit.biz")
+    assert biz["parent_span_id"] == caller_span
+    assert biz["span_id"] == rpc.span_id, "the responder's span rides the reply and names the record"
+    assert biz["round_trip"] >= biz["exec_time"]
+    assert biz["path"] == "TEST /telemetry"
+    assert biz["success"] is True
+    assert biz["status"] == 200
+    tokens = _one(traces, "unit.tokens")
+    assert tokens["id"] == "4bf92f3577b34da6a3ce929d0e0e4747"
+    assert tokens["path"] == "TEST /telemetry"
+    assert tokens["parent_span_id"] == _one(traces, "event.api.service")["span_id"]
+    assert tokens["success"] is True
+    assert tokens["status"] == 200
     # an anonymous /api/event caller: the host fills the sender with its own
     # identity, the engines' EventApiService parity
-    assert trace["from"] == "event.api.service"
+    assert tokens["from"] == "event.api.service"
     for key in ("origin", "start", "exec_time", "span_id"):
-        assert key in trace, f"engine dataset key {key}"
+        assert key in tokens, f"engine dataset key {key}"
+
+
+async def test_a_wire_rpc_leaves_the_callee_records(stream_host: tuple[str, FunctionRegistry],
+                                                    caplog: pytest.LogCaptureFixture):
+    # a call through /api/event leaves what a Java or Rust callee leaves: the edge's round
+    # trip (http.request, parented onto the caller's span), the ingress (event.api.service)
+    # and the function's round-trip record with the responder's span - the one the reply
+    # carries, so an engine's inbox chains onto it too
+    url, _ = stream_host
+    caller_span = "ef" * 8
+    with caplog.at_level("INFO", logger="distributed.tracing"):
+        async with PostOffice() as po:
+            with trace_context("4bf92f3577b34da6a3ce929d0e0e4748", "TEST /rpc", span_id=caller_span):
+                reply = await po.request("unit.echo", {"n": 1}, endpoint=url, timeout_ms=5000)
+                refused = await po.request("unit.nowhere", {}, endpoint=url, timeout_ms=5000)
+                await asyncio.sleep(0.05)  # the edge's record follows the response
+    assert reply.get_status() == 200
+    assert reply.body == {"echo": {"n": 1}}
+    assert refused.get_status() == 404
+    traces = _traces(caplog)
+    edges = [t for t in traces if t["service"] == "http.request"]
+    assert sorted(t["status"] for t in edges) == [200, 404], "every traced call leaves its edge record"
+    edge = next(t for t in edges if t["status"] == 200)
+    ingress = next(t for t in traces if t["service"] == "event.api.service"
+                   and t["parent_span_id"] == edge["span_id"])
+    function = _one(traces, "unit.echo")
+    assert edge["parent_span_id"] == caller_span
+    assert ingress["parent_span_id"] == edge["span_id"]
+    assert function["parent_span_id"] == ingress["span_id"]
+    assert function["span_id"] == reply.span_id, "the responder's span rides the reply"
+    assert function["round_trip"] >= function["exec_time"]
+    assert function["from"] == "event.api.service", "an anonymous wire caller"
+    assert function["path"] == "TEST /rpc"
+    assert edge["exec_time"] >= function["round_trip"]
+    refusal = next(t for t in edges if t["status"] == 404)
+    assert refusal["success"] is False
+    assert "unit.nowhere" in refusal["exception"]
+    # an untraced call records nothing
+    caplog.clear()
+    with caplog.at_level("INFO", logger="distributed.tracing"):
+        async with PostOffice() as po:
+            await po.request("unit.echo", {"n": 2}, endpoint=url, timeout_ms=5000)
+            await asyncio.sleep(0.05)
+    assert _traces(caplog) == []
 
 
 async def test_business_cid_injected_on_local_delivery(stream_host: tuple[str, FunctionRegistry]):

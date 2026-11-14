@@ -37,13 +37,14 @@ import base64
 import concurrent.futures
 import json
 import re
+import time
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 
 import aiohttp
 
-from .bus import DeliveryTimeout, get_host_loop
-from .envelope import EventEnvelope
+from .bus import DeliveryTimeout, get_host_loop, round_trip_record
+from .envelope import EventEnvelope, iso_utc
 from .event_stream import (
     DATA,
     ENVELOPE,
@@ -166,27 +167,44 @@ class PostOffice:
             # unmarked = the reply; marked = a streaming target refusing a
             # single-shot caller (the pinned 406)
             sink_route, queue = bus.open_sink()
+            start, started = iso_utc(), time.perf_counter()
             try:
                 bus.publish_envelope(service, event.set_reply_to(sink_route))
                 try:
                     first = await asyncio.wait_for(queue.get(), max(100, timeout_ms) / 1000)
                 except asyncio.TimeoutError:
-                    return EventEnvelope().set_status(408).set_body(
-                        f"Timeout for {timeout_ms} ms")
+                    first = EventEnvelope().set_status(408).set_body(f"Timeout for {timeout_ms} ms")
                 if stream_signal(first) is not None:
-                    return EventEnvelope().set_status(406).set_body(STREAM_CALLER_REQUIRED)
+                    first = EventEnvelope().set_status(406).set_body(STREAM_CALLER_REQUIRED)
+                self._record_round_trip(route, event, first, start, started)
                 return first
             finally:
                 bus.close_sink(sink_route)
         if is_async:
             return bus.publish(service, event.headers, event.body, trace_id=event.trace_id,
                                trace_path=event.trace_path, cid=event.cid, envelope=event)
+        start, started = iso_utc(), time.perf_counter()
         try:
-            return await bus.deliver(service, event.headers, event.body, timeout_ms,
-                                     trace_id=event.trace_id, trace_path=event.trace_path,
-                                     cid=event.cid, envelope=event)
+            reply = await bus.deliver(service, event.headers, event.body, timeout_ms,
+                                      trace_id=event.trace_id, trace_path=event.trace_path,
+                                      cid=event.cid, envelope=event)
         except DeliveryTimeout:
-            return EventEnvelope().set_status(408).set_body(f"Timeout for {timeout_ms} ms")
+            reply = EventEnvelope().set_status(408).set_body(f"Timeout for {timeout_ms} ms")
+        self._record_round_trip(route, event, reply, start, started)
+        return reply
+
+    def _record_round_trip(self, route: str, event: EventEnvelope, reply: EventEnvelope,
+                           start: str, started: float) -> None:
+        """A traced caller's record of a local RPC round trip - the engines' InboxBase:
+        the responder's span from the reply, the caller's span (on the outbound envelope)
+        as the parent, and the round trip measured here. Untraced calls record nothing."""
+        if not event.trace_id:
+            return
+        self._registry.bus.emit(
+            round_trip_record(service=route, sender=event.sender, trace_id=event.trace_id,
+                              trace_path=event.trace_path, reply=reply, parent_span_id=event.span_id,
+                              start=start, round_trip_ms=(time.perf_counter() - started) * 1000),
+            reply.annotations)
 
     async def _call(self, route: str, body: Any, headers: dict[str, str] | None,
                     timeout_ms: int, endpoint: str | None, is_async: bool,

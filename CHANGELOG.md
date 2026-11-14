@@ -91,6 +91,20 @@
    the engines' agent loop (RFC-0011) live in the language packs and not in the engines. Nothing starts one yet: the stdio
    MCP binding is a later step. The README's Scope also says the LLM helper is an application on the package, whose
    `llm.chat` is a stateless chat or a loop turn with a configured transcript store. **Upgrade note:** none.
+4. **Tracing: the host leaves the records a Java or Rust callee leaves, so a span lineage is continuous from an engine
+   into the pack.** A live drive of the engines' agent loop through both packs (2026-11-14) found the pack legs absent
+   from the trace: the calling engine's HTTP client leg is in `skip.rpc.tracing` by default and the host suppressed its
+   own record for every RPC-served execution, so `llm.chat` and an MCP binding's route appeared only as time inside the
+   engine caller's span. Now a traced call arriving at `/api/event` leaves `http.request` (`POST /api/event`, the edge's
+   round trip, parented onto the caller's span - the envelope's span, else the `traceparent` header's; the backend's
+   SERVER span), `event.api.service` (the ingress, parented onto the edge) and, for an RPC, the function's round-trip
+   record with the responder's span and `round_trip`, parented onto the service - the records REST automation,
+   `EventApiService` and `InboxBase` leave in the Java engine; a drop-n-forget or streaming function's own record
+   parents onto the service; a refusal or a timeout leaves the edge record with its status. A reply now carries the
+   responder's span (`WorkerHandler` parity), and the `PostOffice` records a local RPC round trip the way an engine
+   inbox does. An untraced call records nothing. **Upgrade note:** a backend shows three more spans per traced call into
+   the pack and one per traced local RPC; a dashboard that read the pack's response time off a function's span moves to
+   the `http.request` edge record, as for the engines.
 
 ## Version 4.12.21, 10/7/2026
 
