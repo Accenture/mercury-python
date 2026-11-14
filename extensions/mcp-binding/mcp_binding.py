@@ -45,7 +45,7 @@ try:
     import httpx2
     from mcp import ClientSession, types
     from mcp.client.stdio import StdioServerParameters, get_default_environment, stdio_client
-    from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
+    from mcp.client.streamable_http import streamable_http_client
     from mcp.shared.exceptions import MCPError
 except ImportError as missing_sdk:  # the SDK is this app's one dependency - teach the fix
     raise SystemExit(
@@ -354,8 +354,9 @@ class Server:
                 yield streams
         else:
             seconds = spec.timeout_ms / 1000
-            client = create_mcp_http_client(headers=spec.headers or None,
-                                            timeout=httpx2.Timeout(seconds, read=seconds))
+            # the SDK's own HTTP client, with this server's headers and the call timeout as its deadline
+            client = httpx2.AsyncClient(headers=spec.headers or None, timeout=httpx2.Timeout(seconds, read=seconds),
+                                        follow_redirects=True)
             async with client, streamable_http_client(str(spec.url), http_client=client) as streams:
                 yield streams
 
