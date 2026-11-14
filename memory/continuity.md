@@ -187,7 +187,8 @@
   execution's span on the reply (`WorkerHandler` parity) and `client.py` records a local RPC round trip as `InboxBase` does;
   the worker-side record of an RPC-served execution stays suppressed. Re-driven the same day on the `diagram-assistant`
   graph: 20 records per run, every parent owned by a record, in both packs (the engines'
-  `docs/test-reports/agent-loop-trace-lineage.md`; the Node twin in lockstep). **How to apply:** the rule is who emits a
+  `docs/test-reports/agent-loop-trace-lineage.md`). PR #53 MERGED 2026-11-14 (merge `7d75573`); the Node twin is
+  mercury-nodejs #120. **How to apply:** the rule is who emits a
   record, never whether one exists - every traced execution leaves exactly one; before changing a host or client path, ask
   which side records it in the Java engine and mirror that side; a lineage check parses every record of the trace from every
   process and verifies each parent is a span some record owns.
