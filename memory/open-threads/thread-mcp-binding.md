@@ -6,4 +6,9 @@
   shape - every bound route an alias of the one function `mcp.tool` - is PR #52, MERGED 2026-11-14 (merge `25c2fc6`; the Node twin of that shape is Eric's call). Next: the pack's catch-up release carries it
   ([[pack-catch-up-4-12-25]]). Fact: [[mcp-binding-route-per-tool]].
   → serves: vision-mercury-python
+  **Reshaped 2026-11-16 (Eric's review; the engines' `draft-design-specs/agent-tool-use.md`):** a `@preload` function per
+  tool bound in code through `bind(server, tool, schema_sha256)`, no generic route, the server file servers-only, the
+  extension's own `mermaid.render` out of the box; the shared vectors version 2. Built here first (49 tests; the boot and
+  a render driven live against the Mermaid server), the Node twin in lockstep, then the Playground calls `mermaid.render`.
+  Fact: [[mcp-binding-function-per-tool]].
   <!-- id: mcp-binding | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: working | origin: 2026-11-14-073523 -->

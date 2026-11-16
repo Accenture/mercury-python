@@ -1,10 +1,28 @@
 """
-The MCP binding - a polyglot function host that serves the tools of MCP servers as composable
-routes, one route per allowlisted remote tool (RFC-0011 / ADR-0033, section 9 of the agent loop's
-design spec). The engines stay MCP-free: a graph's agent loop (``llm.run``) names a route in its
-tool catalog, the engine reaches it through declarative Event-over-HTTP like any other function,
-and this app issues ``tools/call`` to the server behind it. A stdio server runs as a subprocess of
-this process, never of an engine, and its credentials stay in this process's environment.
+The MCP binding - a library and a function host that serves the tools of MCP servers as composable
+functions, one ``@preload`` function per tool, bound in code to the remote tool through this module's
+encapsulated MCP client (RFC-0011 / ADR-0033; the engines' ``draft-design-specs/agent-tool-use.md``).
+The engines stay MCP-free: a graph's agent loop (``llm.run``) names a route in its tool catalog, the
+engine reaches it through declarative Event-over-HTTP like any other function, and the function here
+issues ``tools/call`` to the server behind it. A stdio server runs as a subprocess of this process,
+never of an engine, and its credentials stay in this process's environment.
+
+A tool is declared where every route is declared - in the code::
+
+    render = bind("mermaid", "validate_and_render_mermaid_diagram", schema_sha256="5ae6d75d...")
+
+    @preload(route="mermaid.render", instances=10)
+    async def mermaid_render(_headers, body):
+        return await render(body)
+
+``bind`` names the server (as the server file names it), the remote tool and the SHA-256 digest of
+the tool's input schema, and returns the tool as an async callable. Boot connects every server a
+function binds a tool of, lists its tools and verifies every binding before the first request:
+a server that is not configured, a tool the server does not offer or an input schema whose digest
+differs from the pinned one stops the application by name, so a server-side change stops a deploy
+instead of becoming run-time errors a model improvises around. A route names the capability, never
+the transport: a tool may start as an MCP tool and later be implemented another way, and the graph
+must not know.
 
 Run:  pip install 'mercury-composable[mcp]'
       mercury-serve extensions/mcp-binding/mcp_binding.py
@@ -12,14 +30,11 @@ Run:  pip install 'mercury-composable[mcp]'
 Servers are named in ``resources/mcp-servers.yml`` (the ``mcp.servers`` key of ``application.yml``
 names the file): each has its transport (``stdio`` with a command, or ``http`` with a URL), its
 credential references (``${ENV_VAR}`` placeholders, resolved from this process's environment at
-boot and never logged), and its allowlist mapping each remote tool to a route with the SHA-256
-digest of the tool's input schema. Boot fails fast when an allowlisted tool is missing from
-``tools/list`` or its schema no longer matches the digest, so a server-side change stops a deploy
-instead of becoming run-time errors a model improvises around.
+boot and never logged) and its call timeout - what is environment-specific. The tools are in the code.
 
     python extensions/mcp-binding/mcp_binding.py describe [server ...]
 
-prints each server's tools with their digests and a catalog row to paste onto the graph, for the
+prints each server's tools with their digests, the ``bind`` line to paste and a catalog row for the
 developer to review: the model sees the graph's descriptions, never the server's.
 
 The Node.js twin (mercury-nodejs extensions/mcp-binding) speaks the same contract, and both are
@@ -34,7 +49,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -52,17 +67,7 @@ except ImportError as missing_sdk:  # the SDK is this app's one dependency - tea
         "The MCP binding needs the MCP SDK - pip install 'mercury-composable[mcp]'"
     ) from missing_sdk
 
-from mercury_composable import (
-    AppException,
-    Body,
-    app_config,
-    default_registry,
-    get_logger,
-    get_trace,
-    platform,
-    preload,
-)
-from mercury_composable.registry import validate_route
+from mercury_composable import AppException, Body, app_config, get_logger, platform, preload
 
 log = get_logger(__name__)
 
@@ -75,34 +80,33 @@ MIN_CALL_TIMEOUT_MS = 1000
 TRANSPORT_STDIO = "stdio"
 TRANSPORT_HTTP = "http"
 TRANSPORTS = (TRANSPORT_STDIO, TRANSPORT_HTTP)
-SERVER_KEYS = ("transport", "command", "args", "env", "cwd", "url", "headers", "timeout_ms",
-               "instances", "tools")
-TOOL_KEYS = ("route", "schema_sha256")
+SERVER_KEYS = ("transport", "command", "args", "env", "cwd", "url", "headers", "timeout_ms")
 # the MCP specification's recommendation for a tool name
 TOOL_NAME = re.compile(r"[A-Za-z0-9_.-]{1,128}")
 DIGEST = re.compile(r"[0-9a-f]{64}")
-# the API-safe name a graph's catalog row may use for a route, derived for the describe output
+# the API-safe name a graph's catalog row may use, derived for the describe output
 API_SAFE = re.compile(r"[^a-zA-Z0-9_-]")
 
 
 class BindingError(Exception):
-    """A configuration or boot failure: the application must not start."""
+    """A declaration, configuration or boot failure: the application must not start."""
 
 
 @dataclass(frozen=True)
 class ToolBinding:
-    """One allowlisted remote tool and the route that serves it."""
-    name: str
-    route: str
+    """One tool a function of this application binds: the server, the remote tool and the pinned
+    digest of the tool's input schema."""
+    server: str
+    tool: str
     schema_sha256: str
 
 
 @dataclass(frozen=True)
 class ServerSpec:
-    """One configured MCP server."""
+    """One configured MCP server - what is environment-specific: the transport, the credential
+    references and the call timeout. The tools are declared in the code."""
     name: str
     transport: str
-    tools: tuple[ToolBinding, ...]
     command: str | None = None
     args: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
@@ -110,7 +114,6 @@ class ServerSpec:
     url: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
     timeout_ms: int = DEFAULT_CALL_TIMEOUT_MS
-    instances: int = DEFAULT_INSTANCES
 
 
 # --- the pure half: digests, verification and the result mapping (shared vectors) -----------
@@ -123,29 +126,31 @@ def schema_digest(schema: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def verify(spec: ServerSpec, offered: list[dict[str, Any]]) -> list[tuple[ToolBinding, dict[str, Any]]]:
-    """Match the allowlist against the tools a server offers (``tools/list`` as plain maps with
-    ``name``, ``description`` and ``input_schema``). Every allowlisted tool must be offered and its
-    input schema must hash to the pinned digest; the first failure names the tool."""
+def verify(server: str, bindings: Sequence[ToolBinding],
+           offered: list[dict[str, Any]]) -> list[tuple[ToolBinding, dict[str, Any]]]:
+    """Match the tools bound to a server against the tools it offers (``tools/list`` as plain maps
+    with ``name``, ``description`` and ``input_schema``). Every bound tool must be offered and its
+    input schema must hash to the pinned digest; the first failure, in declaration order, names
+    the tool."""
     by_name = {str(tool.get("name")): tool for tool in offered}
     bound: list[tuple[ToolBinding, dict[str, Any]]] = []
-    for binding in spec.tools:
-        tool = by_name.get(binding.name)
+    for binding in bindings:
+        tool = by_name.get(binding.tool)
         if tool is None:
             raise BindingError(
-                f"MCP server {spec.name} does not offer the tool {binding.name} - "
+                f"MCP server {server} does not offer the tool {binding.tool} - "
                 f"it offers {', '.join(sorted(by_name)) or 'no tools'}")
         digest = schema_digest(tool.get("input_schema"))
         if digest != binding.schema_sha256:
             raise BindingError(
-                f"MCP server {spec.name} changed the input schema of {binding.name} - "
-                f"its digest is now {digest}, the configuration pins {binding.schema_sha256}")
+                f"MCP server {server} changed the input schema of {binding.tool} - "
+                f"its digest is now {digest}, the binding pins {binding.schema_sha256}")
         bound.append((binding, tool))
     return bound
 
 
 def tool_result(result: dict[str, Any]) -> Any:
-    """The reply of a route from a ``CallToolResult`` as a plain map (``content``,
+    """The reply of a function from a ``CallToolResult`` as a plain map (``content``,
     ``structured_content``, ``is_error``): the structured content when the server gives it, else the
     text of the content blocks joined by newlines; a result marked ``is_error`` is a 400 carrying the
     server's text, which the agent loop returns to the model as that call's error."""
@@ -182,7 +187,7 @@ def tool_as_plain(tool: types.Tool) -> dict[str, Any]:
     return {"name": tool.name, "description": tool.description or "", "input_schema": tool.input_schema}
 
 
-# --- configuration ----------------------------------------------------------------------
+# --- configuration: the servers ----------------------------------------------------------
 
 
 def _resolve(value: Any) -> Any:
@@ -207,50 +212,20 @@ def _str_map(server: str, key: str, value: Any) -> dict[str, str]:
     return resolved
 
 
-def _tools(server: str, value: Any) -> tuple[ToolBinding, ...]:
-    if not isinstance(value, dict) or not value:
-        raise BindingError(f"MCP server {server}: tools must map at least one remote tool name to its route and digest")
-    bindings: list[ToolBinding] = []
-    routes: set[str] = set()
-    for name, item in value.items():
-        name = str(name)
-        if not TOOL_NAME.fullmatch(name):
-            raise BindingError(f"MCP server {server}: '{name}' is not a tool name (letters, digits, '_', '.' and '-', up to 128)")
-        if not isinstance(item, dict):
-            raise BindingError(f"MCP server {server}: tool {name} must be a map with route and schema_sha256")
-        unknown = sorted(set(item) - set(TOOL_KEYS))
-        if unknown:
-            raise BindingError(f"MCP server {server}: tool {name} has unknown keys {', '.join(unknown)} - the keys are route and schema_sha256")
-        try:
-            route = validate_route(str(item.get("route") or ""))
-        except ValueError as exc:
-            raise BindingError(f"MCP server {server}: tool {name}: {exc}") from exc
-        if route in routes:
-            raise BindingError(f"MCP server {server}: the route {route} is bound twice")
-        routes.add(route)
-        digest = str(item.get("schema_sha256") or "").lower()
-        if not DIGEST.fullmatch(digest):
-            raise BindingError(
-                f"MCP server {server}: tool {name} needs schema_sha256, the 64-hex digest of its input schema "
-                f"- run 'python mcp_binding.py describe {server}' to print it")
-        bindings.append(ToolBinding(name=name, route=route, schema_sha256=digest))
-    return tuple(bindings)
-
-
 def _server(name: str, value: Any, default_timeout_ms: int) -> ServerSpec:
     if not isinstance(value, dict):
         raise BindingError(f"MCP server {name} must be a map")
     unknown = sorted(set(value) - set(SERVER_KEYS))
     if unknown:
-        raise BindingError(f"MCP server {name} has unknown keys {', '.join(unknown)} - the keys are {', '.join(SERVER_KEYS)}")
+        hint = " - the tools are bound in the code, not in this file" if "tools" in unknown else ""
+        raise BindingError(f"MCP server {name} has unknown keys {', '.join(unknown)} - the keys are "
+                           f"{', '.join(SERVER_KEYS)}{hint}")
     transport = str(value.get("transport") or "")
     if transport not in TRANSPORTS:
         raise BindingError(f"MCP server {name}: transport must be stdio or http")
     timeout_ms = int(value.get("timeout_ms") or default_timeout_ms)
     if timeout_ms < MIN_CALL_TIMEOUT_MS:
         raise BindingError(f"MCP server {name}: timeout_ms must be at least {MIN_CALL_TIMEOUT_MS}")
-    instances = int(value.get("instances") or DEFAULT_INSTANCES)
-    tools = _tools(name, value.get("tools"))
     if transport == TRANSPORT_STDIO:
         command = _resolve(value.get("command"))
         if not command:
@@ -262,17 +237,16 @@ def _server(name: str, value: Any, default_timeout_ms: int) -> ServerSpec:
         cwd = _resolve(value.get("cwd"))
         if value.get("url") or value.get("headers"):
             raise BindingError(f"MCP server {name}: url and headers belong to an http server")
-        return ServerSpec(name=name, transport=transport, tools=tools, command=str(command), args=args,
+        return ServerSpec(name=name, transport=transport, command=str(command), args=args,
                           env=_str_map(name, "env", value.get("env")), cwd=None if cwd is None else str(cwd),
-                          timeout_ms=timeout_ms, instances=instances)
+                          timeout_ms=timeout_ms)
     url = _resolve(value.get("url"))
     if not url:
         raise BindingError(f"MCP server {name}: an http server needs a url")
     if value.get("command") or value.get("args") or value.get("env") or value.get("cwd"):
         raise BindingError(f"MCP server {name}: command, args, env and cwd belong to a stdio server")
-    return ServerSpec(name=name, transport=transport, tools=tools, url=str(url),
-                      headers=_str_map(name, "headers", value.get("headers")),
-                      timeout_ms=timeout_ms, instances=instances)
+    return ServerSpec(name=name, transport=transport, url=str(url),
+                      headers=_str_map(name, "headers", value.get("headers")), timeout_ms=timeout_ms)
 
 
 def load_servers(path: str | None = None) -> list[ServerSpec]:
@@ -294,16 +268,8 @@ def load_servers(path: str | None = None) -> list[ServerSpec]:
     if not isinstance(servers, dict):
         raise BindingError(f"{file} must hold a 'servers' map")
     if not servers:
-        log.warning("No MCP server configured in %s - the binding serves no tool route", file)
-    specs = [_server(str(name), value, default_timeout) for name, value in servers.items()]
-    routes: dict[str, str] = {}
-    for spec in specs:
-        for binding in spec.tools:
-            owner = routes.get(binding.route)
-            if owner:
-                raise BindingError(f"The route {binding.route} is bound by both {owner} and {spec.name}")
-            routes[binding.route] = spec.name
-    return specs
+        log.warning("No MCP server configured in %s - a function that binds a tool cannot start", file)
+    return [_server(str(name), value, default_timeout) for name, value in servers.items()]
 
 
 # --- one connection per server, held by its own task --------------------------------------
@@ -311,11 +277,12 @@ def load_servers(path: str | None = None) -> list[ServerSpec]:
 
 class Server:
     """One MCP server: its session lives in a task of its own, so the transport's context managers
-    are entered and left on one task (the SDK's cancel scopes require it), and every route of the
-    server shares the session."""
+    are entered and left on one task (the SDK's cancel scopes require it), and every function bound
+    to the server shares the session."""
 
-    def __init__(self, spec: ServerSpec):
+    def __init__(self, spec: ServerSpec, bindings: Sequence[ToolBinding] = ()):
         self.spec = spec
+        self.bindings = tuple(bindings)
         self.session: ClientSession | None = None
         self.bound: list[tuple[ToolBinding, dict[str, Any]]] = []
         self._ready = asyncio.Event()
@@ -370,7 +337,7 @@ class Server:
             ):
                 await session.initialize()
                 offered = await _list_tools(session)
-                self.bound = verify(self.spec, offered)
+                self.bound = verify(self.spec.name, self.bindings, offered)
                 self.session = session
                 self._ready.set()
                 await self._closing.wait()
@@ -427,74 +394,106 @@ async def _list_tools(session: ClientSession) -> list[dict[str, Any]]:
             return offered
 
 
-# --- the application: boot, the tool function and the health check ------------------------------
+# --- the client: bind a tool, boot the servers, report the health ------------------------------
+
+
+class BoundTool:
+    """A remote tool as an async callable - what ``bind`` returns and a function calls with the
+    tool's arguments (a map, else a 400). The reply is the result as ``tool_result`` shapes it; a
+    server that is not connected is a 503."""
+
+    def __init__(self, client: Binding, declared: ToolBinding):
+        self._client = client
+        self.declared = declared
+
+    @property
+    def server(self) -> str:
+        return self.declared.server
+
+    @property
+    def tool(self) -> str:
+        return self.declared.tool
+
+    async def __call__(self, arguments: Body) -> Any:
+        if not isinstance(arguments, dict):
+            raise AppException(400, f"The arguments of {self.tool} must be a map")
+        server = self._client.servers.get(self.server)
+        if server is None:
+            raise AppException(503, f"MCP server {self.server} is not connected")
+        return await server.call(self.tool, arguments)
 
 
 class Binding:
+    """The encapsulated MCP client of this application: the tools its functions bind, and the
+    servers' sessions once booted."""
+
     def __init__(self) -> None:
         self.servers: dict[str, Server] = {}
-        # what each bound route serves - the server and the allowlisted tool - filled at boot
-        self.routes: dict[str, tuple[Server, ToolBinding]] = {}
+        # every tool a function of this application binds, in declaration order
+        self.declared: list[ToolBinding] = []
+
+    def bind(self, server: str, tool: str, *, schema_sha256: str) -> BoundTool:
+        """Declare that a function of this application serves a tool of a server: the server as the
+        server file names it, the remote tool's name and the digest of its input schema (``describe``
+        prints it). Boot verifies the declaration against the live server before the first request."""
+        name = str(server or "").strip()
+        if not name:
+            raise BindingError(f"bind() needs the server's name for the tool {tool} - the one the server file uses")
+        if not TOOL_NAME.fullmatch(str(tool or "")):
+            raise BindingError(f"'{tool}' is not a tool name (letters, digits, '_', '.' and '-', up to 128)")
+        digest = str(schema_sha256 or "").lower()
+        if not DIGEST.fullmatch(digest):
+            raise BindingError(f"The tool {tool} of {name} needs schema_sha256, the 64-hex digest of its input schema "
+                               f"- run 'python mcp_binding.py describe {name}' to print it")
+        declared = ToolBinding(server=name, tool=str(tool), schema_sha256=digest)
+        self.declared.append(declared)
+        return BoundTool(self, declared)
+
+    def declared_for(self, server: str) -> tuple[ToolBinding, ...]:
+        return tuple(d for d in self.declared if d.server == server)
 
     async def boot(self) -> None:
-        """Connect every configured server, verify its allowlist and register the routes - before
-        the first request; a failure stops the application with its reason."""
+        """Connect every server a function binds a tool of and verify every binding - before the
+        first request; a failure stops the application with its reason."""
         try:
             specs = load_servers()
+            configured = {spec.name for spec in specs}
+            for declared in self.declared:
+                if declared.server not in configured:
+                    raise BindingError(f"No MCP server named {declared.server} is configured - "
+                                       f"a function binds its tool {declared.tool}")
             for spec in specs:
-                server = Server(spec)
+                bindings = self.declared_for(spec.name)
+                if not bindings:
+                    log.warning("MCP server %s: no function binds a tool of it - not connected", spec.name)
+                    continue
+                server = Server(spec, bindings)
                 await server.start()
                 self.servers[spec.name] = server
-                for tool, _schema in server.bound:
-                    # the route is an alias of mcp_tool - the one function under the configured
-                    # name, the engines' Platform.register shape - with the server's instances
-                    self.routes[tool.route] = (server, tool)
-                    default_registry.register(tool.route, mcp_tool, instances=spec.instances)
-                    log.info("MCP server %s: tool %s served as %s", spec.name, tool.name, tool.route)
-            log.info("MCP binding ready - %d server(s), %d route(s)", len(self.servers), len(self.routes))
+                for declared, _schema in server.bound:
+                    log.info("MCP server %s: tool %s bound", spec.name, declared.tool)
+            bound = sum(len(server.bound) for server in self.servers.values())
+            log.info("MCP binding ready - %d server(s), %d bound tool(s)", len(self.servers), bound)
         except Exception as exc:  # noqa: BLE001 - any boot failure stops the application, by name
             leaf = _leaf(exc)
             log.error("MCP binding cannot start - %s", leaf)
             await self.shutdown()
             raise SystemExit(1) from leaf
 
-    def bound(self, route: str | None) -> tuple[Server, ToolBinding]:
-        """The server and the allowlisted tool behind a bound route; a 404 for any other route."""
-        found = self.routes.get(route or "")
-        if found is None:
-            raise AppException(404, f"No MCP tool is bound to the route {route or '(none)'}")
-        return found
-
     async def shutdown(self) -> None:
         for server in list(self.servers.values()):
             await server.close()
         self.servers.clear()
-        self.routes.clear()
 
 
 binding = Binding()
-
-
-@preload(route="mcp.tool", instances=DEFAULT_INSTANCES, private=True)
-async def mcp_tool(_headers: dict[str, str], body: Body) -> Any:
-    """The one function behind every bound route. The boot registers each allowlisted tool's route
-    as an alias of this function (the engines' ``Platform.register``: one function, several
-    routes), so a call learns the route it was addressed to from its execution context -
-    ``get_trace().route``, the pack's counterpart of the engines' read-only ``my_route`` header -
-    and the route names the server and the remote tool. The event body is the tool's arguments,
-    a map; the reply is the result as ``tool_result`` shapes it. ``mcp.tool`` itself is private
-    and bound to no tool: it declares the function, and a call to it by that name is a 404."""
-    info = get_trace()
-    server, tool = binding.bound(info.route if info else None)
-    if not isinstance(body, dict):
-        raise AppException(400, f"The arguments of {tool.name} must be a map")
-    return await server.call(tool.name, body)
+bind = binding.bind
 
 
 @preload(route="mcp.health", instances=5, private=True)
 async def mcp_health(headers: dict[str, str], _body: Body) -> Any:
     """Health check speaking the engines' interface contract (type=info / type=health): which
-    servers are configured, how many tools each serves, and whether each is connected."""
+    servers are connected and how many tools the functions of this application bind on each."""
     if headers.get("type") == "info":
         return {
             "service": "mcp.binding",
@@ -510,7 +509,26 @@ async def mcp_health(headers: dict[str, str], _body: Body) -> Any:
     return "mcp.binding is running fine"
 
 
-# --- describe: the digests and the catalog rows for the developer ------------------------------
+# --- the functions: a tool of an MCP server is a composable function of this application -------
+#
+# Declare each tool with bind(server, tool, schema_sha256) - the server as the server file names
+# it, the remote tool's name and the digest `describe` prints - and call it from an ordinary
+# @preload function, which may pass the arguments through, shape them or add behaviour around the
+# call. Name the route after the capability, never the transport.
+
+render_mermaid = bind("mermaid", "validate_and_render_mermaid_diagram",
+                      schema_sha256="5ae6d75d4ecfab919d9ef934bd679605bdbfc8b90b4d46f4d9dbd54d19c275ad")
+
+
+@preload(route="mermaid.render", instances=DEFAULT_INSTANCES)
+async def mermaid_render(_headers: dict[str, str], body: Body) -> Any:
+    """Validate a Mermaid diagram and render it as SVG - the tool of the public Mermaid Chart MCP
+    server the default server file names. The body is the tool's arguments (``diagramCode``);
+    the reply is the server's structured result."""
+    return await render_mermaid(body)
+
+
+# --- describe: the digests, the bind lines and the catalog rows for the developer ----------------
 
 
 def _api_safe(name: str) -> str:
@@ -518,22 +536,19 @@ def _api_safe(name: str) -> str:
 
 
 async def _describe(spec: ServerSpec) -> list[dict[str, Any]]:
-    server = Server(spec)
-    server_spec_without_check = ServerSpec(**{**spec.__dict__, "tools": ()})
-    probe = Server(server_spec_without_check)
+    probe = Server(spec)
     await probe.start()
     try:
         session = probe.session
         assert session is not None
-        offered = await _list_tools(session)
+        return await _list_tools(session)
     finally:
         await probe.close()
-    del server
-    return offered
 
 
 def describe(names: list[str]) -> int:
-    """Print each server's tools, their input-schema digests and a catalog row for the graph."""
+    """Print each server's tools, their input-schema digests, the ``bind`` line that declares each
+    and a catalog row for the graph."""
     try:
         specs = load_servers()
     except BindingError as exc:
@@ -546,21 +561,22 @@ def describe(names: list[str]) -> int:
         return 1
     for spec in wanted:
         offered = asyncio.run(_describe(spec))
-        configured = {b.name: b for b in spec.tools}
+        declared = {d.tool: d for d in binding.declared_for(spec.name)}
         print(f"# MCP server {spec.name} ({spec.transport}) offers {len(offered)} tool(s)")
         for tool in offered:
             name = tool["name"]
             digest = schema_digest(tool["input_schema"])
-            bound = configured.get(name)
-            state = ("bound as " + bound.route + (" (digest ok)" if bound.schema_sha256 == digest else " (DIGEST CHANGED)")) if bound else "not allowlisted"
+            bound = declared.get(name)
+            state = ("bound" + (" (digest ok)" if bound.schema_sha256 == digest else " (DIGEST CHANGED)")) if bound else "not bound"
             print(f"\n## {name} - {state}\nschema_sha256: {digest}")
+            print(f'bind("{spec.name}", "{name}", schema_sha256="{digest}")')
             row = {
                 "name": _api_safe(name),
-                "route": bound.route if bound else "<route>",
+                "route": "<the route of the function that binds it>",
                 "description": tool["description"],
                 "input_schema": tool["input_schema"],
             }
-            print("catalog row (review the description before the graph carries it):")
+            print("catalog row (name your function's route; review the description before the graph carries it):")
             print(json.dumps(row, indent=2, ensure_ascii=False))
     return 0
 

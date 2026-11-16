@@ -1,10 +1,12 @@
-# MCP servers by name. A graph never carries a command line or a URL: its tool catalog names the
-# ROUTE each remote tool is served as, and this file maps the route to the server and the tool.
+# MCP servers by name - what is environment-specific: the transport, the credential references
+# and the call timeout. The tools are not here: a tool is a function of the application, declared
+# in mcp_binding.py with bind(server, tool, schema_sha256) and served under a route of its own,
+# so a graph's tool catalog names the route like any other composable function.
 #
-# Every allowlisted tool pins the SHA-256 digest of its input schema (canonical JSON: keys sorted,
-# no spaces). Boot fails when the server no longer offers the tool or its schema changed, so a
-# server-side change stops a deploy instead of becoming run-time errors. Print the digests, and a
-# catalog row to review and paste onto the graph, with:
+# Every binding pins the SHA-256 digest of the tool's input schema (canonical JSON: keys sorted,
+# no spaces). Boot fails when a bound server is not configured here, no longer offers the tool or
+# changed its schema, so a server-side change stops a deploy instead of becoming run-time errors.
+# Print each tool's digest and the bind line to paste with:
 #
 #     python extensions/mcp-binding/mcp_binding.py describe [server ...]
 #
@@ -14,25 +16,22 @@
 # http server is reached at its URL with the headers listed.
 #
 # Keys per server: transport (stdio | http), command, args, env, cwd (stdio), url, headers (http),
-# timeout_ms (per call, at least 1000; default mcp.call.timeout.ms), instances (per route, default
-# 10), tools (remote tool name -> {route, schema_sha256}). Unknown keys are refused by name.
+# timeout_ms (per call, at least 1000; default mcp.call.timeout.ms). Unknown keys are refused by
+# name. A configured server no function binds a tool of is not connected (a warning at boot).
 #
-servers: {}
-  # Replace the empty map with your servers. The samples below are the shape, not a running
-  # configuration: fill the digests from `describe` before starting the binding, or the boot
-  # refuses them by name. With no server configured the binding starts and serves no tool route.
+servers:
+  # The public Mermaid Chart MCP endpoint, reached over streamable HTTP with no credential: the
+  # server behind the extension's own function mermaid.render (the Java engine's diagram-assistant
+  # example calls it). Replace or extend with your servers, and declare their tools in the code.
+  mermaid:
+    transport: http
+    url: 'https://chatgpt.mermaid.ai/anthropic/mcp'
+    timeout_ms: 20000
   #
   # documents:
   #   transport: stdio
   #   command: npx
   #   args: ['-y', '@modelcontextprotocol/server-filesystem', '/srv/documents']
-  #   tools:
-  #     read_text_file:
-  #       route: docs.read.text.file
-  #       schema_sha256: '<64 hex from describe>'
-  #     list_directory:
-  #       route: docs.list.directory
-  #       schema_sha256: '<64 hex from describe>'
   #
   # tracker:
   #   transport: http
@@ -40,8 +39,3 @@ servers: {}
   #   headers:
   #     Authorization: 'Bearer ${TRACKER_MCP_TOKEN}'
   #   timeout_ms: 20000
-  #   tools:
-  #     create_issue:
-  #       route: tracker.create.issue
-  #       schema_sha256: '<64 hex from describe>'
-  #

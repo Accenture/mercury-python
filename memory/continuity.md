@@ -171,7 +171,23 @@
   engines, not taken. **How to apply:** a new MCP tool for an agent is a server entry and an allowlist
   row here plus a catalog row on the graph, never engine code; a schema change is a digest the developer re-reviews; a
   credential is a reference in the server file, resolved from this process's environment.
-  <!-- id: mcp-binding-route-per-tool | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: working | origin: 2026-11-14-073523 -->
+  <!-- id: mcp-binding-route-per-tool | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: superseded | superseded-by: mcp-binding-function-per-tool | origin: 2026-11-14-073523 -->
+
+- **A tool of an MCP server is a composable function of the binding, declared in code (Eric's review 2026-11-16; the
+  engines' `draft-design-specs/agent-tool-use.md`; supersedes the allowlist-row shape of 2026-11-14).**
+  `extensions/mcp-binding/mcp_binding.py` is a library and a function host: `bind(server, tool, schema_sha256=...)` declares
+  a binding and returns the tool as an async callable, and an ordinary `@preload` function calls it - the extension's own
+  `mermaid.render` binds the one tool of the public Mermaid Chart MCP endpoint named in the default server file, so the
+  binding serves a tool out of the box. The server file keeps what is environment-specific (transport, command or URL,
+  credential references, timeout) and refuses a `tools` allowlist by name; boot connects every server a function binds a tool
+  of, lists its tools and stops the application by name when a bound server is not configured, a tool is not offered or its
+  digest changed; a configured server nobody binds is not connected. `mcp.tool` is no longer a route; `mcp.health` stays. A
+  route names the capability, never the transport: a tool may start as an MCP tool and later be implemented another way, and
+  the graph must not know. The shared vectors are version 2 (`verify_cases` over declared bindings), byte-identical with the
+  Node twin. **How to apply:** a new tool is a `bind` line, a few-line `@preload` function, a catalog row on the graph and an
+  Event-over-HTTP entry; a schema change is a digest re-reviewed next to the function; a new server is a server-file entry;
+  never a route in a YAML file and never engine code.
+  <!-- id: mcp-binding-function-per-tool | created: 2026-11-16 | last_used: 2026-11-16 | uses: 1 | tier: working | origin: 2026-11-16-043838 | supersedes: mcp-binding-route-per-tool -->
 
 - **A traced call into the pack leaves the records a Java or Rust callee leaves, so a span lineage is continuous from an
   engine into the pack (2026-11-14; Eric's criterion: for OpenTelemetry to be certified, the span lineage ought to be

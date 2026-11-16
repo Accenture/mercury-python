@@ -5,7 +5,7 @@
 #   mercury-serve extensions/mcp-binding/mcp_binding.py -Dmcp.servers=/etc/mercury/mcp-servers.yml
 
 application.name: 'mcp-binding'
-info.app.description: 'Mercury Composable MCP binding (one composable route per allowlisted MCP tool)'
+info.app.description: 'Mercury Composable MCP binding (a composable function per MCP tool)'
 
 rest.server.port: 8088
 
