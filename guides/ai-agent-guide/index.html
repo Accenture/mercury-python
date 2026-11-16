@@ -1678,6 +1678,8 @@ authored on the engine — use the
 <li><code>raise AppException(status, message)</code> → envelope status + message (portable error).
   Unexpected exception → 500 + message + stack. Never return HTTP-shaped dicts.</li>
 <li><code>get_trace()</code> → <code>TraceInfo(trace_id, trace_path, cid)</code> or <code>None</code>.</li>
+<li><code>route</code> takes one name or a comma-separated list: aliases of one function, same
+  <code>instances</code> and visibility; <code>get_trace().route</code> is the name it was called as.</li>
 <li>Reserved inbound header <code>my_correlation_id</code> = the caller's business correlation id
   (read-only). Never send headers named <code>my_*</code> or <code>x-event-api</code>.</li>
 </ul>

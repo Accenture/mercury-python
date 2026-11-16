@@ -1633,8 +1633,11 @@ one way in the aggregator:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>2026-08-24 10:15:30.123 INFO  my_app:42 - Loaded PUBLIC hello.python, instances=10
 </code></pre></div>
 <p><code>log.format</code> carries the engines' three presentations: <code>text</code> (default), <code>json</code>
-(pretty-printed) and <code>compact</code> (single-line JSONL for log aggregators). The level
-comes from the <code>LOG_LEVEL</code> environment variable when set, else <code>log.level</code>.</p>
+(pretty-printed) and <code>compact</code> (single-line JSONL for log aggregators). A JSON line
+carries <code>time</code>, <code>level</code>, <code>source</code> (the emitting logger and line, <code>name:line</code>, under the
+label the Java engine's JSON layout uses) and <code>message</code>, plus <code>context</code> inside a traced
+request and <code>exception</code> when one is attached. The level comes from the <code>LOG_LEVEL</code>
+environment variable when set, else <code>log.level</code>.</p>
 <h2 id="distributed-tracing-the-opentelemetry-forwarder-opt-in">Distributed tracing — the OpenTelemetry forwarder (opt-in)<a class="headerlink" href="#distributed-tracing-the-opentelemetry-forwarder-opt-in" title="Permanent link">&para;</a></h2>
 <p>Every traced execution leaves one distributed-trace dataset on the <code>distributed.tracing</code>
 log stream — <code>{"trace": {...}, "annotations": {...}}</code>, the record the Java engine logs — so

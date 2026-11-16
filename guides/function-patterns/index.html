@@ -1619,6 +1619,10 @@
   and reply headers.</li>
 <li><strong>Route names</strong> — lowercase letters, digits, period, hyphen, underscore, with at
   least one period (<code>hello.python</code>, not <code>HelloPython</code>).</li>
+<li><strong>Route aliases</strong> — <code>route</code> takes one name or a comma-separated list, the engines'
+  <code>@PreLoad(route = "hello.declarative, hello.world")</code>: every name is registered as the
+  same function with the same <code>instances</code> and visibility, and a handler reads the name
+  it was called as from <code>get_trace().route</code> (the engines' <code>my_route</code>).</li>
 <li><strong>Statelessness</strong> — anything a handler must keep belongs to the caller's flow model
   or graph state machine, never to module globals.</li>
 </ul>
