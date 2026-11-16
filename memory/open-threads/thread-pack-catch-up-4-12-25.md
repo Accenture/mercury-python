@@ -7,6 +7,7 @@
   twins merged the same day as mercury-nodejs #114 (`62958b5`) and #115 (`d6a0bd9`). Since 2026-11-14: #51 to #53 (the MCP binding and the trace records, [[mcp-binding]] and
   [[trace-records-engine-parity]]) and, 2026-11-16, #54 (route aliases in `@preload` and the JSON log `source` label,
   the Java engine's shapes; the Node twin mercury-nodejs #121) and #55 (the MCP binding's function-per-tool shape, the
-  twin mercury-nodejs #122), and #56 (the code-quality round of the local SonarQube scan, the twin mercury-nodejs #123). The previous catch-up's close record is [[pack-catch-up-release]].
+  twin mercury-nodejs #122), and #56 (the code-quality round of the local SonarQube scan, the twin mercury-nodejs #123) and #57 (the
+  cognitive-complexity findings of the same scan, the twin mercury-nodejs #124). The previous catch-up's close record is [[pack-catch-up-release]].
   → serves: vision-mercury-python
   <!-- id: pack-catch-up-4-12-25 | created: 2026-10-14 | last_used: 2026-11-13 | uses: 6 | tier: working | origin: 2026-10-14-015420 -->
