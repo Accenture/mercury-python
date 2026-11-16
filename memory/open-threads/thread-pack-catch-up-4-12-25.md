@@ -9,6 +9,8 @@
   the Java engine's shapes; the Node twin mercury-nodejs #121) and #55 (the MCP binding's function-per-tool shape, the
   twin mercury-nodejs #122), and #56 (the code-quality round of the local SonarQube scan, the twin mercury-nodejs #123) and #57 (the
   cognitive-complexity findings of the same scan, the twin mercury-nodejs #124). The previous catch-up's close record is [[pack-catch-up-release]]. **PREPARED 2026-11-16 as v4.12.30 on branch `release/4.12.30`** (the version, the
-  CHANGELOG section, the gates green; the Node twin in lockstep); Eric's gates: PR, merge, tag, PyPI.
+  CHANGELOG section, the gates green; the Node twin in lockstep); Eric's gates: PR, merge, tag, PyPI. **MERGED and TAGGED 2026-11-16:** PR #58 (opened by Claude Code at Eric's request) merge
+  `239e741` 09:09:50Z, the tag `v4.12.30` on the merge commit, the GitHub release 09:11:00Z as Latest, CI green; the PyPI
+  publication PENDING at 09:16Z.
   → serves: vision-mercury-python
   <!-- id: pack-catch-up-4-12-25 | created: 2026-10-14 | last_used: 2026-11-13 | uses: 6 | tier: working | origin: 2026-10-14-015420 -->

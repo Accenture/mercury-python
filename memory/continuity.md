@@ -13,17 +13,13 @@
 ## Project State
 
 - **project:** mercury-python (PyPI: `mercury-composable`)
-- **status:** **v4.12.21 TAGGED 2026-10-07 (PR #42 merge `acb1f78`, tag `v4.12.21` → `fe43380` one memory commit past it, the version
-  at the tag, the GitHub release published 02:37:17Z, CI green on the tag commit; **PyPI PUBLISHED 02:45:59Z and VERIFIED** - `mercury-composable` 4.12.21 as the latest, wheel 02:45:59Z and sdist 02:46:00Z; the
-  sdist's 20 `src/mercury_composable` modules identical to the tag's 20 (SHA-256), the wheel's `__version__` 4.12.21 with the same
-  20 modules)** · **v4.12.15 PUBLISHED to PyPI 2026-09-23 02:34Z** (`pip install mercury-composable`; tag `v4.12.15` → `7bf6991`,
-  PR #37 merge `95101575`, GitHub release 01:37Z — the lock-step round with both engines, adopting the Java number; the 4.12.15
-  line adds the OpenTelemetry forwarder (opt-in, no SDK), the SERVER-iff-`http.request` span-kind rule and the
-  `gemini-flash-latest` default; the 4.12.1 line of 2026-09-01, the first public package, carried the llm.chat/llm.stream AI
-  nodes and the constrained sdist) — the Python member of the Mercury Composable polyglot initiative: a lightweight
-  Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in tagged releases v1.11.39–v2.5.0).
-  The next catch-up release ([[pack-catch-up-4-12-25]]) is no longer held: the 2026-10-14 hold was lifted on 2026-10-29
-  (Eric) and the pack releases when its work is ready.
+- **status:** **v4.12.30 TAGGED 2026-11-16 (PR #58 merge `239e741` 09:09:50Z, the tag on the merge commit, the version at the
+  tag, the GitHub release published 09:11:00Z as Latest, CI green on the tag commit); the PyPI publication is PENDING** - at
+  09:16Z PyPI still served 4.12.21 as the latest (the previous release, 2026-10-07, [[pack-catch-up-release]]). The 4.12.30
+  line carries the pack's half of the engines' agent loop (ADR-0033): the loop contract with the transcript stores, the
+  Bedrock backend and the MCP binding ([[pack-catch-up-4-12-25]]) — the Python member of the Mercury Composable polyglot
+  initiative: a lightweight Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in
+  tagged releases v1.11.39–v2.5.0).
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-11-13 | through 2026-11-13-030139.md (on command — 5 sessions since 2026-11-03-010131, not yet due;
   `refresh-metadata` refreshed 3 footers, tier changes 2 (`conv-resources-next-to-the-application-file` and
