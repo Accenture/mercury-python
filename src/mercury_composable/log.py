@@ -15,9 +15,12 @@ Example::
   else INFO.
 - ``log.format`` carries the engines' three presentations: ``text``
   (default), ``json`` (pretty-printed) and ``compact`` (the same object on a
-  single line - JSONL - for log aggregators). Inside a traced request, the
-  JSON presentations add the application log ``context`` block (the engines'
-  app-log-context feature - see :mod:`mercury_composable.log_context`).
+  single line - JSONL - for log aggregators). A JSON line carries ``time``,
+  ``level``, ``source`` (the emitting logger and line, ``name:line``, under
+  the label the Java engine's JSON layout uses) and ``message``; inside a
+  traced request, the JSON presentations add the application log ``context``
+  block (the engines' app-log-context feature - see
+  :mod:`mercury_composable.log_context`).
 """
 
 from __future__ import annotations
@@ -68,7 +71,7 @@ class EngineJsonFormatter(logging.Formatter):
         entry = {
             "time": f"{ts}.{int(record.msecs):03d}",
             "level": record.levelname,
-            "logger": f"{record.name}:{record.lineno}",
+            "source": f"{record.name}:{record.lineno}",
             "message": _message_of(record),
         }
         # late imports to avoid a cycle (this module bootstraps logging)

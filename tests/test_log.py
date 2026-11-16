@@ -30,7 +30,9 @@ def test_json_formatter_carries_exception():
 
     entry = json.loads(EngineJsonFormatter().format(_record_with_exception()))
     assert entry["level"] == "ERROR"
-    assert entry["logger"] == "unit.test:42"
+    # the emitting logger and line, under the Java engine's JSON label
+    assert entry["source"] == "unit.test:42"
+    assert "logger" not in entry
     assert entry["message"] == "Async event demo.route failed"
     assert "RuntimeError: boom-x" in entry["exception"]
 
@@ -45,3 +47,4 @@ def test_json_is_pretty_and_compact_is_jsonl():
     assert "\n" in pretty
     assert "\n" not in compact
     assert json.loads(pretty) == json.loads(compact)  # same information, two renderings
+    assert json.loads(compact)["source"] == "unit.test:42"  # both presentations label it source

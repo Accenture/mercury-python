@@ -2,7 +2,8 @@
 Function registry and the @preload decorator.
 
 Mirrors the engines' PreLoad vocabulary: a function is registered under a
-route name with an instance count (its concurrency limit) and a private flag.
+route name - or a comma-separated list of route names, aliases of the same
+function - with an instance count (its concurrency limit) and a private flag.
 Handlers take ``(headers: dict[str, str], body)`` — the same two-part input as a
 TypedLambdaFunction — and return the reply body (or an EventEnvelope for full
 control of status and reply headers).
@@ -47,6 +48,27 @@ def validate_route(route: str) -> str:
             f"Invalid route name '{route}' - use lowercase letters, digits, "
             "period, hyphen or underscore with at least one period")
     return route
+
+
+_ROUTE_SEPARATORS = re.compile(r"[,\s]+")
+
+
+def split_routes(route: str) -> list[str]:
+    """The engines' PreLoad ``route`` value: one route name, or a comma-separated
+    list of names that are aliases of the same function.
+
+    Mirrors the Java engine, which splits the annotation's value on commas and
+    spaces and drops empty segments: every name is validated, a repeated name
+    counts once (order kept), and a value with no name at all is refused the
+    way the engine refuses it - ``missing service route(s)``.
+    """
+    names: list[str] = []
+    for name in _ROUTE_SEPARATORS.split(route or ""):
+        if name and name not in names:
+            names.append(validate_route(name))
+    if not names:
+        raise ValueError("Unable to preload - missing service route(s)")
+    return names
 
 
 @dataclass
@@ -127,6 +149,17 @@ def preload(route: str, instances: int = 10, private: bool = False,
         def handle_event(headers: dict[str, str], body):
             return {"text": body["text"].upper()}
 
+    ``route`` is one route name or a comma-separated list of names - the
+    engines' ``@PreLoad(route = "hello.declarative, hello.world")``: every name
+    is registered as the same function with the same ``instances`` and
+    visibility, so the second and later names are aliases of the first. A
+    handler reads the name it was called as from ``get_trace().route`` (the
+    engines' ``my_route``)::
+
+        @preload(route="hello.declarative, hello.world", instances=10)
+        async def echo(headers: dict[str, str], body):
+            return {"body": body, "headers": headers}
+
     An ``interceptor=True`` handler receives the raw :class:`EventEnvelope`
     as its second argument and replies manually (the engines'
     ``@EventInterceptor``) - the streaming producer pattern::
@@ -138,8 +171,11 @@ def preload(route: str, instances: int = 10, private: bool = False,
             out.write("hello")
             out.close()
     """
+    routes = split_routes(route)
+
     def wrapper(fn: Handler | InterceptorHandler) -> Handler | InterceptorHandler:
-        default_registry.register(route, fn, instances=instances, private=private,
-                                  interceptor=interceptor)
+        for name in routes:
+            default_registry.register(name, fn, instances=instances, private=private,
+                                      interceptor=interceptor)
         return fn
     return wrapper

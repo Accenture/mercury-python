@@ -53,6 +53,8 @@ Rules:
 - `raise AppException(status, message)` → envelope status + message (portable error).
   Unexpected exception → 500 + message + stack. Never return HTTP-shaped dicts.
 - `get_trace()` → `TraceInfo(trace_id, trace_path, cid)` or `None`.
+- `route` takes one name or a comma-separated list: aliases of one function, same
+  `instances` and visibility; `get_trace().route` is the name it was called as.
 - Reserved inbound header `my_correlation_id` = the caller's business correlation id
   (read-only). Never send headers named `my_*` or `x-event-api`.
 

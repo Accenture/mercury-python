@@ -50,9 +50,14 @@ def handle_event(_headers: dict[str, str], body: Body):
     return {"text": str(body["text"]).upper(), "language": "python"}
 
 
-@preload(route="hello.declarative", instances=10)
+@preload(route="hello.declarative, hello.world", instances=10)
 async def declarative_echo(headers: dict[str, str], body: Body):
-    """Echo for the composable-example declarative Event-over-HTTP demo."""
+    """Echo for the composable-example declarative Event-over-HTTP demo.
+
+    Two routes, one function: hello.world is an alias of hello.declarative (the
+    engines' comma-separated PreLoad route list). The function sees the route
+    it was called as in get_trace().route.
+    """
     return {"body": body, "headers": headers, "language": "python"}
 
 

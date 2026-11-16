@@ -44,8 +44,11 @@ one way in the aggregator:
 ```
 
 `log.format` carries the engines' three presentations: `text` (default), `json`
-(pretty-printed) and `compact` (single-line JSONL for log aggregators). The level
-comes from the `LOG_LEVEL` environment variable when set, else `log.level`.
+(pretty-printed) and `compact` (single-line JSONL for log aggregators). A JSON line
+carries `time`, `level`, `source` (the emitting logger and line, `name:line`, under the
+label the Java engine's JSON layout uses) and `message`, plus `context` inside a traced
+request and `exception` when one is attached. The level comes from the `LOG_LEVEL`
+environment variable when set, else `log.level`.
 
 ## Distributed tracing — the OpenTelemetry forwarder (opt-in)
 

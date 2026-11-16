@@ -60,7 +60,7 @@ asyncio.run(main())
 | Route | Visibility | What it shows |
 |---|---|---|
 | `hello.python` | public | The hello world: uppercases `text` and answers `{text, language}`. A body without `text` is a 400 `missing 'text'`, the portable error contract. It annotates the call's trace with `language`. |
-| `hello.declarative` | public | Echoes the body and headers it received. The target of the engines' declarative Event-over-HTTP demos. |
+| `hello.declarative`, `hello.world` | public | Echoes the body and headers it received. The target of the engines' declarative Event-over-HTTP demos. `hello.world` is an alias: the same function under a second route, declared as `@preload(route="hello.declarative, hello.world")`, the engines' comma-separated PreLoad route list. |
 | `hello.chain` | public | Local composition: calls the private `demo.suffix.helper` through the in-process bus and returns its reply. |
 | `hello.sync.chain` | public | The same composition from a plain `def` handler (the `requests` and NumPy world), through the sync bridge. It blocks its own worker thread, never the event loop. |
 | `hello.tokens` | public | Streaming: paced messages over the multi-shot reply contract. See below. |
