@@ -427,8 +427,9 @@ class Platform:
         for callback in self._cleanup:
             app.on_cleanup.append(_lifecycle(callback))
         if exporter is not None:
+            closing = exporter
             async def _close_exporter(_app: web.Application) -> None:
-                await exporter.close()
+                await closing.close()
             app.on_cleanup.append(_close_exporter)
         return app
 

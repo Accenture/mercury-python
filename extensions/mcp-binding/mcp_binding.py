@@ -133,19 +133,20 @@ def verify(server: str, bindings: Sequence[ToolBinding],
     input schema must hash to the pinned digest; the first failure, in declaration order, names
     the tool."""
     by_name = {str(tool.get("name")): tool for tool in offered}
+    names: list[str] = sorted(by_name)
     bound: list[tuple[ToolBinding, dict[str, Any]]] = []
-    for binding in bindings:
-        tool = by_name.get(binding.tool)
+    for declared in bindings:
+        tool = by_name.get(declared.tool)
         if tool is None:
             raise BindingError(
-                f"MCP server {server} does not offer the tool {binding.tool} - "
-                f"it offers {', '.join(sorted(by_name)) or 'no tools'}")
+                f"MCP server {server} does not offer the tool {declared.tool} - "
+                f"it offers {', '.join(names) or 'no tools'}")
         digest = schema_digest(tool.get("input_schema"))
-        if digest != binding.schema_sha256:
+        if digest != declared.schema_sha256:
             raise BindingError(
-                f"MCP server {server} changed the input schema of {binding.tool} - "
-                f"its digest is now {digest}, the binding pins {binding.schema_sha256}")
-        bound.append((binding, tool))
+                f"MCP server {server} changed the input schema of {declared.tool} - "
+                f"its digest is now {digest}, the binding pins {declared.schema_sha256}")
+        bound.append((declared, tool))
     return bound
 
 
@@ -227,25 +228,36 @@ def _server(name: str, value: Any, default_timeout_ms: int) -> ServerSpec:
     if timeout_ms < MIN_CALL_TIMEOUT_MS:
         raise BindingError(f"MCP server {name}: timeout_ms must be at least {MIN_CALL_TIMEOUT_MS}")
     if transport == TRANSPORT_STDIO:
-        command = _resolve(value.get("command"))
-        if not command:
-            raise BindingError(f"MCP server {name}: a stdio server needs a command")
-        raw_args = value.get("args") or []
-        if not isinstance(raw_args, list):
-            raise BindingError(f"MCP server {name}: args must be a list")
-        args = tuple(str(_resolve(a)) for a in raw_args)
-        cwd = _resolve(value.get("cwd"))
-        if value.get("url") or value.get("headers"):
-            raise BindingError(f"MCP server {name}: url and headers belong to an http server")
-        return ServerSpec(name=name, transport=transport, command=str(command), args=args,
-                          env=_str_map(name, "env", value.get("env")), cwd=None if cwd is None else str(cwd),
-                          timeout_ms=timeout_ms)
+        return _stdio_server(name, value, timeout_ms)
+    return _http_server(name, value, timeout_ms)
+
+
+def _stdio_server(name: str, value: dict[str, Any], timeout_ms: int) -> ServerSpec:
+    """A stdio server: the command this process starts, its arguments, its environment references
+    and its folder."""
+    command = _resolve(value.get("command"))
+    if not command:
+        raise BindingError(f"MCP server {name}: a stdio server needs a command")
+    raw_args = value.get("args") or []
+    if not isinstance(raw_args, list):
+        raise BindingError(f"MCP server {name}: args must be a list")
+    if value.get("url") or value.get("headers"):
+        raise BindingError(f"MCP server {name}: url and headers belong to an http server")
+    cwd = _resolve(value.get("cwd"))
+    return ServerSpec(name=name, transport=TRANSPORT_STDIO, command=str(command),
+                      args=tuple(str(_resolve(a)) for a in raw_args),
+                      env=_str_map(name, "env", value.get("env")), cwd=None if cwd is None else str(cwd),
+                      timeout_ms=timeout_ms)
+
+
+def _http_server(name: str, value: dict[str, Any], timeout_ms: int) -> ServerSpec:
+    """An http server: the streamable HTTP URL and the headers it is reached with."""
     url = _resolve(value.get("url"))
     if not url:
         raise BindingError(f"MCP server {name}: an http server needs a url")
     if value.get("command") or value.get("args") or value.get("env") or value.get("cwd"):
         raise BindingError(f"MCP server {name}: command, args, env and cwd belong to a stdio server")
-    return ServerSpec(name=name, transport=transport, url=str(url),
+    return ServerSpec(name=name, transport=TRANSPORT_HTTP, url=str(url),
                       headers=_str_map(name, "headers", value.get("headers")), timeout_ms=timeout_ms)
 
 
@@ -305,7 +317,8 @@ class Server:
         if self._task is not None:
             try:
                 await self._task
-            except Exception:  # noqa: BLE001 - a transport closing noisily must not fail the shutdown
+            # a transport closing noisily must not fail the shutdown
+            except Exception:  # noqa: BLE001
                 log.warning("MCP server %s closed with an error", self.spec.name)
 
     @asynccontextmanager
@@ -343,7 +356,9 @@ class Server:
                 await self._closing.wait()
         except asyncio.CancelledError:
             raise
-        except BaseException as exc:  # noqa: BLE001 - reported to the starter, or logged at run time
+        # a failure of the transport or the handshake is reported to the starter, or logged at
+        # run time; a cancellation passes through above
+        except Exception as exc:  # noqa: BLE001
             leaf = _leaf(exc)
             if not self._ready.is_set():
                 self._failure = leaf
@@ -474,14 +489,15 @@ class Binding:
                     log.info("MCP server %s: tool %s bound", spec.name, declared.tool)
             bound = sum(len(server.bound) for server in self.servers.values())
             log.info("MCP binding ready - %d server(s), %d bound tool(s)", len(self.servers), bound)
-        except Exception as exc:  # noqa: BLE001 - any boot failure stops the application, by name
+        # any boot failure stops the application, by name
+        except Exception as exc:  # noqa: BLE001
             leaf = _leaf(exc)
             log.error("MCP binding cannot start - %s", leaf)
             await self.shutdown()
             raise SystemExit(1) from leaf
 
     async def shutdown(self) -> None:
-        for server in list(self.servers.values()):
+        for server in self.servers.values():
             await server.close()
         self.servers.clear()
 
@@ -535,7 +551,8 @@ def _api_safe(name: str) -> str:
     return API_SAFE.sub("_", name)[:128] or "tool"
 
 
-async def _describe(spec: ServerSpec) -> list[dict[str, Any]]:
+async def offered_tools(spec: ServerSpec) -> list[dict[str, Any]]:
+    """The tools a server offers, listed over a connection of its own (the ``describe`` probe)."""
     probe = Server(spec)
     await probe.start()
     try:
@@ -560,14 +577,19 @@ def describe(names: list[str]) -> int:
         print(f"Unknown server(s): {', '.join(missing)} - configured: {', '.join(s.name for s in specs)}", file=sys.stderr)
         return 1
     for spec in wanted:
-        offered = asyncio.run(_describe(spec))
+        offered = asyncio.run(offered_tools(spec))
         declared = {d.tool: d for d in binding.declared_for(spec.name)}
         print(f"# MCP server {spec.name} ({spec.transport}) offers {len(offered)} tool(s)")
         for tool in offered:
             name = tool["name"]
             digest = schema_digest(tool["input_schema"])
             bound = declared.get(name)
-            state = ("bound" + (" (digest ok)" if bound.schema_sha256 == digest else " (DIGEST CHANGED)")) if bound else "not bound"
+            if bound is None:
+                state = "not bound"
+            elif bound.schema_sha256 == digest:
+                state = "bound (digest ok)"
+            else:
+                state = "bound (DIGEST CHANGED)"
             print(f"\n## {name} - {state}\nschema_sha256: {digest}")
             print(f'bind("{spec.name}", "{name}", schema_sha256="{digest}")')
             row = {

@@ -1,12 +1,12 @@
 """Event API host tests: engine-mirrored semantics over real HTTP."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager
 
 import aiohttp
 import msgpack
 import pytest_asyncio
-from aiohttp import web
 
 from mercury_composable import (
     AppException,
@@ -16,7 +16,6 @@ from mercury_composable import (
     annotate_trace,
     get_trace,
 )
-from mercury_composable.server import EventApiServer
 
 OCTET = "application/octet-stream"
 
@@ -62,15 +61,9 @@ def build_registry() -> FunctionRegistry:
 
 
 @pytest_asyncio.fixture
-async def server_url() -> AsyncIterator[str]:
-    server = EventApiServer(build_registry())
-    runner = web.AppRunner(server.create_app())
-    await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", 0)
-    await site.start()
-    port = runner.addresses[0][1]
-    yield f"http://127.0.0.1:{port}"
-    await runner.cleanup()
+async def server_url(serve: Callable[[FunctionRegistry], AbstractAsyncContextManager[str]]) -> AsyncIterator[str]:
+    async with serve(build_registry()) as base:
+        yield base
 
 
 async def post_event(url: str, event: EventEnvelope, *, ttl: str = "10000",

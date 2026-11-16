@@ -110,7 +110,7 @@ def offered() -> dict[str, dict[str, Any]]:
     """What the fixture server offers, as the binding reads it: the digests the tests pin come
     from the server itself, so a change of the SDK's schema generation cannot break them."""
     spec = binding.ServerSpec(name="probe", transport="stdio", command=sys.executable, args=(str(_FIXTURE),))
-    tools = asyncio.run(binding._describe(spec))
+    tools = asyncio.run(binding.offered_tools(spec))
     return {tool["name"]: tool for tool in tools}
 
 
@@ -171,7 +171,9 @@ def servers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Callabl
 def test_the_example_function_binds_the_mermaid_tool_out_of_the_box() -> None:
     # the extension's own function: declared with @preload like any route, public, bound in code
     service = default_registry.get("mermaid.render")
-    assert service is not None and service.handler is binding.mermaid_render and not service.private
+    assert service is not None
+    assert service.handler is binding.mermaid_render
+    assert not service.private
     assert (binding.render_mermaid.server, binding.render_mermaid.tool) == ("mermaid", "validate_and_render_mermaid_diagram")
     assert binding.DIGEST.fullmatch(binding.render_mermaid.declared.schema_sha256)
     assert default_registry.get("mcp.tool") is None, "the generic route is gone - a tool is a function"
@@ -189,14 +191,19 @@ async def test_boot_verifies_every_binding_and_the_functions_call_their_tools(
         assert sorted(app.servers) == ["fixture"]
         assert [d.tool for d, _ in app.servers["fixture"].bound] == ["echo", "add", "fail"]
         service = default_registry.get("fixture.echo")
-        assert service is not None and service.instances == 3 and not service.private
+        assert service is not None
+        assert service.instances == 3
+        assert not service.private
         reply = await _call(po, "fixture.echo", {"text": "hello"})
-        assert reply.get_status() == 200 and reply.body == "hello"
+        assert reply.get_status() == 200
+        assert reply.body == "hello"
         assert (await _call(po, "fixture.add", {"a": 1, "b": 2})).body == {"sum": 3}
         failed = await _call(po, "fixture.fail", {"reason": "the vault is closed"})
-        assert failed.get_status() == 400 and "the vault is closed" in str(failed.body)
+        assert failed.get_status() == 400
+        assert "the vault is closed" in str(failed.body)
         not_a_map = await _call(po, "fixture.echo", "hello")
-        assert not_a_map.get_status() == 400 and "must be a map" in str(not_a_map.body)
+        assert not_a_map.get_status() == 400
+        assert "must be a map" in str(not_a_map.body)
         assert (echo.server, echo.tool) == ("fixture", "echo")
     finally:
         await app.shutdown()
@@ -204,7 +211,8 @@ async def test_boot_verifies_every_binding_and_the_functions_call_their_tools(
     # the declarations are code and survive a shutdown; a call before the next boot is a 503 by name
     assert [d.tool for d in app.declared] == ["echo", "add", "fail"]
     gone = await _call(po, "fixture.echo", {"text": "later"})
-    assert gone.get_status() == 503 and "MCP server fixture is not connected" in str(gone.body)
+    assert gone.get_status() == 503
+    assert "MCP server fixture is not connected" in str(gone.body)
 
 
 @pytest.mark.asyncio
@@ -294,8 +302,9 @@ async def test_a_configured_server_nobody_binds_is_not_connected(offered: dict[s
     ("fixture", "echo", "short", "needs schema_sha256"),
 ])
 def test_bind_refuses_a_bad_declaration(server: str, tool: str, digest: str, message: str) -> None:
+    client = binding.Binding()
     with pytest.raises(binding.BindingError) as failure:
-        binding.Binding().bind(server, tool, schema_sha256=digest)
+        client.bind(server, tool, schema_sha256=digest)
     assert message in str(failure.value), str(failure.value)
 
 
@@ -404,7 +413,8 @@ async def test_the_http_transport_serves_the_same_functions(offered: dict[str, d
 
 
 @pytest.mark.asyncio
-async def test_health_reports_each_server_and_its_connection(offered: dict[str, dict[str, Any]], servers: Any) -> None:
+async def test_health_reports_each_server_and_its_connection(offered: dict[str, dict[str, Any]], servers: Any,
+                                                            monkeypatch: pytest.MonkeyPatch) -> None:
     app = servers({"fixture": _stdio()})
     _serve(app, offered, "fixture.echo", "fixture", "echo")
     await app.boot()
@@ -417,14 +427,11 @@ async def test_health_reports_each_server_and_its_connection(offered: dict[str, 
         await app.shutdown()
     assert (await binding.mcp_health({"type": "info"}, {}))["servers"] == []
     lost = binding.Server(binding.ServerSpec(name="gone", transport="stdio", command="x"))
-    binding.binding.servers = {"gone": lost}
-    try:
-        with pytest.raises(AppException) as failure:
-            await binding.mcp_health({"type": "health"}, {})
-        assert failure.value.status == 503
-        assert "gone" in failure.value.message
-    finally:
-        binding.binding.servers = {}
+    monkeypatch.setattr(binding.binding, "servers", {"gone": lost})
+    with pytest.raises(AppException) as failure:
+        await binding.mcp_health({"type": "health"}, {})
+    assert failure.value.status == 503
+    assert "gone" in failure.value.message
 
 
 def test_describe_prints_the_digests_the_bind_lines_and_a_catalog_row(

@@ -1,12 +1,11 @@
 """PostOffice client tests against the in-process host (full wrapper loop)."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager
 
 import pytest_asyncio
-from aiohttp import web
 
 from mercury_composable import Body, FunctionRegistry, PostOffice
-from mercury_composable.server import EventApiServer
 from mercury_composable.trace import trace_context
 
 
@@ -28,15 +27,9 @@ def build_registry() -> FunctionRegistry:
 
 
 @pytest_asyncio.fixture
-async def endpoint() -> AsyncIterator[str]:
-    server = EventApiServer(build_registry())
-    runner = web.AppRunner(server.create_app())
-    await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", 0)
-    await site.start()
-    port = runner.addresses[0][1]
-    yield f"http://127.0.0.1:{port}/api/event"
-    await runner.cleanup()
+async def endpoint(serve: Callable[[FunctionRegistry], AbstractAsyncContextManager[str]]) -> AsyncIterator[str]:
+    async with serve(build_registry()) as base:
+        yield f"{base}/api/event"
 
 
 async def test_rpc_round_trip(endpoint: str):

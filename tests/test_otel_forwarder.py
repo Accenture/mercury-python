@@ -97,7 +97,7 @@ def _read_key_value(body: bytes) -> tuple[str, str]:
                     value = str(inner.read_varint())
                 elif vf == 4:
                     number = inner.read_double() or 0.0
-                    value = str(int(number)) if number.is_integer() else str(number)
+                    value = str(int(number)) if float(number).is_integer() else str(number)
                 else:
                     inner.skip(vw)
         else:
@@ -210,11 +210,12 @@ class MockCollector:
     async def start(self) -> None:
         app = web.Application()
         app.router.add_route("POST", "/{tail:.*}", self._handle)
-        self._runner = web.AppRunner(app)
-        await self._runner.setup()
-        site = web.TCPSite(self._runner, "127.0.0.1", 0)
+        runner = web.AppRunner(app)
+        self._runner = runner
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
         await site.start()
-        self.port = self._runner.addresses[0][1]
+        self.port = runner.addresses[0][1]
 
     async def stop(self) -> None:
         if self._runner is not None:
@@ -299,7 +300,8 @@ def test_span_mapping_failure_and_root_span_and_internal_kind() -> None:
     assert span.attribute("exception") == "boom"
     # no exception text: the status number describes the error
     span2 = span_from_dataset(sample_dataset(success=False, status=503))
-    assert span2 is not None and span2.status_message == "status=503"
+    assert span2 is not None
+    assert span2.status_message == "status=503"
 
 
 def test_span_mapping_skips_non_w3c_ids_and_shapeless_datasets() -> None:
@@ -331,7 +333,9 @@ def test_encoding_round_trips_through_the_reader() -> None:
     got = decoded.spans[0]
     assert (got.trace_id, got.span_id, got.parent_span_id) == (TRACE_ID, SPAN_ID, PARENT_SPAN_ID)
     # a function execution encodes as kind 1 (INTERNAL); only the edge's round-trip record is SERVER
-    assert got.name == "hello.world" and got.kind == 1 and got.status_code == 1
+    assert got.name == "hello.world"
+    assert got.kind == 1
+    assert got.status_code == 1
     assert got.flags == otlp.SPAN_FLAGS_SAMPLED_LOCAL
     assert got.start_unix_nano == 1_782_295_200_000_000_000
     assert got.end_unix_nano - got.start_unix_nano == 12_500_000
@@ -364,10 +368,12 @@ def test_failure_descriptions_carry_hints_and_bound_the_body() -> None:
 
 
 def test_a_misconfigured_endpoint_is_refused_at_construction() -> None:
+    no_scheme = ForwarderSettings.fixed("localhost:4318/v1/traces")
     with pytest.raises(ValueError, match="otel.exporter.otlp.endpoint"):
-        Exporter(ForwarderSettings.fixed("localhost:4318/v1/traces"))
+        Exporter(no_scheme)
+    wrong_scheme = ForwarderSettings.fixed("ftp://collector/v1/traces")
     with pytest.raises(ValueError):
-        Exporter(ForwarderSettings.fixed("ftp://collector/v1/traces"))
+        Exporter(wrong_scheme)
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +491,9 @@ def test_the_switch_is_the_only_thing_that_turns_it_on() -> None:
                         registry)
     assert exporter is not None
     service = registry.get(DISTRIBUTED_TRACE_FORWARDER)
-    assert service is not None and service.private and service.instances == 2
+    assert service is not None
+    assert service.private
+    assert service.instances == 2
     # an application's own forwarder on the route wins
     other = FunctionRegistry()
 
@@ -497,9 +505,10 @@ def test_the_switch_is_the_only_thing_that_turns_it_on() -> None:
 
 
 def test_a_bad_endpoint_fails_the_activation() -> None:
+    config = _config(otel_forwarding="true", otel_exporter_otlp_endpoint="nowhere")
+    registry = FunctionRegistry()
     with pytest.raises(ValueError):
-        activate(_config(otel_forwarding="true", otel_exporter_otlp_endpoint="nowhere"),
-                 FunctionRegistry())
+        activate(config, registry)
 
 
 async def test_the_host_hands_every_dataset_to_the_forwarder(collector: MockCollector) -> None:
@@ -529,8 +538,10 @@ async def test_the_host_hands_every_dataset_to_the_forwarder(collector: MockColl
     assert got.service_name == "python-host"
     assert len(got.spans) == 1
     span = got.spans[0]
-    assert span.trace_id == TRACE_ID and len(span.span_id) == 16
-    assert span.name == "unit.hello" and span.status_code == 1
+    assert span.trace_id == TRACE_ID
+    assert len(span.span_id) == 16
+    assert span.name == "unit.hello"
+    assert span.status_code == 1
     assert span.attributes["route"] == "unit.hello"
     # the forwarder's own execution is untraced: exactly one span reached the collector
     await asyncio.sleep(0.2)
