@@ -1,7 +1,7 @@
 {
   "contract": "mcp-binding",
-  "version": 1,
-  "description": "The MCP binding's shared vectors (RFC-0011 / ADR-0033, build plan step 4): the pure half of the binding, run by mercury-python and mercury-nodejs against the same file. digest_cases pin the canonical JSON a tool's input schema is hashed as (keys sorted, no spaces, Unicode kept, SHA-256 hex). verify_cases pin how an allowlist is matched against the tools a server offers (tools/list as plain maps: name, description, input_schema) - the bound routes in allowlist order, or the exact error that stops the boot. result_cases pin how a CallToolResult (content, structured_content, is_error) becomes a route's reply or its error (status and exact message). No server is started by these cases; the transports are tested by each pack with a fixture server.",
+  "version": 2,
+  "description": "The MCP binding's shared vectors (RFC-0011 / ADR-0033, build plan step 4; the declaration shape of draft-design-specs/agent-tool-use.md, 2026-11-16): the pure half of the binding, run by mercury-python and mercury-nodejs against the same file. digest_cases pin the canonical JSON a tool's input schema is hashed as (keys sorted, no spaces, Unicode kept, SHA-256 hex). verify_cases pin how the tools the functions of an application bind to a server (bindings: tool, schema_sha256, in declaration order) are matched against the tools the server offers (tools/list as plain maps: name, description, input_schema) - the bound tools in declaration order, or the exact error that stops the boot. result_cases pin how a CallToolResult (content, structured_content, is_error) becomes a function's reply or its error (status and exact message). No server is started by these cases; the transports are tested by each pack with a fixture server.",
   "digest_cases": [
     {
       "name": "an empty object schema",
@@ -65,20 +65,20 @@
   ],
   "verify_cases": [
     {
-      "name": "verify/every-allowlisted-tool-is-offered-and-unchanged",
+      "name": "verify/every-bound-tool-is-offered-and-unchanged",
       "server": {
-        "name": "docs",
-        "tools": {
-          "read_text_file": {
-            "route": "docs.read.text.file",
-            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
-          },
-          "list_directory": {
-            "route": "docs.list.directory",
-            "schema_sha256": "923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
-          }
-        }
+        "name": "docs"
       },
+      "bindings": [
+        {
+          "tool": "read_text_file",
+          "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+        },
+        {
+          "tool": "list_directory",
+          "schema_sha256": "923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
+        }
+      ],
       "offered": [
         {
           "name": "read_text_file",
@@ -115,22 +115,22 @@
       ],
       "expect": {
         "bound": [
-          "docs.read.text.file",
-          "docs.list.directory"
+          "read_text_file",
+          "list_directory"
         ]
       }
     },
     {
-      "name": "verify/a-tool-the-server-offers-but-the-allowlist-omits-is-ignored",
+      "name": "verify/a-tool-the-server-offers-but-no-function-binds-is-ignored",
       "server": {
-        "name": "docs",
-        "tools": {
-          "read_text_file": {
-            "route": "docs.read.text.file",
-            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
-          }
-        }
+        "name": "docs"
       },
+      "bindings": [
+        {
+          "tool": "read_text_file",
+          "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+        }
+      ],
       "offered": [
         {
           "name": "read_text_file",
@@ -167,21 +167,21 @@
       ],
       "expect": {
         "bound": [
-          "docs.read.text.file"
+          "read_text_file"
         ]
       }
     },
     {
       "name": "verify/a-missing-tool-names-itself-and-what-is-offered",
       "server": {
-        "name": "docs",
-        "tools": {
-          "write_file": {
-            "route": "docs.write.file",
-            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
-          }
-        }
+        "name": "docs"
       },
+      "bindings": [
+        {
+          "tool": "write_file",
+          "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+        }
+      ],
       "offered": [
         {
           "name": "read_text_file",
@@ -223,14 +223,14 @@
     {
       "name": "verify/a-server-with-no-tools",
       "server": {
-        "name": "docs",
-        "tools": {
-          "read_text_file": {
-            "route": "docs.read.text.file",
-            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
-          }
-        }
+        "name": "docs"
       },
+      "bindings": [
+        {
+          "tool": "read_text_file",
+          "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+        }
+      ],
       "offered": [],
       "expect": {
         "error": "MCP server docs does not offer the tool read_text_file - it offers no tools"
@@ -239,14 +239,14 @@
     {
       "name": "verify/a-changed-schema-names-the-tool-and-both-digests",
       "server": {
-        "name": "docs",
-        "tools": {
-          "read_text_file": {
-            "route": "docs.read.text.file",
-            "schema_sha256": "923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
-          }
-        }
+        "name": "docs"
       },
+      "bindings": [
+        {
+          "tool": "read_text_file",
+          "schema_sha256": "923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
+        }
+      ],
       "offered": [
         {
           "name": "read_text_file",
@@ -282,24 +282,24 @@
         }
       ],
       "expect": {
-        "error": "MCP server docs changed the input schema of read_text_file - its digest is now 6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479, the configuration pins 923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
+        "error": "MCP server docs changed the input schema of read_text_file - its digest is now 6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479, the binding pins 923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b"
       }
     },
     {
-      "name": "verify/the-first-failure-in-allowlist-order-stops-the-boot",
+      "name": "verify/the-first-failure-in-declaration-order-stops-the-boot",
       "server": {
-        "name": "docs",
-        "tools": {
-          "list_directory": {
-            "route": "docs.list.directory",
-            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
-          },
-          "write_file": {
-            "route": "docs.write.file",
-            "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
-          }
-        }
+        "name": "docs"
       },
+      "bindings": [
+        {
+          "tool": "list_directory",
+          "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+        },
+        {
+          "tool": "write_file",
+          "schema_sha256": "6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+        }
+      ],
       "offered": [
         {
           "name": "read_text_file",
@@ -335,7 +335,7 @@
         }
       ],
       "expect": {
-        "error": "MCP server docs changed the input schema of list_directory - its digest is now 923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b, the configuration pins 6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
+        "error": "MCP server docs changed the input schema of list_directory - its digest is now 923b083c9bcab2e3d3e07c7d9b4401688ad9f3d5e2c2f0c48fcd43052bdcb71b, the binding pins 6acc092731905473c2bfced982253c9a85e0190cca13fb933deeaa4069819479"
       }
     }
   ],
