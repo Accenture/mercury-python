@@ -36,6 +36,10 @@ def handler(headers: dict[str, str], body: Body):
   and reply headers.
 - **Route names** — lowercase letters, digits, period, hyphen, underscore, with at
   least one period (`hello.python`, not `HelloPython`).
+- **Route aliases** — `route` takes one name or a comma-separated list, the engines'
+  `@PreLoad(route = "hello.declarative, hello.world")`: every name is registered as the
+  same function with the same `instances` and visibility, and a handler reads the name
+  it was called as from `get_trace().route` (the engines' `my_route`).
 - **Statelessness** — anything a handler must keep belongs to the caller's flow model
   or graph state machine, never to module globals.
 

@@ -66,6 +66,16 @@
    inside the server's event loop before the first request and at shutdown, the place for an extension's asynchronous
    boot work - and `Platform.create_app()`, the hook-bearing application `run` serves and a test may serve with
    aiohttp's runner. **Upgrade note:** none - nothing changes for an application that registers no callback.
+4. **Route aliases: `@preload` takes one route name or a comma-separated list.** `@preload(route="hello.declarative,
+   hello.world")` registers the same function under every name with the same `instances` and visibility - the Java
+   engine's `@PreLoad(route = "a.b, c.d")` and the Rust port's `#[preload(route = "a.b, c.d")]`; before, the decorator
+   took one name and a list failed as an invalid route name. The value is split on commas and whitespace as the Java
+   engine splits it, empty segments are dropped, every name is validated and a repeated name counts once; a value with
+   no name is refused with the engine's words (`missing service route(s)`). Each alias has its own mailbox and workers,
+   its own line in the startup log and its own row in `/info/routes`, and a handler reads the name it was called as from
+   `get_trace().route`, the engines' `my_route`. `FunctionRegistry.register` still takes one route, as the engines'
+   `Platform.register` does. The demo app shows it: `hello.world` is an alias of `hello.declarative`.
+   **Upgrade note:** none - a single route name behaves as before.
 
 ### Changed
 
@@ -105,6 +115,12 @@
    inbox does. An untraced call records nothing. **Upgrade note:** a backend shows three more spans per traced call into
    the pack and one per traced local RPC; a dashboard that read the pack's response time off a function's span moves to
    the `http.request` edge record, as for the engines.
+5. **The JSON log presentations label the emitting logger and line `source`, as the Java engine's JSON layout does.**
+   A line written with `log.format=json` or `compact` carried the logger name and line number under `logger`
+   (`"logger": "distributed.tracing:412"`), where the Java engine writes `source`; a polyglot installation that reads
+   both in one aggregator now finds the field under one name. The value is unchanged (`name:line`), and so are `time`,
+   `level`, `message`, `context` and `exception`; the `text` presentation is untouched. **Upgrade note:** an aggregator
+   query or dashboard field that read `logger` from this pack's JSON lines reads `source`.
 
 ## Version 4.12.21, 10/7/2026
 

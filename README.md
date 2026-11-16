@@ -98,6 +98,10 @@ library → plain `def`; composing functions or async I/O → `async def`.
   annotation back on the reply envelope.
 - Outside a hosted function (batch jobs, tests), `trace_context(trace_id, trace_path)`
   establishes the context your `PostOffice` calls inherit — the node `runWithTrace` twin.
+- **Route aliases**: `route` takes one name or a comma-separated list
+  (`@preload(route="hello.declarative, hello.world")`), the engines' `@PreLoad` semantics —
+  every name is the same function with the same `instances` and visibility, and a handler
+  reads the name it was called as from `get_trace().route`.
 - Functions must be stateless; anything you must keep belongs to the caller's flow model
   or state machine.
 
