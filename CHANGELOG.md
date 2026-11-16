@@ -142,6 +142,18 @@
    split composite assertions, keep one call inside each `pytest.raises`, patch state through `monkeypatch`, and share
    the Event API host fixture through `tests/conftest.py`. **Upgrade note:** none.
 
+7. **Code quality: the cognitive-complexity findings of a second local SonarQube and IDE round (2026-11-16), with no
+   behaviour change.** Seven functions the scanner measured above its threshold of 15 are split along their natural
+   seams: the Event API host reads the `x-ttl` bound, delivers an RPC and builds an interceptor's envelope in helpers of
+   their own, and renders a stream segment through `_classify_segment` - the shape the Node twin already had; the OTLP
+   response decoder reads the `partial_success` block and its fields in one helper each; the span mapper computes the
+   start time, the status and the attributes apart, and the ISO-8601 parser validates the date-time fields and reads
+   the fraction apart; the LLM helper validates one tool, and the shape of a first or a later turn, in helpers of their
+   own. Every check runs in the order it did and raises the message it did, so the shared vector files pass unchanged.
+   Also: the exporter binds its lazy session through a local the checker can narrow, the MCP binding builds its
+   unknown-key list from strings and names the error in its shutdown warning, and the envelope codec drops a `cast` for
+   a one-line checker note. **Upgrade note:** none.
+
 ## Version 4.12.21, 10/7/2026
 
 The lock-step round with the engines: the pack moves from 4.12.15 to 4.12.21, the number the Java engine and the
