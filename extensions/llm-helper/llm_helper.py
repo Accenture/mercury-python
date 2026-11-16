@@ -113,7 +113,7 @@ TOOL_KEYS = ("name", "description", "input_schema", "strict")
 # loop's catalog to an API-safe name, never advertised
 TOOL_NAME = re.compile(r"[a-zA-Z0-9_-]{1,128}")
 CONVERSATION_ID = re.compile(r"[0-9a-f]{32}")
-DURATION = re.compile(r"([0-9]+)([smhd]?)")
+DURATION = re.compile(r"(\d+)([smhd]?)")
 DURATION_SECONDS = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
 DEFAULT_TRANSCRIPT_TTL = "7d"
 DEFAULT_TRANSCRIPT_RETENTION = "0"
@@ -491,13 +491,15 @@ def _bedrock_credentials(client: Any) -> str | None:
         return None
     import boto3  # the [bedrock] extra; get_backend() checked that it is installed
 
-    session = boto3.Session(
-        profile_name=getattr(client, "aws_profile", None),
-        region_name=getattr(client, "aws_region", None),
-        aws_access_key_id=getattr(client, "aws_access_key", None),
-        aws_secret_access_key=getattr(client, "aws_secret_key", None),
-        aws_session_token=getattr(client, "aws_session_token", None),
-    )
+    # only the options the client carries: boto3 fills the rest from its own chain
+    options = {
+        "profile_name": getattr(client, "aws_profile", None),
+        "region_name": getattr(client, "aws_region", None),
+        "aws_access_key_id": getattr(client, "aws_access_key", None),
+        "aws_secret_access_key": getattr(client, "aws_secret_key", None),
+        "aws_session_token": getattr(client, "aws_session_token", None),
+    }
+    session = boto3.Session(**{key: value for key, value in options.items() if value is not None})
     return None if session.get_credentials() else MISSING_AWS_CREDENTIAL
 
 

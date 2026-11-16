@@ -36,8 +36,9 @@ def test_register_takes_one_route():
     def noop(_headers: dict[str, str], _body: Body) -> None:
         return None
 
+    registry = FunctionRegistry()
     with pytest.raises(ValueError, match="Invalid route name"):
-        FunctionRegistry().register("a.b, c.d", noop)
+        registry.register("a.b, c.d", noop)
 
 
 async def test_preload_registers_every_route_as_the_same_function(monkeypatch: pytest.MonkeyPatch):
@@ -50,8 +51,10 @@ async def test_preload_registers_every_route_as_the_same_function(monkeypatch: p
             return {"body": body, "route": info.route if info else None}
 
         one, two = fresh.get("alias.one"), fresh.get("alias.two")
-        assert one is not None and two is not None
-        assert one.handler is echo and two.handler is echo
+        assert one is not None
+        assert two is not None
+        assert one.handler is echo
+        assert two.handler is echo
         assert (one.instances, one.private, one.is_async) == (3, True, True)
         assert (two.instances, two.private, two.is_async) == (3, True, True)
         assert set(fresh.routes()) == {"alias.one", "alias.two"}

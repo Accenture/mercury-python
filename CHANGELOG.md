@@ -130,6 +130,17 @@
    both in one aggregator now finds the field under one name. The value is unchanged (`name:line`), and so are `time`,
    `level`, `message`, `context` and `exception`; the `text` presentation is untouched. **Upgrade note:** an aggregator
    query or dashboard field that read `logger` from this pack's JSON lines reads `source`.
+6. **Code quality: the findings of a local SonarQube and IDE inspection round (2026-11-16) in the package, the
+   extensions and the tests, with no behaviour change.** The MCP binding's server parser is split by transport, its
+   verification loop no longer shadows the module's `binding`, its suppression comments take the plain `# noqa` form
+   with the rationale beside them, a failure inside a server's task is caught as `Exception` (a cancellation still passes
+   through), the probe behind `describe` is the public `offered_tools`, and `describe` spells a tool's state without a
+   nested conditional. The bus computes an execution's time once and reads a failure's status without a nested
+   conditional, the span mapper and the bus rename the names that shadowed `annotations`, the forwarder settings copy
+   a fixed header list without a redundant call, and the host's exporter-closing hook binds its narrowed reference. The
+   LLM helper's duration pattern uses `\d` and hands the AWS session only the options the client carries. The tests
+   split composite assertions, keep one call inside each `pytest.raises`, patch state through `monkeypatch`, and share
+   the Event API host fixture through `tests/conftest.py`. **Upgrade note:** none.
 
 ## Version 4.12.21, 10/7/2026
 

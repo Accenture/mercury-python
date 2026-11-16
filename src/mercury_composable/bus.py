@@ -316,7 +316,6 @@ class EventBus:
         token = _set_trace(info)
         start_iso = iso_utc()
         start = time.perf_counter()
-        # noinspection PyBroadException
         try:
             handler = cast("Handler", service.handler)
             if service.is_async:
@@ -345,14 +344,15 @@ class EventBus:
         finally:
             _reset_trace(token)
         reply.sender = reply.sender or service.route
-        reply.exec_time = round((time.perf_counter() - start) * 1000, 3)
+        exec_time = round((time.perf_counter() - start) * 1000, 3)
+        reply.exec_time = exec_time
         if info.span_id:
             # the responder's span rides the reply, so the caller's round-trip record chains
             # onto it - the engines' WorkerHandler contract
             reply.span_id = info.span_id
         if info.annotations:
             reply.annotations.update(info.annotations)
-        self._forward(_emit_trace(delivery, info, start_iso, reply.exec_time,
+        self._forward(_emit_trace(delivery, info, start_iso, exec_time,
                                   reply.get_status(), not reply.has_error(),
                                   str(reply.body) if reply.has_error() else None))
         return reply
@@ -393,22 +393,26 @@ class EventBus:
             self._reply_interceptor_error(service.route, event, e)
         finally:
             _reset_trace(token)
-        status = error.status if isinstance(error, AppException) \
-            else (500 if error else 200)
+        if isinstance(error, AppException):
+            status = error.status
+        elif error is not None:
+            status = 500
+        else:
+            status = 200
         self._forward(_emit_trace(delivery, info, start_iso,
                                   round((time.perf_counter() - start) * 1000, 3),
                                   status, error is None, str(error) if error else None))
         # an interceptor's own outcome is never auto-replied
         return EventEnvelope()
 
-    def emit(self, trace: dict[str, Any], annotations: dict[str, Any] | None = None) -> None:
+    def emit(self, trace: dict[str, Any], notes: dict[str, Any] | None = None) -> None:
         """Emit one distributed-trace dataset the engines' way: the record on the telemetry
         log stream, then the extension route. The caller-side records - an RPC round trip
         recorded by the PostOffice, the edge records of a call through /api/event - come
         through here; a worker-side record is emitted by the execution itself."""
         dataset: dict[str, Any] = {"trace": trace}
-        if annotations:
-            dataset["annotations"] = dict(annotations)
+        if notes:
+            dataset["notes"] = dict(notes)
         telemetry_log.info(dataset)
         self._forward(dataset)
 

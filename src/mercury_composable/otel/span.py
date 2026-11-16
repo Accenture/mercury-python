@@ -94,9 +94,9 @@ def span_from_dataset(dataset: Any) -> Span | None:
     if trace_id is None or span_id is None:
         return None
     parent_span_id = _hex_id(trace.get("parent_span_id"), 8)
-    annotations = dataset.get("annotations")
-    if not isinstance(annotations, dict):
-        annotations = {}
+    notes = dataset.get("annotations")
+    if not isinstance(notes, dict):
+        notes = {}
     start_text = _display(trace.get("start"))
     start_unix_nano = parse_iso8601_nanos(start_text) if start_text is not None else None
     if start_unix_nano is None:
@@ -121,9 +121,9 @@ def span_from_dataset(dataset: Any) -> Span | None:
     kind = KIND_SERVER if service == HTTP_REQUEST else KIND_INTERNAL
     attributes: list[tuple[str, AttributeValue]] = []
 
-    def put_str(key: str, value: str | None) -> None:
-        if value is not None:
-            attributes.append((key, value))
+    def put_str(name: str, content: str | None) -> None:
+        if content is not None:
+            attributes.append((name, content))
 
     put_str("route", service)
     put_str("from", _display(trace.get("from")))
@@ -137,7 +137,7 @@ def span_from_dataset(dataset: Any) -> Span | None:
     exception_text = _display(trace.get("exception"))
     if exception_text is not None:
         attributes.append(("exception", exception_text))
-    for key, value in annotations.items():
+    for key, value in notes.items():
         text = _display(value)
         if text is not None:
             attributes.append((f"annotation.{key}", text))

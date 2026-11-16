@@ -90,10 +90,10 @@ class ForwarderSettings:
               service_name: str = DEFAULT_SERVICE) -> ForwarderSettings:
         """Settings with a FIXED header list - for tests and callers whose
         credentials are known up front."""
-        fixed_headers = list(headers or [])
+        fixed_headers = [*headers] if headers else []
         return cls(endpoint=endpoint, service_name=service_name, scope_version=__version__,
                    timeout_ms=timeout_ms, connect_timeout_ms=None,
-                   compression=DEFAULT_COMPRESSION, headers=lambda: list(fixed_headers))
+                   compression=DEFAULT_COMPRESSION, headers=fixed_headers.copy)
 
 
 def reloading_headers(raw: Callable[[], str | None]) -> HeaderSupplier:
