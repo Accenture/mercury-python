@@ -13,13 +13,14 @@
 ## Project State
 
 - **project:** mercury-python (PyPI: `mercury-composable`)
-- **status:** **v4.12.30 TAGGED 2026-11-16 (PR #58 merge `239e741` 09:09:50Z, the tag on the merge commit, the version at the
-  tag, the GitHub release published 09:11:00Z as Latest, CI green on the tag commit); the PyPI publication is PENDING** - at
-  09:16Z PyPI still served 4.12.21 as the latest (the previous release, 2026-10-07, [[pack-catch-up-release]]). The 4.12.30
-  line carries the pack's half of the engines' agent loop (ADR-0033): the loop contract with the transcript stores, the
-  Bedrock backend and the MCP binding ([[pack-catch-up-4-12-25]]) — the Python member of the Mercury Composable polyglot
-  initiative: a lightweight Event-over-HTTP function host + thin client, repurposed August 2026 (legacy language pack in
-  tagged releases v1.11.39–v2.5.0).
+- **status:** **v4.12.30 PUBLISHED to PyPI 2026-11-16 and VERIFIED** (PR #58 merge `239e741`, the tag `v4.12.30` on the merge
+  commit, the GitHub release 09:11:00Z as Latest, CI green on the tag commit; the wheel uploaded 09:22:39Z and the sdist
+  09:22:40Z, `mercury-composable` 4.12.30 the latest; the sdist's and the wheel's 22 `src/mercury_composable` files identical
+  to the tag's 22 (SHA-256), the wheel's `__version__` 4.12.30, three runtime dependencies and the extras `llm`, `bedrock`,
+  `redis` and `mcp`). The 4.12.30 line carries the pack's half of the engines' agent loop (ADR-0033): the loop contract with
+  the transcript stores, the Bedrock backend and the MCP binding (the catch-up [[pack-catch-up-4-12-25]], closed) — the
+  Python member of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function host + thin client,
+  repurposed August 2026 (legacy language pack in tagged releases v1.11.39–v2.5.0).
 - **last_enabled:** 2026-08-22
 - **last_review:** 2026-11-13 | through 2026-11-13-030139.md (on command — 5 sessions since 2026-11-03-010131, not yet due;
   `refresh-metadata` refreshed 3 footers, tier changes 2 (`conv-resources-next-to-the-application-file` and
@@ -42,8 +43,8 @@
 > Canonical live home for the current stack — language version, dependencies, tool
 > versions. `instructions.md` keeps only a high-level descriptor and points here.
 
-- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.21
-  (PyPI 2026-10-07; the lock-step round with the engines' 4.12.21), wheel from
+- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.30
+  (PyPI 2026-11-16; the catch-up to the engines' 4.12.30 with the agent loop's pack half), wheel from
   `src/mercury_composable`
   <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-11-03 | uses: 7 | tier: active | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),

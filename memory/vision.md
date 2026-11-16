@@ -7,6 +7,7 @@
 > Java engine when functionality crosses from the engine to the language packs, and carries the Java
 > release number it caught up to. **Subprocesses allowed for stdio MCP 2026-11-03 (Eric).**
 > **Wording refreshed 2026-11-13 (Eric):** the legacy language pack lives in tagged releases.
+> **Current-state line refreshed 2026-11-16:** v4.12.30 published.
 > Treated as `core` (never decays) but re-confirmed on the
 > invariant-verification cadence — a vision can go stale. The **Blueprint** (Open Threads
 > tagged `(blueprint)` in `continuity.md`) tracks the gap from Current State to here;
@@ -26,9 +27,10 @@ The Python member of the Mercury Composable polyglot initiative (August 2026): a
 API host (`POST /api/event`), a thin `PostOffice` client, the standard event-envelope
 codec (verified against the engines' shared golden vectors), the primitive in-process
 event bus (route mailboxes + workers — dispatch, not orchestration), and engine-consistent
-minimalist utilities. **v4.12.21 is on PyPI** (`pip install mercury-composable`, published
-2026-10-07; the first public package was v4.12.1, 2026-09-01); the 4.12.x line carries the
-`llm.chat` / `llm.stream` AI nodes and a constrained sdist. Tests green including the golden vectors; cross-wrapper
+minimalist utilities. **v4.12.30 is on PyPI** (`pip install mercury-composable`, published
+2026-11-16; the first public package was v4.12.1, 2026-09-01); the 4.12.x line carries the
+`llm.chat` / `llm.stream` AI nodes, the pack's half of the engines' agent loop (the loop contract,
+the Bedrock backend, the MCP binding) and a constrained sdist. Tests green including the golden vectors; cross-wrapper
 interop proven at the v4.12.0 progressive-rendering milestone. The legacy language pack
 lives in tagged releases (v1.11.39–v2.5.0).
 
