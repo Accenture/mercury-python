@@ -120,12 +120,14 @@ class Exporter:
 
     def _client(self) -> aiohttp.ClientSession:
         # lazily bound to the running loop; the total timeout bounds one attempt
-        if self._session is None or self._session.closed:
+        session = self._session
+        if session is None or session.closed:
             timeout = aiohttp.ClientTimeout(
                 total=self.timeout_ms / 1000,
                 connect=None if self.connect_timeout_ms is None else self.connect_timeout_ms / 1000)
-            self._session = aiohttp.ClientSession(timeout=timeout)
-        return self._session
+            session = aiohttp.ClientSession(timeout=timeout)
+            self._session = session
+        return session
 
     async def _attempt(self, body: bytes) -> None:
         headers = {"content-type": CONTENT_TYPE, "accept": CONTENT_TYPE}

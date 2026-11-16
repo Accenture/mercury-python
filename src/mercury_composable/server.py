@@ -37,7 +37,7 @@ import re
 import secrets
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from aiohttp import web
 
@@ -77,6 +77,15 @@ log = get_logger("mercury.server")
 def _transport_error(status: int, message: str) -> web.Response:
     reply = EventEnvelope().set_status(status).set_body(message)
     return web.Response(status=status, body=reply.to_bytes(), content_type=OCTET_STREAM)
+
+
+def _ttl(request: web.Request) -> int:
+    """The ``x-ttl`` header in milliseconds, floor 1000 - the bound on the handler's execution."""
+    try:
+        ttl = int(request.headers.get(X_TTL, "0") or 0)
+    except ValueError:
+        ttl = 0
+    return max(1000, ttl)
 
 
 def _caller_span(request: web.Request, event: EventEnvelope) -> str | None:
@@ -153,6 +162,59 @@ def _handler_headers(event: EventEnvelope) -> dict[str, str]:
     return headers
 
 
+def _handler_event(service: ServiceDef, event: EventEnvelope, headers: dict[str, str],
+                   sink_route: str) -> EventEnvelope:
+    """The envelope an interceptor receives: the body with the filtered headers, the sink as
+    its reply address, and the caller's tags, correlation id, trace and span carried over."""
+    handler_event = EventEnvelope(to=event.to, body=event.body, headers=headers)
+    handler_event.set_reply_to(sink_route)
+    if event.tags:
+        # engine-managed tags (e.g. the business correlation-id) ride the
+        # delivered envelope verbatim, the engines' way
+        handler_event.tags = dict(event.tags)
+    if event.cid:
+        handler_event.set_correlation_id(event.cid)
+    if event.trace_id:
+        handler_event.set_trace(event.trace_id, event.trace_path or service.route)
+    if event.span_id:
+        # the service's span (the caller's when the call is untraced at the
+        # edge) - the handler's span parents onto it
+        handler_event.set_span_id(event.span_id)
+    if event.sender:
+        handler_event.set_from(event.sender)
+    return handler_event
+
+
+class _Segment(NamedTuple):
+    """The wire consequence of one sink envelope in envelope mode (the Node twin's
+    ``classifySegment``): the frame to write, the status that ends the stream (``None``
+    while it continues) and whether the envelope is a warned drop."""
+
+    frame: bytes | None = None
+    status: int | None = None
+    warn: bool = False
+
+
+def _classify_segment(event: EventEnvelope) -> _Segment:
+    """A data frame (raw or escape-hatch), a terminal envelope frame that ends the response
+    cleanly (no cosmetic frames on this wire), the in-band terminal for the bus's
+    uncaught-interceptor-exception contract, or a warned drop."""
+    marker = stream_signal(event)
+    if marker == DATA:
+        return _Segment(frame=data_frame(event, first_frame=False))
+    if marker is not None:
+        # eof or exception: the terminal envelope frame ends the response
+        return _Segment(frame=envelope_frame(event),
+                        status=event.get_status() if event.has_error() else 200)
+    if event.has_error():
+        # the bus's error contract for an uncaught interceptor exception
+        # mid-stream - fail in-band with the exact status
+        message = str(event.body) if event.body is not None else "Stream failed"
+        return _Segment(frame=envelope_frame(exception_envelope(event.get_status(), message)),
+                        status=event.get_status())
+    return _Segment(warn=True)
+
+
 class EventApiServer:
     """Thin ingress: protocol guards + header hygiene, then the registry's bus."""
 
@@ -162,11 +224,7 @@ class EventApiServer:
 
     async def handle_event(self, request: web.Request) -> web.StreamResponse:
         raw = await request.read()
-        try:
-            ttl = int(request.headers.get(X_TTL, "0") or 0)
-        except ValueError:
-            ttl = 0
-        ttl = max(1000, ttl)
+        ttl = _ttl(request)
         is_async = request.headers.get(X_ASYNC, "") == "true"
         try:
             event = EventEnvelope.from_bytes(raw)
@@ -202,14 +260,19 @@ class EventApiServer:
             # interceptor dispatch (the reply_to mechanism): the handler
             # receives the raw envelope with a per-request reply sink as its
             # reply address and answers manually - single-shot or streaming
-            capable = TEXT_EVENT_STREAM in (request.headers.get("accept") or "")
-            return await self._dispatch_interceptor(request, service, event, headers,
-                                                    ttl, capable, edge)
+            return await self._dispatch_interceptor(request, service, event, headers, ttl, edge)
+        return await self._deliver(service, event, headers, ttl, edge)
+
+    async def _deliver(self, service: ServiceDef, event: EventEnvelope,
+                       headers: dict[str, str], ttl: int, edge: _Edge | None) -> web.Response:
+        """The RPC: the function's reply relayed on HTTP 200, or the 408 when the ttl
+        expires - the function's round trip and the edge recorded when the call was traced."""
         dispatched, started = iso_utc(), time.perf_counter()
         try:
-            reply = await bus.deliver(service, headers, event.body, ttl,
-                                      trace_id=event.trace_id, trace_path=event.trace_path,
-                                      cid=event.cid, envelope=event)
+            reply = await self.registry.bus.deliver(service, headers, event.body, ttl,
+                                                    trace_id=event.trace_id,
+                                                    trace_path=event.trace_path,
+                                                    cid=event.cid, envelope=event)
         except DeliveryTimeout:
             log.warning("Event %s timeout for %d ms (trace_id=%s)", event.to, ttl, event.trace_id)
             if edge:
@@ -234,8 +297,7 @@ class EventApiServer:
 
     async def _dispatch_interceptor(self, request: web.Request, service: ServiceDef,
                                     event: EventEnvelope, headers: dict[str, str],
-                                    ttl: int, capable: bool,
-                                    edge: _Edge | None = None) -> web.StreamResponse:
+                                    ttl: int, edge: _Edge | None = None) -> web.StreamResponse:
         """Dispatch to an interceptor and classify its first reply exactly like
         the engines: unmarked = the classic single-shot response, byte
         identical; marked = the envelope-mode SSE dialect for a caller that
@@ -243,24 +305,9 @@ class EventApiServer:
         does not."""
         bus = self.registry.bus
         sink_route, queue = bus.open_sink()
+        capable = TEXT_EVENT_STREAM in (request.headers.get("accept") or "")
         try:
-            handler_event = EventEnvelope(to=event.to, body=event.body, headers=headers)
-            handler_event.set_reply_to(sink_route)
-            if event.tags:
-                # engine-managed tags (e.g. the business correlation-id) ride
-                # the delivered envelope verbatim, the engines' way
-                handler_event.tags = dict(event.tags)
-            if event.cid:
-                handler_event.set_correlation_id(event.cid)
-            if event.trace_id:
-                handler_event.set_trace(event.trace_id, event.trace_path or service.route)
-            if event.span_id:
-                # the service's span (the caller's when the call is untraced at the
-                # edge) - the handler's span parents onto it
-                handler_event.set_span_id(event.span_id)
-            if event.sender:
-                handler_event.set_from(event.sender)
-            bus.publish_envelope(service, handler_event)
+            bus.publish_envelope(service, _handler_event(service, event, headers, sink_route))
             try:
                 first = await asyncio.wait_for(queue.get(), ttl / 1000)
             except asyncio.TimeoutError:
@@ -339,25 +386,13 @@ class EventApiServer:
                 frame = envelope_frame(exception_envelope(408, f"Timeout for {seconds} seconds"))
                 await response.write(frame)
                 return 408
-            marker = stream_signal(event)
-            if marker == DATA:
-                frame = data_frame(event, first_frame=False)
-                if frame:
-                    await response.write(frame)
-            elif marker is not None:
-                # eof or exception: the terminal envelope frame ends the
-                # response cleanly - no cosmetic frames on this wire
-                await response.write(envelope_frame(event))
-                return event.get_status() if event.has_error() else 200
-            elif event.has_error():
-                # the bus's error contract for an uncaught interceptor
-                # exception mid-stream - fail in-band with the exact status
-                message = str(event.body) if event.body is not None else "Stream failed"
-                frame = envelope_frame(exception_envelope(event.get_status(), message))
-                await response.write(frame)
-                return event.get_status()
-            else:
+            segment = _classify_segment(event)
+            if segment.warn:
                 log.warning("Dropping event - invalid %s signal", "x-event-stream")
+            if segment.frame:
+                await response.write(segment.frame)
+            if segment.status is not None:
+                return segment.status
 
     @staticmethod
     async def _next_segment(response: web.StreamResponse,

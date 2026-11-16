@@ -302,38 +302,59 @@ class PartialSuccess:
 def partial_success(body: bytes) -> PartialSuccess | None:
     """The response's partial-success block when it carries content, else ``None``."""
     reader = ProtoReader(body)
-    result: PartialSuccess | None = None
+    result = PartialSuccess()
     while reader.has_more():
         tag = reader.read_tag()
         if tag is None:
             return None
         field, wire = tag
-        if field == 1 and wire == WIRE_LEN:
-            block = reader.read_bytes()
-            if block is None:
-                return None
-            inner = ProtoReader(block)
-            partial = PartialSuccess()
-            while inner.has_more():
-                inner_tag = inner.read_tag()
-                if inner_tag is None:
-                    return None
-                f, w = inner_tag
-                if f == 1 and w == WIRE_VARINT:
-                    value = inner.read_varint()
-                    if value is None:
-                        return None
-                    partial.rejected_spans = value if value < (1 << 63) else value - (1 << 64)
-                elif f == 2 and w == WIRE_LEN:
-                    text = inner.read_string()
-                    if text is None:
-                        return None
-                    partial.error_message = text
-                elif not inner.skip(w):
-                    return None
-            result = partial
-        elif not reader.skip(wire):
+        result = _response_field(reader, field, wire, result)
+        if result is None:
             return None
-    if result is not None and (result.rejected_spans != 0 or result.error_message):
+    if result.rejected_spans != 0 or result.error_message:
         return result
     return None
+
+
+def _response_field(reader: ProtoReader, field: int, wire: int,
+                    current: PartialSuccess) -> PartialSuccess | None:
+    """One field of the ``ExportTraceServiceResponse``: field 1 is the ``partial_success``
+    block (the last one wins), anything else is skipped; ``None`` when the bytes are
+    malformed."""
+    if field == 1 and wire == WIRE_LEN:
+        return _partial_success_block(reader)
+    return current if reader.skip(wire) else None
+
+
+def _partial_success_block(reader: ProtoReader) -> PartialSuccess | None:
+    """The ``partial_success`` message at the reader's position; ``None`` when malformed."""
+    block = reader.read_bytes()
+    if block is None:
+        return None
+    inner = ProtoReader(block)
+    partial = PartialSuccess()
+    while inner.has_more():
+        tag = inner.read_tag()
+        if tag is None or not _partial_success_field(inner, tag[0], tag[1], partial):
+            return None
+    return partial
+
+
+def _partial_success_field(reader: ProtoReader, field: int, wire: int,
+                           partial: PartialSuccess) -> bool:
+    """Read one field of the message into ``partial``: ``rejected_spans`` (1, an int64
+    varint), ``error_message`` (2, a string); anything else is skipped. ``False`` when
+    malformed."""
+    if field == 1 and wire == WIRE_VARINT:
+        value = reader.read_varint()
+        if value is None:
+            return False
+        partial.rejected_spans = value if value < (1 << 63) else value - (1 << 64)
+        return True
+    if field == 2 and wire == WIRE_LEN:
+        text = reader.read_string()
+        if text is None:
+            return False
+        partial.error_message = text
+        return True
+    return reader.skip(wire)

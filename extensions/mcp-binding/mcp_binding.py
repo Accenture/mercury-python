@@ -19,10 +19,10 @@ A tool is declared where every route is declared - in the code::
 the tool's input schema, and returns the tool as an async callable. Boot connects every server a
 function binds a tool of, lists its tools and verifies every binding before the first request:
 a server that is not configured, a tool the server does not offer or an input schema whose digest
-differs from the pinned one stops the application by name, so a server-side change stops a deploy
-instead of becoming run-time errors a model improvises around. A route names the capability, never
-the transport: a tool may start as an MCP tool and later be implemented another way, and the graph
-must not know.
+differs from the pinned one stops the application by name, so a server-side change stops a
+deployment instead of becoming run-time errors a model improvises around. A route names the
+capability, never the transport: a tool may start as an MCP tool and later be implemented another
+way, and the graph must not know.
 
 Run:  pip install 'mercury-composable[mcp]'
       mercury-serve extensions/mcp-binding/mcp_binding.py
@@ -216,7 +216,7 @@ def _str_map(server: str, key: str, value: Any) -> dict[str, str]:
 def _server(name: str, value: Any, default_timeout_ms: int) -> ServerSpec:
     if not isinstance(value, dict):
         raise BindingError(f"MCP server {name} must be a map")
-    unknown = sorted(set(value) - set(SERVER_KEYS))
+    unknown = sorted(str(key) for key in value if key not in SERVER_KEYS)
     if unknown:
         hint = " - the tools are bound in the code, not in this file" if "tools" in unknown else ""
         raise BindingError(f"MCP server {name} has unknown keys {', '.join(unknown)} - the keys are "
@@ -318,8 +318,8 @@ class Server:
             try:
                 await self._task
             # a transport closing noisily must not fail the shutdown
-            except Exception:  # noqa: BLE001
-                log.warning("MCP server %s closed with an error", self.spec.name)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("MCP server %s closed with an error: %s", self.spec.name, exc)
 
     @asynccontextmanager
     async def _transport(self) -> AsyncIterator[tuple[Any, Any]]:

@@ -93,37 +93,53 @@ def span_from_dataset(dataset: Any) -> Span | None:
     span_id = _hex_id(trace.get("span_id"), 8)
     if trace_id is None or span_id is None:
         return None
-    parent_span_id = _hex_id(trace.get("parent_span_id"), 8)
     notes = dataset.get("annotations")
-    if not isinstance(notes, dict):
-        notes = {}
-    start_text = _display(trace.get("start"))
-    start_unix_nano = parse_iso8601_nanos(start_text) if start_text is not None else None
-    if start_unix_nano is None:
-        start_unix_nano = time.time_ns()
+    start_unix_nano = _start_unix_nano(trace.get("start"))
     exec_ms = _to_float(trace.get("exec_time"))
-    end_unix_nano = start_unix_nano + int(exec_ms * NANOS_PER_MILLI)
-    if _to_bool(trace.get("success")):
-        status_code, status_message = STATUS_OK, ""
-    else:
-        status_code = STATUS_ERROR
-        exception = _display(trace.get("exception"))
-        if exception is not None:
-            status_message = exception
-        else:
-            status_message = f"status={_display(trace.get('status')) or 'null'}"
+    status_code, status_message = _span_status(trace)
     service = _display(trace.get("service"))
     path = _display(trace.get("path"))
-    name = service or path or "task"
     # the edge's round-trip record (service "http.request", emitted by an engine's REST
     # automation when the response completes) is the SERVER span; every function execution
     # - including the first one, whose "from" is http.request - is an INTERNAL hop under it
     kind = KIND_SERVER if service == HTTP_REQUEST else KIND_INTERNAL
+    return Span(trace_id=trace_id, span_id=span_id,
+                parent_span_id=_hex_id(trace.get("parent_span_id"), 8),
+                name=service or path or "task", kind=kind, start_unix_nano=start_unix_nano,
+                end_unix_nano=start_unix_nano + int(exec_ms * NANOS_PER_MILLI),
+                attributes=_span_attributes(trace, notes if isinstance(notes, dict) else {},
+                                            service, path, exec_ms),
+                status_code=status_code, status_message=status_message)
+
+
+def _start_unix_nano(value: Any) -> int:
+    """The dataset's ``start`` as nanoseconds since the epoch; now when it is missing or
+    does not parse."""
+    text = _display(value)
+    nanos = parse_iso8601_nanos(text) if text is not None else None
+    return time.time_ns() if nanos is None else nanos
+
+
+def _span_status(trace: dict[str, Any]) -> tuple[int, str]:
+    """The span status: OK for a success, else ERROR described by the exception, or by the
+    status."""
+    if _to_bool(trace.get("success")):
+        return STATUS_OK, ""
+    exception = _display(trace.get("exception"))
+    if exception is not None:
+        return STATUS_ERROR, exception
+    return STATUS_ERROR, f"status={_display(trace.get('status')) or 'null'}"
+
+
+def _span_attributes(trace: dict[str, Any], notes: dict[str, Any], service: str | None,
+                     path: str | None, exec_ms: float) -> list[tuple[str, AttributeValue]]:
+    """The span attributes: the trace metrics under the same names (``service`` as
+    ``route``) and each annotation as ``annotation.<key>``."""
     attributes: list[tuple[str, AttributeValue]] = []
 
-    def put_str(name: str, content: str | None) -> None:
+    def put_str(key: str, content: str | None) -> None:
         if content is not None:
-            attributes.append((name, content))
+            attributes.append((key, content))
 
     put_str("route", service)
     put_str("from", _display(trace.get("from")))
@@ -134,17 +150,10 @@ def span_from_dataset(dataset: Any) -> Span | None:
     attributes.append(("exec_time_ms", exec_ms))
     if trace.get("round_trip") is not None:
         attributes.append(("round_trip_ms", _to_float(trace.get("round_trip"))))
-    exception_text = _display(trace.get("exception"))
-    if exception_text is not None:
-        attributes.append(("exception", exception_text))
+    put_str("exception", _display(trace.get("exception")))
     for key, value in notes.items():
-        text = _display(value)
-        if text is not None:
-            attributes.append((f"annotation.{key}", text))
-    return Span(trace_id=trace_id, span_id=span_id, parent_span_id=parent_span_id,
-                name=name, kind=kind, start_unix_nano=start_unix_nano,
-                end_unix_nano=end_unix_nano, attributes=attributes,
-                status_code=status_code, status_message=status_message)
+        put_str(f"annotation.{key}", _display(value))
+    return attributes
 
 
 def _display(value: Any) -> str | None:
@@ -225,6 +234,28 @@ def parse_iso8601_nanos(text: str) -> int | None:
     - the inverse of the envelope formatter, with no date library (days from
     civil per Howard Hinnant)."""
     b = text.strip()
+    fields = _date_time_fields(b)
+    if fields is None:
+        return None
+    year, month, day, hour, minute, second = fields
+    pos, nanos = 19, 0
+    if b[pos] == ".":
+        fraction = _fraction_nanos(b, pos + 1)
+        if fraction is None:
+            return None
+        nanos, pos = fraction
+    if pos + 1 != len(b) or b[pos] not in "Zz":
+        return None
+    days = _days_from_civil(year, month, day)
+    secs = days * 86_400 + hour * 3600 + minute * 60 + second
+    if secs < 0:
+        return None
+    return secs * 1_000_000_000 + nanos
+
+
+def _date_time_fields(b: str) -> tuple[int, int, int, int, int, int] | None:
+    """The six fields of the ``YYYY-MM-DDTHH:MM:SS`` head of ``b``, range-checked; ``None``
+    when the text is too short or not in that shape."""
     if len(b) < 20:
         return None
     if b[4] != "-" or b[7] != "-" or b[10] not in "Tt" or b[13] != ":" or b[16] != ":":
@@ -235,24 +266,19 @@ def parse_iso8601_nanos(text: str) -> int | None:
     year, month, day, hour, minute, second = (int(p) for p in parts)
     if not 1 <= month <= 12 or not 1 <= day <= 31 or hour > 23 or minute > 59 or second > 60:
         return None
-    pos = 19
-    nanos = 0
-    if b[pos] == ".":
+    return year, month, day, hour, minute, second
+
+
+def _fraction_nanos(b: str, start: int) -> tuple[int, int] | None:
+    """The fraction digits from ``start`` as nanoseconds, with the position after them;
+    ``None`` when there is no digit or there are more than nine."""
+    pos = start
+    while pos < len(b) and b[pos].isdigit():
         pos += 1
-        start = pos
-        while pos < len(b) and b[pos].isdigit():
-            pos += 1
-        digits = b[start:pos]
-        if not digits or len(digits) > 9:
-            return None
-        nanos = int(digits.ljust(9, "0"))
-    if pos + 1 != len(b) or b[pos] not in "Zz":
+    digits = b[start:pos]
+    if not digits or len(digits) > 9:
         return None
-    days = _days_from_civil(year, month, day)
-    secs = days * 86_400 + hour * 3600 + minute * 60 + second
-    if secs < 0:
-        return None
-    return secs * 1_000_000_000 + nanos
+    return int(digits.ljust(9, "0")), pos
 
 
 def _days_from_civil(year: int, month: int, day: int) -> int:

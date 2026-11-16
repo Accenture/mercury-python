@@ -334,42 +334,45 @@ def _tools(raw: Any) -> list[dict[str, Any]]:
         raise AppException(
             400, "tools must be a non-empty list of {name, description, input_schema}"
         )
-    tools: list[dict[str, Any]] = []
     names: set[str] = set()
-    for index, tool in enumerate(raw):
-        if not isinstance(tool, dict):
-            raise AppException(400, f"tools[{index}] must be a map")
-        unknown = sorted(str(key) for key in tool if key not in TOOL_KEYS)
-        if unknown:
-            raise AppException(
-                400,
-                f"tools[{index}]: unsupported keys: {', '.join(unknown)} - "
-                f"supported: {', '.join(TOOL_KEYS)}",
-            )
-        name = tool.get("name")
-        if not isinstance(name, str) or not TOOL_NAME.fullmatch(name):
-            raise AppException(400, f"tools[{index}].name must match ^[a-zA-Z0-9_-]{{1,128}}$")
-        if name in names:
-            raise AppException(400, f"tools[{index}].name '{name}' is not unique")
-        names.add(name)
-        description = tool.get("description")
-        if not isinstance(description, str) or not description:
-            raise AppException(400, f"tools[{index}].description must be a non-empty string")
-        input_schema = tool.get("input_schema")
-        if not isinstance(input_schema, dict):
-            raise AppException(400, f"tools[{index}].input_schema must be a JSON schema map")
-        strict = tool.get("strict")
-        if strict is not None and not isinstance(strict, bool):
-            raise AppException(400, f"tools[{index}].strict must be true or false")
-        entry: dict[str, Any] = {
-            "name": name,
-            "description": description,
-            "input_schema": input_schema,
-        }
-        if strict:
-            entry["strict"] = True
-        tools.append(entry)
-    return tools
+    return [_tool(index, tool, names) for index, tool in enumerate(raw)]
+
+
+def _tool(index: int, tool: Any, names: set[str]) -> dict[str, Any]:
+    """One tool as the API takes it, its name added to ``names``; the checks run in the order
+    of the Node.js twin and name the field that is wrong."""
+    if not isinstance(tool, dict):
+        raise AppException(400, f"tools[{index}] must be a map")
+    unknown = sorted(str(key) for key in tool if key not in TOOL_KEYS)
+    if unknown:
+        raise AppException(
+            400,
+            f"tools[{index}]: unsupported keys: {', '.join(unknown)} - "
+            f"supported: {', '.join(TOOL_KEYS)}",
+        )
+    name = tool.get("name")
+    if not isinstance(name, str) or not TOOL_NAME.fullmatch(name):
+        raise AppException(400, f"tools[{index}].name must match ^[a-zA-Z0-9_-]{{1,128}}$")
+    if name in names:
+        raise AppException(400, f"tools[{index}].name '{name}' is not unique")
+    names.add(name)
+    description = tool.get("description")
+    if not isinstance(description, str) or not description:
+        raise AppException(400, f"tools[{index}].description must be a non-empty string")
+    input_schema = tool.get("input_schema")
+    if not isinstance(input_schema, dict):
+        raise AppException(400, f"tools[{index}].input_schema must be a JSON schema map")
+    strict = tool.get("strict")
+    if strict is not None and not isinstance(strict, bool):
+        raise AppException(400, f"tools[{index}].strict must be true or false")
+    entry: dict[str, Any] = {
+        "name": name,
+        "description": description,
+        "input_schema": input_schema,
+    }
+    if strict:
+        entry["strict"] = True
+    return entry
 
 
 def _conversation(raw: Any) -> str | None:
@@ -441,23 +444,31 @@ def prepare_loop(body: dict[str, Any]) -> LoopTurn:
         retention = _prop("llm.transcript.retention", DEFAULT_TRANSCRIPT_RETENTION)
     ttl_s = _duration("ttl", ttl, 1)
     retention_s = _duration("retention", retention, 0)
+    _check_turn_shape(body, conversation, turn, results)
+    return LoopTurn(tools, conversation, turn or 0, results, ttl_s, retention_s)
+
+
+def _check_turn_shape(
+    body: dict[str, Any], conversation: str | None, turn: int | None,
+    results: list[dict[str, Any]] | None,
+) -> None:
+    """What a first turn and a later turn may carry, or raise AppException(400)."""
     if conversation is None:
         if turn:
             raise AppException(400, "turn must be 0 or absent on a first turn")
         if results is not None:
             raise AppException(400, "results answer a previous turn - a first turn carries none")
-    else:
-        if turn is None:
-            raise AppException(
-                400, "turn is required with conversation - the turn count the record should hold"
-            )
-        if body.get("prompt") or body.get("messages"):
-            raise AppException(
-                400,
-                "a later turn carries results, never prompt or messages - the transcript "
-                "holds the conversation",
-            )
-    return LoopTurn(tools, conversation, turn or 0, results, ttl_s, retention_s)
+        return
+    if turn is None:
+        raise AppException(
+            400, "turn is required with conversation - the turn count the record should hold"
+        )
+    if body.get("prompt") or body.get("messages"):
+        raise AppException(
+            400,
+            "a later turn carries results, never prompt or messages - the transcript "
+            "holds the conversation",
+        )
 
 
 # --- the backend seam ------------------------------------------------------------------

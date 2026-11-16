@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, TypeAlias, cast
+from typing import Any, TypeAlias
 
 import msgpack
 
@@ -152,8 +152,10 @@ class EventEnvelope:
         return result
 
     def to_bytes(self) -> bytes:
-        # packb returns None only in the legacy stream mode - never here
-        return cast(bytes, msgpack.packb(self.to_map(), use_bin_type=True, default=_pack_default))
+        # packb returns None only in the legacy stream mode - never here; msgpack ships no type
+        # information, so the checker cannot know it
+        return msgpack.packb(  # pyright: ignore[reportReturnType]
+            self.to_map(), use_bin_type=True, default=_pack_default)
 
     @classmethod
     def from_map(cls, data: dict[str, Any]) -> EventEnvelope:
