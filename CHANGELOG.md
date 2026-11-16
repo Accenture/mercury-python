@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## Version 4.12.30, 11/16/2026
+
+The catch-up round with the engines: the pack moves from 4.12.21 to 4.12.30, the number the Java engine released on
+2026-11-05 and the Rust port caught up to (a version names content, not a cadence; a pack catches up when functionality
+crosses from the engine to the language packs). This release carries the pack's half of the engines' agent loop
+(ADR-0033): `llm.chat` serves one model turn of `llm.run` with the transcript in the helper's own store, in memory or on
+Redis (Added 2); the LLM helper reaches Claude through AWS Bedrock as well as the Claude API (Added 1); and the new MCP
+binding, `extensions/mcp-binding/`, declares a tool of an MCP server as a composable function with the digest of its
+input schema pinned in code (Added 3) - all driven live end to end from the Java engine through this pack
+(`docs/test-reports/agent-loop-live-drive.md` and `agent-tool-use-live-drive.md` in the engine repository). The host
+leaves the trace records a Java or Rust callee leaves, so a span lineage stays continuous from an engine into this pack
+(Changed 4); `@preload` takes route aliases (Added 4); the JSON log presentations label the emitting logger `source`
+(Changed 5). The optional extras are `llm`, `bedrock`, `redis` and `mcp`; the package itself keeps its three
+dependencies. **Upgrade notes:** the LLM helper lives in `extensions/llm-helper/` (Changed 2), and the `resources`
+folder is resolved next to the application file, never in the working directory (Changed 1).
+
 ### Added
 
 1. **AWS Bedrock as the LLM helper's second backend (`llm.backend: 'bedrock'`).** The helper reaches the same Claude models
