@@ -1,6 +1,6 @@
 - [ ] **(blueprint) The essential built-in tools for agent loops, RFC-0013 build plan step 1 and 2 here, Python first
   (Eric: "proceed with essential tools", 2026-11-17; the spec is mercury-composable
-  `draft-design-specs/agent-essential-tools.md`, settled, rulings R1-R16).** **Step 1 BUILT 2026-11-17** on branch `feat/agent-tools` (PR opened the same day):
+  `draft-design-specs/agent-essential-tools.md`, settled, rulings R1-R16).** **Step 1 BUILT 2026-11-17** as PR #63 (branch `feat/agent-tools`, opened the same day):
   `extensions/agent-tools/agent_tools.py`, the seven routes, the catalog files, `describe`, `tools.health`, README,
   98 tests on a workspace and a fixture site, a live https fetch through the pinned-address path; six defaults set
   without a ruling are listed in the session log (hidden entries invisible to every file tool, the resolved address
