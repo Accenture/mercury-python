@@ -70,8 +70,9 @@ mercury-serve extensions/llm-helper/llm_helper.py -Dllm.transcript.store=redis \
 ```
 
 `resources/application.yml` reads the database user and password from `POSTGRES_USER` (default `mercury`) and
-`POSTGRES_PASSWORD`, so no credential travels on a command line (a `-D` value is taken as written, never
-substituted); the other connection keys default to the development container.
+`POSTGRES_PASSWORD`, so no credential travels on a command line; since a `-D` value resolves the same `${ENV_VAR}`
+references, `-Dllm.transcript.audit.postgres.password='${POSTGRES_PASSWORD}'` works as well. The other connection
+keys default to the development container.
 
 The app listens on port 8086 (`rest.server.port` in `resources/application.yml`). Map its routes
 from the engine's `event-over-http.yaml`, as the Java and Rust MiniGraph Playgrounds do:
