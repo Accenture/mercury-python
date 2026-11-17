@@ -1,0 +1,11 @@
+{
+  "name": "graph_schema",
+  "description": "The schema of the agent's knowledge graph: every node label with its count and its property names and types, and every relationship type with its count and the labels it connects. Read it before writing a query or an ingest, so labels, types and property names match what the graph holds.",
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "route": "graph.schema"
+}

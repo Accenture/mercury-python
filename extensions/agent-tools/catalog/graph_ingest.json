@@ -1,0 +1,74 @@
+{
+  "name": "graph_ingest",
+  "description": "Load what you extracted from a document into the agent's knowledge graph, idempotently. Each node is merged on its key - unique across the graph, the label in lower case as its prefix (clause:12, party:supplier-a) - with its label and properties; each relationship is merged between two keys that exist (in this call or already in the graph) with its type and properties. Labels and types are identifiers (letters, digits and underscore, starting with a letter); property values are scalars or lists of scalars. Give source (the document's path or URL) so an answer can cite it. Running the same ingest twice changes nothing.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "description": "The entities: a key, a label and properties each.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "description": "Unique across the graph, prefixed with the label."
+            },
+            "label": {
+              "type": "string",
+              "description": "The node's label, an identifier."
+            },
+            "properties": {
+              "type": "object",
+              "description": "Scalar or list-of-scalar values by name."
+            }
+          },
+          "required": [
+            "key",
+            "label"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "relationships": {
+        "type": "array",
+        "description": "The relations: from a key to a key, with a type and properties.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "description": "The key of the start node."
+            },
+            "to": {
+              "type": "string",
+              "description": "The key of the end node."
+            },
+            "type": {
+              "type": "string",
+              "description": "The relationship type, an identifier."
+            },
+            "properties": {
+              "type": "object",
+              "description": "Scalar or list-of-scalar values by name."
+            }
+          },
+          "required": [
+            "from",
+            "to",
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "source": {
+        "type": "string",
+        "description": "The document the facts come from - its path or URL."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "route": "graph.ingest",
+  "write": true
+}

@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import io
 import json
 import logging
 import os
 import re
 import sys
 from collections.abc import AsyncIterator, Callable, Iterator
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -47,10 +49,17 @@ ROUTES = (
     "file.write",
     "file.list",
     "file.search",
+    "file.extract",
     "web.fetch",
     "web.crawl",
+    "graph.schema",
+    "graph.query",
+    "graph.write",
+    "graph.ingest",
     "time.now",
 )
+STEP_ONE_ROUTES = tuple(r for r in ROUTES if not r.startswith("graph."))
+WRITERS = {"file_write", "graph_write", "graph_ingest"}
 
 # the loop's closed schema subset (ToolSchema in the engines' agent loop), as the rows may use it
 SCHEMA_KEYWORDS = {
@@ -956,8 +965,8 @@ async def test_a_full_configuration_registers_every_tool_and_serves_them_through
     with caplog.at_level(logging.WARNING):
         await app.boot()
     assert "tools.web.crawl.max.pages=80 is over the tool's cap 50" in caplog.text
-    assert app.registered == list(ROUTES)
-    for route in ROUTES:
+    assert app.registered == list(STEP_ONE_ROUTES)
+    for route in STEP_ONE_ROUTES:
         service = registry.get(route)
         assert service is not None and not service.private and service.instances == 10, route
     po = PostOffice(registry=registry)
@@ -972,7 +981,8 @@ async def test_a_full_configuration_registers_every_tool_and_serves_them_through
         assert clock.get_status() == 200 and clock.body["timezone"] == "UTC"
         info = await tools.tools_health({"type": "info"}, None)
         assert info["service"] == "agent.tools"
-        assert info["tools"] == list(ROUTES)
+        assert info["tools"] == list(STEP_ONE_ROUTES)
+        assert info["graph"] is None
         assert info["workspace"] == str(workspace.resolve())
         assert info["allowed_sites"] == ["http://127.0.0.1"]
         assert await tools.tools_health({"type": "health"}, None) == "agent.tools is running fine"
@@ -1006,7 +1016,9 @@ def test_describe_prints_every_row_and_what_registers(
 ) -> None:
     assert tools.describe([]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("# 7 built-in tool(s)")
+    assert out.startswith("# 12 built-in tool(s)")
+    assert "## graph.schema (graph_schema) - NOT registered (tools.graph.uri is not set)" in out
+    assert "## file.extract (file_extract) - NOT registered (tools.file.root is not set)" in out
     assert "## file.read (file_read) - NOT registered (tools.file.root is not set)" in out
     assert "## web.fetch (web_fetch) - NOT registered (tools.web.allow is empty)" in out
     assert "## time.now (time_now) - registers" in out
@@ -1047,9 +1059,954 @@ def test_the_rows_satisfy_the_loops_catalog_rules(row: dict[str, Any]) -> None:
     schema = row["input_schema"]
     assert schema["type"] == "object" and schema["additionalProperties"] is False
     assert set(schema["required"]) <= set(schema["properties"])
-    for name, prop in schema["properties"].items():
-        assert set(prop) <= SCHEMA_KEYWORDS, (name, set(prop) - SCHEMA_KEYWORDS)
-        assert prop["type"] in ("string", "integer", "boolean")
-    assert row.get("write", False) is (row["name"] == "file_write"), (
-        "file_write is the one writer of step 1"
+    _check_schema(schema)
+    assert row.get("write", False) is (row["name"] in WRITERS), (
+        "the writers carry the mark, nothing else"
     )
+
+
+def _check_schema(schema: dict[str, Any]) -> None:
+    """Every keyword in the loop's closed subset, every type a JSON type, objects and arrays checked
+    through."""
+    assert set(schema) <= SCHEMA_KEYWORDS, set(schema) - SCHEMA_KEYWORDS
+    assert schema["type"] in ("string", "integer", "boolean", "object", "array")
+    if schema["type"] == "object":
+        for prop in schema.get("properties", {}).values():
+            _check_schema(prop)
+        assert set(schema.get("required", [])) <= set(schema.get("properties", {}))
+    if schema["type"] == "array":
+        _check_schema(schema["items"])
+
+
+# --- the knowledge graph: the pure half ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("query", "clause"),
+    [
+        ("MATCH (n) RETURN n", None),
+        ("MATCH (n) WHERE n.name = 'please SET this' RETURN n", None),
+        ("MATCH (n:`CREATE`) RETURN n.offset, n.settings // DELETE later", None),
+        ("MATCH (n) RETURN n /* MERGE */", None),
+        ("CREATE (n:X) RETURN n", "CREATE"),
+        ("match (n) set n.x = 1", "SET"),
+        ("MATCH (n) DETACH DELETE n", "DELETE"),
+        ("MERGE (n:X {k: 1})", "MERGE"),
+        ("MATCH (n) REMOVE n:X", "REMOVE"),
+        ("DROP INDEX x", "DROP"),
+        ("LOAD   CSV FROM 'file:///x.csv' AS row RETURN row", "LOAD CSV"),
+    ],
+)
+def test_write_clauses_are_found_outside_literals_and_comments(
+    query: str, clause: str | None
+) -> None:
+    assert tools.write_clause(query) == clause
+
+
+def test_delete_clauses() -> None:
+    assert tools.delete_clause("MATCH (n) DETACH DELETE n") == "DELETE"
+    assert tools.delete_clause("DROP CONSTRAINT c") == "DROP"
+    assert tools.delete_clause("MERGE (n:X) SET n.deleted = 'DELETE'") is None
+    assert tools.delete_clause("CREATE INDEX i FOR (n:X) ON (n.key)") is None
+
+
+@dataclass
+class FakeNode:
+    element_id: str
+    labels: frozenset[str]
+    props: dict[str, Any]
+
+    def items(self) -> Any:
+        return self.props.items()
+
+
+@dataclass
+class FakeRelationship:
+    element_id: str
+    type: str
+    start_node: FakeNode
+    end_node: FakeNode
+    props: dict[str, Any]
+
+    def items(self) -> Any:
+        return self.props.items()
+
+
+@dataclass
+class FakePath:
+    nodes: list[FakeNode]
+    relationships: list[FakeRelationship]
+
+
+def test_render_value_shapes_nodes_relationships_paths_and_driver_types() -> None:
+    import neo4j.graph
+    import neo4j.spatial
+    import neo4j.time
+
+    a = FakeNode("4:g:1", frozenset({"Party", "Clause"}), {"key": "clause:1", "n": 1})
+    b = FakeNode("4:g:2", frozenset({"Party"}), {"key": "party:a"})
+    r = FakeRelationship("5:g:9", "BINDS", a, b, {"since": 2026})
+    assert tools.render_value(a) == {
+        "id": "4:g:1",
+        "labels": ["Clause", "Party"],
+        "properties": {"key": "clause:1", "n": 1},
+    }
+    assert tools.render_value(r) == {
+        "id": "5:g:9",
+        "type": "BINDS",
+        "start": "4:g:1",
+        "end": "4:g:2",
+        "properties": {"since": 2026},
+    }
+    rendered_path = tools.render_value(FakePath([a, b], [r]))
+    assert [item.get("id") for item in rendered_path] == ["4:g:1", "5:g:9", "4:g:2"]
+    # the driver's own node class renders the same way
+    real = neo4j.graph.Node(neo4j.graph.Graph(), "4:real:7", 7, ["Clause"], {"key": "clause:7"})
+    assert tools.render_value(real) == {
+        "id": "4:real:7",
+        "labels": ["Clause"],
+        "properties": {"key": "clause:7"},
+    }
+    assert (
+        tools.render_value(neo4j.time.DateTime(2026, 11, 17, 10, 0, 0))
+        == "2026-11-17T10:00:00.000000000"
+    )
+    assert tools.render_value(neo4j.time.Date(2026, 11, 17)) == "2026-11-17"
+    assert tools.render_value(neo4j.spatial.CartesianPoint((1.0, 2.0))) == {
+        "srid": 7203,
+        "coordinates": [1.0, 2.0],
+    }
+    assert tools.render_value(b"\x00\x01") == "AAE="
+    assert tools.render_value({"k": [1, "a", None, True]}) == {"k": [1, "a", None, True]}
+    assert tools.render_value(3.5) == 3.5
+
+
+def test_graph_errors_map_to_statuses_by_type() -> None:
+    import neo4j.exceptions as errors
+
+    def hydrate(code: str, message: str) -> BaseException:
+        return errors.Neo4jError._hydrate_neo4j(
+            code=code, message=message
+        )  # the driver's own factory
+
+    syntax = tools.graph_error(
+        hydrate("Neo.ClientError.Statement.SyntaxError", "Invalid input 'X'"), timeout_ms=10
+    )
+    assert (syntax.status, syntax.message) == (
+        400,
+        "Neo.ClientError.Statement.SyntaxError: Invalid input 'X'",
+    )
+    timed = tools.graph_error(
+        hydrate("Neo.ClientError.Transaction.TransactionTimedOut", "took too long"), timeout_ms=10
+    )
+    assert timed.status == 408 and "within 10 ms" in timed.message
+    auth = tools.graph_error(
+        hydrate("Neo.ClientError.Security.Unauthorized", "the credential itself"), timeout_ms=10
+    )
+    assert auth.status == 503 and "the credential itself" not in auth.message
+    transient = tools.graph_error(
+        hydrate("Neo.TransientError.Transaction.DeadlockDetected", "deadlock"), timeout_ms=10
+    )
+    assert transient.status == 503
+    unavailable = tools.graph_error(errors.ServiceUnavailable("gone"), timeout_ms=10)
+    assert (unavailable.status, unavailable.message) == (
+        503,
+        "the graph database is not reachable (ServiceUnavailable)",
+    )
+    assert tools.graph_error(asyncio.TimeoutError(), timeout_ms=10).status == 408
+    assert tools.graph_error(RuntimeError("x"), timeout_ms=10).status == 502
+    passthrough = AppException(400, "mine")
+    assert tools.graph_error(passthrough, timeout_ms=10) is passthrough
+
+
+def test_plan_ingest_groups_and_validates() -> None:
+    plan = tools.plan_ingest(
+        {
+            "nodes": [
+                {
+                    "key": "clause:1",
+                    "label": "Clause",
+                    "properties": {"text": "a", "n": 1, "tags": ["x", "y"], "gone": None},
+                },
+                {"key": "party:a", "label": "Party"},
+                {"key": "clause:2", "label": "Clause", "properties": {}},
+            ],
+            "relationships": [
+                {
+                    "from": "clause:1",
+                    "to": "party:a",
+                    "type": "BINDS",
+                    "properties": {"since": 2026},
+                }
+            ],
+            "source": "docs/a.md",
+        },
+        max_nodes=10,
+    )
+    assert list(plan.nodes) == ["Clause", "Party"]
+    assert plan.nodes["Clause"] == [
+        {"key": "clause:1", "properties": {"text": "a", "n": 1, "tags": ["x", "y"]}},
+        {"key": "clause:2", "properties": {}},
+    ]
+    assert plan.relationships == {
+        "BINDS": [{"from": "clause:1", "to": "party:a", "properties": {"since": 2026}}]
+    }
+    assert (plan.node_count, plan.relationship_count, plan.source) == (3, 1, "docs/a.md")
+    assert plan.endpoint_keys == ["clause:1", "party:a"]
+    statements = tools.ingest_statements(plan)
+    assert [q for q, _ in statements] == [
+        "UNWIND $rows AS row MERGE (n:`Clause` {key: row.key}) SET n += row.properties, n.source = $source",
+        "UNWIND $rows AS row MERGE (n:`Party` {key: row.key}) SET n += row.properties, n.source = $source",
+        (
+            "UNWIND $rows AS row MATCH (a {key: row.from}) MATCH (b {key: row.to}) MERGE (a)-[r:`BINDS`]->(b) "
+            "SET r += row.properties, r.source = $source"
+        ),
+    ]
+    assert statements[0][1] == {"rows": plan.nodes["Clause"], "source": "docs/a.md"}
+    without_source = tools.ingest_statements(
+        tools.plan_ingest({"nodes": [{"key": "k", "label": "L"}]}, max_nodes=10)
+    )
+    assert without_source[0][0].endswith("SET n += row.properties")
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ({}, "nothing to ingest"),
+        ({"nodes": "x"}, "must be arrays"),
+        ({"nodes": [{"key": "k", "label": "Bad Label"}]}, "nodes[0].label must be an identifier"),
+        ({"nodes": [{"key": "k", "label": "9L"}]}, "nodes[0].label must be an identifier"),
+        ({"nodes": [{"key": "", "label": "L"}]}, "nodes[0].key must be a non-empty string"),
+        ({"nodes": [{"key": "k", "label": "L"}, {"key": "k", "label": "L"}]}, "appears twice"),
+        (
+            {"nodes": [{"key": "k", "label": "L", "properties": {"bad-name": 1}}]},
+            "not an identifier",
+        ),
+        ({"nodes": [{"key": "k", "label": "L", "properties": {"key": "x"}}]}, "must not set key"),
+        (
+            {"nodes": [{"key": "k", "label": "L", "properties": {"nested": {"a": 1}}}]},
+            "scalar or a list of scalars",
+        ),
+        (
+            {"nodes": [{"key": "k", "label": "L", "properties": {"mixed": [1, {"a": 1}]}}]},
+            "list of scalars",
+        ),
+        ({"nodes": [{"key": "k", "label": "L", "extra": 1}]}, "nodes[0] does not take extra"),
+        (
+            {"relationships": [{"from": "a", "to": "b", "type": "has space"}]},
+            "relationships[0].type must be an identifier",
+        ),
+        (
+            {"relationships": [{"from": "a", "to": "b"}]},
+            "relationships[0].type must be an identifier",
+        ),
+        ({"nodes": [{"key": "k", "label": "L"}], "source": 3}, "source must be a string"),
+        (
+            {"nodes": [{"key": f"k{i}", "label": "L"} for i in range(3)]},
+            "3 nodes is over the limit of 2",
+        ),
+        (
+            {"relationships": [{"from": "a", "to": "b", "type": "T"} for _ in range(9)]},
+            "9 relationships is over the limit of 8",
+        ),
+    ],
+)
+def test_plan_ingest_refuses_by_rule(args: dict[str, Any], message: str) -> None:
+    status, text = _status(lambda: tools.plan_ingest(args, max_nodes=2))
+    assert status == 400
+    assert message in text, text
+
+
+# --- the knowledge graph: the tools over a fake backend ----------------------------------------
+
+
+class FakeTransaction(tools.Transaction):
+    def __init__(self, script: Callable[[str, dict[str, Any], int | None], Any]):
+        self.script = script
+        self.calls: list[tuple[str, dict[str, Any], int | None]] = []
+
+    async def run(
+        self, query: str, parameters: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Any:
+        self.calls.append((query, parameters or {}, limit))
+        return self.script(query, parameters or {}, limit)
+
+
+class FakeBackend:
+    """Runs the work of a transaction against a script: (query, parameters, limit) -> Rows, or raise."""
+
+    def __init__(self, script: Callable[[str, dict[str, Any], int | None], Any]):
+        self.script = script
+        self.transactions: list[FakeTransaction] = []
+        self.modes: list[bool] = []
+        self.closed = False
+
+    async def verify(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def execute(self, work: Any, *, write: bool) -> Any:
+        tx = FakeTransaction(self.script)
+        self.transactions.append(tx)
+        self.modes.append(write)
+        return await work(tx)
+
+    @property
+    def calls(self) -> list[tuple[str, dict[str, Any], int | None]]:
+        return [call for tx in self.transactions for call in tx.calls]
+
+
+def _rows(
+    columns: list[str],
+    values: list[list[Any]],
+    *,
+    truncated: bool = False,
+    counters: dict[str, int] | None = None,
+) -> Any:
+    return tools.Rows(columns, values, truncated, counters)
+
+
+def _graph(
+    script: Callable[[str, dict[str, Any], int | None], Any], **settings: Any
+) -> tuple[Any, FakeBackend]:
+    sandbox = tools.GraphSandbox(uri="bolt://graph.example:7687", **settings)
+    backend = FakeBackend(script)
+    return tools.GraphTools(sandbox, backend=backend), backend
+
+
+def _schema_script(*, memgraph: bool = False) -> Callable[[str, dict[str, Any], int | None], Any]:
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.LABEL_COUNTS_QUERY:
+            return _rows(["label", "count"], [["Clause", 12], ["Party", 3]])
+        if query == tools.RELATIONSHIP_COUNTS_QUERY:
+            return _rows(
+                ["type", "from", "to", "count"],
+                [["BINDS", ["Clause"], ["Party"], 7], ["BINDS", ["Rule"], ["Party"], 1]],
+            )
+        if query == tools.NODE_PROPERTIES_QUERIES[0]:
+            if memgraph:
+                raise RuntimeError("There is no procedure named 'db.schema.nodeTypeProperties'.")
+            return _rows(
+                ["nodeLabels", "propertyName", "propertyTypes"],
+                [
+                    [["Clause"], "text", ["String"]],
+                    [["Clause"], "key", ["String"]],
+                    [["Party"], "key", ["String"]],
+                    [["Orphan"], None, None],
+                ],
+            )
+        if query == tools.NODE_PROPERTIES_QUERIES[1]:
+            assert memgraph, "the fallback runs only when the first procedure is missing"
+            return _rows(
+                ["nodeLabels", "propertyName", "propertyTypes"], [[["Clause"], "key", ["String"]]]
+            )
+        if query == tools.RELATIONSHIP_PROPERTIES_QUERIES[0]:
+            if memgraph:
+                raise RuntimeError("There is no procedure named 'db.schema.relTypeProperties'.")
+            return _rows(
+                ["relType", "propertyName", "propertyTypes"],
+                [[":`BINDS`", "source", ["String"]], [":`CITES`", None, None]],
+            )
+        if query == tools.RELATIONSHIP_PROPERTIES_QUERIES[1]:
+            return _rows(
+                ["relType", "propertyName", "propertyTypes"], [[":BINDS", "source", ["String"]]]
+            )
+        raise AssertionError(f"unexpected query {query}")
+
+    return script
+
+
+@pytest.mark.asyncio
+async def test_graph_schema_merges_counts_and_properties() -> None:
+    graph, backend = _graph(_schema_script())
+    schema = await graph.schema({}, None)
+    assert schema["labels"] == [
+        {
+            "label": "Clause",
+            "count": 12,
+            "properties": [
+                {"name": "key", "types": ["String"]},
+                {"name": "text", "types": ["String"]},
+            ],
+        },
+        {"label": "Orphan", "count": 0, "properties": []},
+        {"label": "Party", "count": 3, "properties": [{"name": "key", "types": ["String"]}]},
+    ]
+    assert schema["relationship_types"] == [
+        {
+            "type": "BINDS",
+            "count": 8,
+            "from": ["Clause", "Rule"],
+            "to": ["Party"],
+            "properties": [{"name": "source", "types": ["String"]}],
+        },
+        {"type": "CITES", "count": 0, "from": [], "to": [], "properties": []},
+    ]
+    assert backend.modes == [False], "the schema is read in one read transaction"
+
+
+@pytest.mark.asyncio
+async def test_graph_schema_falls_back_to_memgraphs_procedures() -> None:
+    graph, backend = _graph(_schema_script(memgraph=True))
+    schema = await graph.schema({}, {})
+    assert [label["label"] for label in schema["labels"]] == ["Clause", "Party"]
+    assert schema["relationship_types"][0]["properties"] == [
+        {"name": "source", "types": ["String"]}
+    ]
+    queries = [call[0] for call in backend.calls]
+    assert (
+        tools.NODE_PROPERTIES_QUERIES[1] in queries
+        and tools.RELATIONSHIP_PROPERTIES_QUERIES[1] in queries
+    )
+
+
+@pytest.mark.asyncio
+async def test_graph_query_runs_read_only_with_the_row_cap() -> None:
+    node = FakeNode("4:g:1", frozenset({"Clause"}), {"key": "clause:1"})
+
+    def script(query: str, parameters: dict[str, Any], limit: int | None) -> Any:
+        assert "MATCH" in query and parameters == {"k": "clause:1"} and limit == 50
+        return _rows(["n", "c"], [[node, 2]], truncated=True)
+
+    graph, backend = _graph(script, max_rows=50)
+    reply = await graph.query(
+        {}, {"query": "MATCH (n {key: $k}) RETURN n, 2 AS c", "parameters": {"k": "clause:1"}}
+    )
+    assert reply == {
+        "columns": ["n", "c"],
+        "rows": [[{"id": "4:g:1", "labels": ["Clause"], "properties": {"key": "clause:1"}}, 2]],
+        "truncated": True,
+    }
+    assert backend.modes == [False]
+    for body, message in (
+        ({"query": "MATCH (n) SET n.x = 1 RETURN n"}, "query carries SET, a write clause"),
+        ({"query": "   "}, "query must not be empty"),
+        ({"query": "MATCH (n) RETURN n", "parameters": [1]}, "parameters must be a map"),
+        ({"cypher": "MATCH (n) RETURN n"}, "graph_query does not take cypher"),
+    ):
+        status, text = await _astatus(graph.query({}, body))
+        assert status == 400 and message in text, text
+    assert len(backend.transactions) == 1, "a refused query never reaches the database"
+
+
+@pytest.mark.asyncio
+async def test_graph_query_maps_a_database_failure() -> None:
+    import neo4j.exceptions as errors
+
+    def script(_query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        raise errors.Neo4jError._hydrate_neo4j(
+            code="Neo.ClientError.Statement.SyntaxError", message="Invalid input"
+        )
+
+    graph, _backend = _graph(script)
+    status, text = await _astatus(graph.query({}, {"query": "MATCH (n RETURN n"}))
+    assert status == 400 and text == "Neo.ClientError.Statement.SyntaxError: Invalid input"
+
+
+@pytest.mark.asyncio
+async def test_graph_write_returns_counters_and_guards_deletion(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        assert query.startswith("CREATE INDEX")
+        return _rows([], [], counters={"indexes_added": 1})
+
+    graph, backend = _graph(script, write=True)
+    with caplog.at_level(logging.INFO):
+        reply = await graph.write(
+            {}, {"query": "CREATE INDEX clause_key FOR (n:Clause) ON (n.key)"}
+        )
+    assert reply["counters"] == {
+        name: (1 if name == "indexes_added" else 0) for name in tools.COUNTER_NAMES
+    }
+    assert (reply["columns"], reply["rows"], reply["truncated"]) == ([], [], False)
+    assert backend.modes == [True]
+    assert "graph.write 200 indexes_added=1" in caplog.text
+    status, text = await _astatus(graph.write({}, {"query": "MATCH (n:Clause) DETACH DELETE n"}))
+    assert (
+        status == 400
+        and "query carries DELETE - deletion is not allowed" in text
+        and tools.GRAPH_DELETE in text
+    )
+    status, text = await _astatus(graph.write({}, {"query": "DROP INDEX clause_key"}))
+    assert status == 400 and "DROP" in text
+    allowed, backend = _graph(
+        lambda q, p, limit: _rows([], [], counters={"nodes_deleted": 3}), write=True, delete=True
+    )
+    reply = await allowed.write({}, {"query": "MATCH (n:Clause) DETACH DELETE n"})
+    assert reply["counters"]["nodes_deleted"] == 3
+
+
+@pytest.mark.asyncio
+async def test_graph_ingest_merges_nodes_then_checks_endpoints_then_merges_relationships() -> None:
+    def script(query: str, parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.ENDPOINTS_QUERY:
+            assert parameters == {"keys": ["clause:1", "party:a"]}
+            return _rows(["key"], [])
+        return _rows([], [], counters={"nodes_created": 1})
+
+    graph, backend = _graph(script, write=True)
+    body = {
+        "nodes": [
+            {"key": "clause:1", "label": "Clause", "properties": {"text": "pay within 30 days"}},
+            {"key": "party:a", "label": "Party"},
+        ],
+        "relationships": [{"from": "clause:1", "to": "party:a", "type": "BINDS"}],
+        "source": "contracts/a.md",
+    }
+    assert await graph.ingest({}, body) == {"nodes": 2, "relationships": 1}
+    queries = [call[0] for call in backend.calls]
+    assert [q.split(" ")[0] if q != tools.ENDPOINTS_QUERY else "CHECK" for q in queries] == [
+        "UNWIND",
+        "UNWIND",
+        "CHECK",
+        "UNWIND",
+    ]
+    assert (
+        "MERGE (n:`Clause`" in queries[0]
+        and "MERGE (n:`Party`" in queries[1]
+        and "MERGE (a)-[r:`BINDS`]->(b)" in queries[3]
+    )
+    assert backend.calls[0][1] == {
+        "rows": [{"key": "clause:1", "properties": {"text": "pay within 30 days"}}],
+        "source": "contracts/a.md",
+    }
+    assert backend.modes == [True], "one write transaction"
+    # the same ingest again runs the same statements - idempotence is the MERGE's
+    assert await graph.ingest({}, body) == {"nodes": 2, "relationships": 1}
+
+
+@pytest.mark.asyncio
+async def test_graph_ingest_refuses_a_missing_endpoint_before_any_relationship_is_written() -> None:
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.ENDPOINTS_QUERY:
+            return _rows(["key"], [["ghost:1"]])
+        return _rows([], [])
+
+    graph, backend = _graph(script, write=True)
+    status, text = await _astatus(
+        graph.ingest(
+            {},
+            {
+                "nodes": [{"key": "clause:1", "label": "Clause"}],
+                "relationships": [{"from": "clause:1", "to": "ghost:1", "type": "BINDS"}],
+            },
+        )
+    )
+    assert (
+        status == 400
+        and text == "relationship endpoints not found in the graph or in this call: ghost:1"
+    )
+    assert [q for q in (call[0] for call in backend.calls) if "MERGE (a)" in q] == [], (
+        "no relationship statement ran"
+    )
+    status, text = await _astatus(graph.ingest({}, {"nodes": [{"key": "k", "label": "Bad Label"}]}))
+    assert status == 400 and "identifier" in text
+    assert len(backend.transactions) == 1, "a refused ingest never reaches the database"
+
+
+def test_graph_sandbox_address_hides_the_credential() -> None:
+    sandbox = tools.GraphSandbox(uri="neo4j+s://user:secret@graph.example:7687/x?y=1")
+    assert sandbox.address == "neo4j+s://graph.example:7687"
+
+
+# --- file.extract --------------------------------------------------------------------------------
+
+
+def _pdf(pages: list[str]) -> bytes:
+    """A minimal PDF with one line of text per page, with a correct cross-reference table."""
+    objects: list[bytes] = []
+    page_ids = [4 + 2 * i for i in range(len(pages))]
+    kids = " ".join(f"{pid} 0 R" for pid in page_ids)
+    objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode())
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    for index, text in enumerate(pages):
+        content = f"BT /F1 12 Tf 72 712 Td ({text}) Tj ET".encode()
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> "
+            f"/Contents {page_ids[index] + 1} 0 R >>".encode()
+        )
+        objects.append(
+            b"<< /Length "
+            + str(len(content)).encode()
+            + b" >>\nstream\n"
+            + content
+            + b"\nendstream"
+        )
+    out = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    )
+    return bytes(out)
+
+
+def _docx(paragraphs: list[str], table: list[list[str]] | None = None) -> bytes:
+    import docx
+
+    document = docx.Document()
+    for text in paragraphs:
+        document.add_paragraph(text)
+    if table:
+        grid = document.add_table(rows=len(table), cols=len(table[0]))
+        for r, row in enumerate(table):
+            for c, cell in enumerate(row):
+                grid.cell(r, c).text = cell
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def documents(workspace: Path, files: Any) -> Any:
+    (workspace / "docs").mkdir()
+    (workspace / "docs" / "agreement.pdf").write_bytes(
+        _pdf(
+            [
+                "Hello page one",
+                "Second page here",
+                "Third and last page of the agreement, with more words",
+            ]
+        )
+    )
+    (workspace / "docs" / "policy.docx").write_bytes(
+        _docx(["Policy title", "Pay within thirty days."], [["Party", "Role"], ["A", "Supplier"]])
+    )
+    (workspace / "docs" / "page.html").write_text(
+        "<html><head><title>T</title></head><body><h1>Heading</h1><p>Body text.</p></body></html>",
+        encoding="utf-8",
+    )
+    (workspace / "docs" / "archive.zip").write_bytes(b"PK\x03\x04" + b"\x00" * 30)
+    return files
+
+
+def test_extract_a_pdf_with_page_markers_and_a_range(documents: Any) -> None:
+    reply = documents.extract({}, {"path": "docs/agreement.pdf"})
+    assert (reply["path"], reply["type"], reply["pages"], reply["truncated"]) == (
+        "docs/agreement.pdf",
+        "pdf",
+        3,
+        False,
+    )
+    assert (
+        reply["text"]
+        == "--- page 1 ---\nHello page one\n\n--- page 2 ---\nSecond page here\n\n--- page 3 ---\nThird and last page of the agreement, with more words"
+    )
+    assert (
+        documents.extract({}, {"path": "docs/agreement.pdf", "pages": "2"})["text"]
+        == "--- page 2 ---\nSecond page here"
+    )
+    ranged = documents.extract({}, {"path": "docs/agreement.pdf", "pages": "3, 1-2, 9"})
+    assert [line for line in ranged["text"].splitlines() if line.startswith("---")] == [
+        "--- page 3 ---",
+        "--- page 1 ---",
+        "--- page 2 ---",
+    ]
+    cut = documents.extract({}, {"path": "docs/agreement.pdf", "max_chars": 100})
+    assert len(cut["text"]) == 100 and cut["truncated"] is True
+
+
+def test_extract_word_html_and_text_documents(documents: Any) -> None:
+    word = documents.extract({}, {"path": "docs/policy.docx"})
+    assert (word["type"], word["pages"]) == ("docx", 1)
+    assert (
+        word["text"]
+        == "--- page 1 ---\nPolicy title\n\nPay within thirty days.\n\nParty | Role\nA | Supplier"
+    )
+    html = documents.extract({}, {"path": "docs/page.html"})
+    assert (html["type"], html["text"]) == ("html", "--- page 1 ---\nHeading\n\nBody text.")
+    text = documents.extract({}, {"path": "notes/plan.md"})
+    assert (text["type"], text["text"]) == ("text", "--- page 1 ---\n# Plan\n\nWrite the tools.")
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "message"),
+    [
+        ({"path": "data/image.png"}, 400, "not a PDF, Word, HTML or text document (a PNG image)"),
+        ({"path": "docs/archive.zip"}, 400, "not a PDF, Word, HTML or text document"),
+        (
+            {"path": "docs/agreement.pdf", "pages": "x"},
+            400,
+            "pages must be page numbers and ranges",
+        ),
+        ({"path": "docs/agreement.pdf", "pages": "0"}, 400, "counted from 1"),
+        ({"path": "docs/agreement.pdf", "pages": "3-1"}, 400, "counted from 1"),
+        ({"path": "docs/agreement.pdf", "pages": 2}, 400, "pages must be a string"),
+        ({"path": "docs/agreement.pdf", "max_chars": 10}, 400, "max_chars must be at least 100"),
+        ({"path": "docs/missing.pdf"}, 404, "file not found"),
+        ({"path": "docs"}, 400, "is a directory"),
+        ({"path": "../outside/secret.txt"}, 400, "outside the workspace"),
+    ],
+)
+def test_extract_refuses_by_rule(
+    documents: Any, body: dict[str, Any], status: int, message: str
+) -> None:
+    got = _status(lambda: documents.extract({}, body))
+    assert got[0] == status, got
+    assert message in got[1], got
+
+
+def test_page_range_and_document_kind() -> None:
+    assert tools.page_range(None, 3) == [1, 2, 3]
+    assert tools.page_range(" ", 2) == [1, 2]
+    assert tools.page_range("2-9", 3) == [2, 3]
+    assert tools.page_range("1,1,2", 3) == [1, 2]
+    assert tools.page_range("1-3", 0) == []
+    assert tools.document_kind(b"%PDF-1.7 ...", ".pdf") == "pdf"
+    assert tools.document_kind(b"<!DOCTYPE html><html>", ".txt") == "html"
+    assert tools.document_kind(b"plain words", ".htm") == "html"
+    assert tools.document_kind(b"plain words", ".md") == "text"
+    assert tools.document_kind(b"\x89PNG\r\n", ".png") is None
+    assert tools.document_kind(_docx(["x"]), ".docx") == "docx"
+
+
+# --- the boot with the graph and the documents --------------------------------------------------
+
+
+class FakeBolt(FakeBackend):
+    def __init__(self, sandbox: Any):
+        super().__init__(lambda q, p, limit: _rows([], []))
+        self.sandbox = sandbox
+
+
+@pytest.mark.asyncio
+async def test_the_graph_tools_register_by_the_uri_and_the_write_gate(
+    configure: Callable[[dict[str, Any]], None],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(tools, "Bolt", FakeBolt)
+    configure(
+        {
+            tools.GRAPH_URI: "bolt://graph.example:7687",
+            tools.GRAPH_USERNAME: "neo4j",
+            tools.GRAPH_PASSWORD: "a-value-never-logged",
+            tools.TIME_ENABLED: False,
+        }
+    )
+    reads = tools.AgentTools(FunctionRegistry())
+    with caplog.at_level(logging.INFO):
+        await reads.boot()
+    assert reads.registered == ["graph.schema", "graph.query"]
+    assert "graph.write and graph.ingest not registered - tools.graph.write is false" in caplog.text
+    assert "Graph tools registered - bolt://graph.example:7687" in caplog.text
+    assert "a-value-never-logged" not in caplog.text
+    assert reads.graph is not None and reads.graph.sandbox.password == "a-value-never-logged"
+    await reads.shutdown()
+    assert reads.graph.backend.closed
+    configure({tools.GRAPH_WRITE: "true", tools.GRAPH_DELETE: True})
+    writes = tools.AgentTools(FunctionRegistry())
+    with caplog.at_level(logging.INFO):
+        await writes.boot()
+    assert writes.registered == ["graph.schema", "graph.query", "graph.write", "graph.ingest"]
+    assert "writes allowed, deletion allowed" in caplog.text
+    monkeypatch.setattr(tools, "agent_tools", writes)
+    info = await tools.tools_health({"type": "info"}, None)
+    assert info["graph"] == "bolt://graph.example:7687" and info["tools"] == writes.registered
+
+
+@pytest.mark.asyncio
+async def test_a_graph_that_does_not_answer_at_boot_is_logged_not_fatal(
+    configure: Callable[[dict[str, Any]], None],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class Unreachable(FakeBolt):
+        async def verify(self) -> None:
+            raise OSError("connection refused")
+
+    monkeypatch.setattr(tools, "Bolt", Unreachable)
+    configure({tools.GRAPH_URI: "bolt://graph.example:7687", tools.TIME_ENABLED: False})
+    app = tools.AgentTools(FunctionRegistry())
+    with caplog.at_level(logging.WARNING):
+        await app.boot()
+    assert app.registered == ["graph.schema", "graph.query"]
+    assert "does not answer yet (OSError); calls fail until it does" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_bad_graph_configuration_stops_the_boot_by_name(
+    configure: Callable[[dict[str, Any]], None],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    configure({tools.GRAPH_URI: "http://graph.example:7474"})
+    with caplog.at_level(logging.ERROR), pytest.raises(SystemExit):
+        await tools.AgentTools(FunctionRegistry()).boot()
+    assert "tools.graph.uri must be a Bolt URI" in caplog.text
+    configure({tools.GRAPH_URI: "bolt://graph.example:7687"})
+    monkeypatch.setattr(tools, "neo4j", None)
+    with caplog.at_level(logging.ERROR), pytest.raises(SystemExit):
+        await tools.AgentTools(FunctionRegistry()).boot()
+    assert (
+        "the Bolt driver is not installed - pip install 'mercury-composable[graph]'" in caplog.text
+    )
+
+
+@pytest.mark.asyncio
+async def test_file_extract_registers_only_with_the_documents_extra(
+    workspace: Path,
+    configure: Callable[[dict[str, Any]], None],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    configure({tools.FILE_ROOT: str(workspace), tools.TIME_ENABLED: False})
+    with_documents = tools.AgentTools(FunctionRegistry())
+    await with_documents.boot()
+    assert "file.extract" in with_documents.registered
+    monkeypatch.setattr(tools, "pypdf", None)
+    without = tools.AgentTools(FunctionRegistry())
+    with caplog.at_level(logging.INFO):
+        await without.boot()
+    assert "file.extract" not in without.registered
+    assert (
+        "file.extract not registered - pip install 'mercury-composable[documents]'" in caplog.text
+    )
+    assert tools.describe(["file_extract"]) == 0
+
+
+def test_describe_states_for_the_graph_and_the_documents(
+    capsys: pytest.CaptureFixture[str], configure: Callable[[dict[str, Any]], None]
+) -> None:
+    configure({tools.GRAPH_URI: "bolt://graph.example:7687"})
+    assert tools.describe(["graph_query", "graph_write"]) == 0
+    out = capsys.readouterr().out
+    assert "## graph.query (graph_query) - registers (bolt://graph.example:7687)" in out
+    assert "## graph.write (graph_write) - NOT registered (tools.graph.write is false)" in out
+    configure({tools.GRAPH_WRITE: True})
+    assert tools.describe(["graph_ingest"]) == 0
+    assert (
+        "## graph.ingest (graph_ingest) - registers (bolt://graph.example:7687)"
+        in capsys.readouterr().out
+    )
+
+
+# --- the live graph (gated) ---------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    not os.environ.get("TOOLS_GRAPH_TEST_URI"),
+    reason="a live graph database: set TOOLS_GRAPH_TEST_URI (and TOOLS_GRAPH_TEST_PASSWORD, TOOLS_GRAPH_TEST_USER), "
+    "e.g. the one extensions/agent-tools/dev/graph-up.sh starts",
+)
+@pytest.mark.asyncio
+async def test_live_graph_round_trip(configure: Callable[[dict[str, Any]], None]) -> None:
+    configure(
+        {
+            tools.GRAPH_URI: os.environ["TOOLS_GRAPH_TEST_URI"],
+            tools.GRAPH_USERNAME: os.environ.get("TOOLS_GRAPH_TEST_USER", "neo4j"),
+            tools.GRAPH_PASSWORD: os.environ.get("TOOLS_GRAPH_TEST_PASSWORD", ""),
+            tools.GRAPH_WRITE: True,
+            tools.GRAPH_DELETE: True,
+        }
+    )
+    graph = tools.GraphTools(tools.load_graph_sandbox())
+    cleanup = "MATCH (n) WHERE n:T_Clause OR n:T_Party DETACH DELETE n"
+    body = {
+        "nodes": [
+            {
+                "key": "t_clause:1",
+                "label": "T_Clause",
+                "properties": {"text": "pay within 30 days", "days": 30},
+            },
+            {"key": "t_party:a", "label": "T_Party", "properties": {"name": "supplier a"}},
+        ],
+        "relationships": [
+            {
+                "from": "t_clause:1",
+                "to": "t_party:a",
+                "type": "T_BINDS",
+                "properties": {"since": 2026},
+            }
+        ],
+        "source": "contracts/a.md",
+    }
+    try:
+        await graph.backend.verify()
+        await graph.write({}, {"query": cleanup})
+        assert await graph.ingest({}, body) == {"nodes": 2, "relationships": 1}
+        assert await graph.ingest({}, body) == {"nodes": 2, "relationships": 1}, "idempotent"
+        count = await graph.query({}, {"query": "MATCH (n:T_Clause) RETURN count(n) AS c"})
+        assert count["rows"] == [[1]], "the second ingest created nothing"
+        rows = await graph.query(
+            {},
+            {
+                "query": "MATCH (a:T_Clause)-[r:T_BINDS]->(b) RETURN a, r, b, a.days + $x AS sum",
+                "parameters": {"x": 1},
+            },
+        )
+        node, relationship, party, total = rows["rows"][0]
+        assert (
+            node["labels"] == ["T_Clause"]
+            and node["properties"]["key"] == "t_clause:1"
+            and node["properties"]["source"] == "contracts/a.md"
+        )
+        assert (
+            relationship["type"] == "T_BINDS"
+            and relationship["start"] == node["id"]
+            and relationship["end"] == party["id"]
+        )
+        assert (
+            relationship["properties"] == {"since": 2026, "source": "contracts/a.md"}
+            and total == 31
+        )
+        path = await graph.query(
+            {}, {"query": "MATCH p = (:T_Clause)-[:T_BINDS]->(:T_Party) RETURN p"}
+        )
+        assert [item.get("labels", item.get("type")) for item in path["rows"][0][0]] == [
+            ["T_Clause"],
+            "T_BINDS",
+            ["T_Party"],
+        ]
+        schema = await graph.schema({}, None)
+        clause = next(label for label in schema["labels"] if label["label"] == "T_Clause")
+        assert clause["count"] == 1 and {p["name"] for p in clause["properties"]} >= {
+            "key",
+            "text",
+            "days",
+            "source",
+        }
+        binds = next(kind for kind in schema["relationship_types"] if kind["type"] == "T_BINDS")
+        assert (binds["count"], binds["from"], binds["to"]) == (1, ["T_Clause"], ["T_Party"])
+        status, text = await _astatus(
+            graph.query({}, {"query": "MATCH (n:T_Clause) SET n.x = 1 RETURN n"})
+        )
+        assert status == 400 and "write clause" in text
+        status, text = await _astatus(graph.query({}, {"query": "MATCH (n:T_Clause RETURN n"}))
+        assert status == 400 and text.startswith("Neo.ClientError.Statement.SyntaxError")
+        status, text = await _astatus(
+            graph.ingest(
+                {}, {"relationships": [{"from": "t_clause:1", "to": "ghost:9", "type": "T_BINDS"}]}
+            )
+        )
+        assert status == 400 and "ghost:9" in text
+        guarded = tools.GraphTools(
+            tools.GraphSandbox(
+                uri=graph.sandbox.uri,
+                username=graph.sandbox.username,
+                password=graph.sandbox.password,
+                write=True,
+            )
+        )
+        try:
+            status, text = await _astatus(guarded.write({}, {"query": cleanup}))
+            assert status == 400 and "deletion is not allowed" in text
+        finally:
+            await guarded.close()
+        deleted = await graph.write({}, {"query": cleanup})
+        assert (
+            deleted["counters"]["nodes_deleted"] == 2
+            and deleted["counters"]["relationships_deleted"] == 1
+        )
+    finally:
+        await graph.close()

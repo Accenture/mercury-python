@@ -1,0 +1,23 @@
+{
+  "name": "graph_write",
+  "description": "Run an openCypher statement that changes the agent's knowledge graph - an index or a constraint, a corrected property, a relationship between existing nodes - and return the counters of what changed. Pass every value as a parameter. DELETE and DROP are refused unless the deployment allows deletion. To load extracted entities and relations, prefer graph_ingest, which merges them idempotently.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "The openCypher statement, with $parameters."
+      },
+      "parameters": {
+        "type": "object",
+        "description": "The values the statement's $parameters take."
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false
+  },
+  "route": "graph.write",
+  "write": true
+}

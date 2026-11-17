@@ -1,0 +1,27 @@
+{
+  "name": "file_extract",
+  "description": "Extract the text of a PDF or Word document in the agent's workspace (an HTML or plain text file works too), with a marker before each page (--- page N ---). path is relative to the workspace root; pages selects a range such as 1-3,7 (default: all pages); the text is cut at max_chars. Returns the path, the document type, the number of pages the document has and the text. Use file_read for a plain text file.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "The document, relative to the workspace root."
+      },
+      "pages": {
+        "type": "string",
+        "description": "The pages to extract, 1-based, such as 1-3,7; default: all."
+      },
+      "max_chars": {
+        "type": "integer",
+        "minimum": 100,
+        "description": "Return at most this many characters (default and cap: the workspace's limit)."
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false
+  },
+  "route": "file.extract"
+}

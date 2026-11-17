@@ -53,7 +53,9 @@
   optional extras, all for the LLM helper (`extensions/llm-helper`; the package itself stays SDK-free): `llm` = `anthropic`
   >=1,<2 (`pip install 'mercury-composable[llm]'`; `google-genai` was removed 2026-10-01 with the Gemini provider, PR #38),
   `bedrock` = `anthropic[bedrock]` >=1,<2 (the AWS Bedrock backend, PR #43), `redis` = `redis` >=5,<9 (the transcript
-  store, PR #47), `postgres` = `psycopg[binary,pool]` >=3.2,<4 (the transcript audit store, 2026-11-17)
+  store, PR #47), `postgres` = `psycopg[binary,pool]` >=3.2,<4 (the transcript audit store, 2026-11-17), and for the
+  built-in agent tools (`extensions/agent-tools`): `graph` = `neo4j` >=6,<7 (the knowledge-graph tools over Bolt) and
+  `documents` = `pypdf` >=6,<7 + `python-docx` >=1.1,<2 (`file.extract`), both 2026-11-17
   <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-03 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants

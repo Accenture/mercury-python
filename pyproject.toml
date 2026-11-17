@@ -52,6 +52,12 @@ postgres = ["psycopg[binary,pool]>=3.2,<4"]
 # the MCP binding (extensions/mcp-binding) - the official MCP SDK's client, one route per
 # allowlisted remote tool; the package itself stays SDK-free
 mcp = ["mcp>=2,<3"]
+# the knowledge-graph tools of the agent tools (extensions/agent-tools, tools.graph.uri) - the
+# official Bolt driver, asynchronous, reaching Neo4j and Memgraph alike; the file, web and clock
+# tools need no extra
+graph = ["neo4j>=6,<7"]
+# file.extract of the agent tools - PDF and Word documents to text; without it the tool does not register
+documents = ["pypdf>=6,<7", "python-docx>=1.1,<2"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
@@ -60,6 +66,9 @@ dev = [
     "redis>=5,<9",
     "psycopg[binary,pool]>=3.2,<4",
     "mcp>=2,<3",
+    "neo4j>=6,<7",
+    "pypdf>=6,<7",
+    "python-docx>=1.1,<2",
     # the store's compare-and-set is a Lua script; the [lua] extra runs it in the fake
     "fakeredis[lua]>=2.26",
 ]

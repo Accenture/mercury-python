@@ -53,6 +53,23 @@
    served in-process with redirects to private and foreign hosts, the allowlist and address rules without a network).
    The knowledge-graph tools and `file.extract` follow as step 2, the Node.js twin as step 3.
 
+3. **The knowledge-graph tools and `file.extract` complete the built-in agent tools' version 1 (RFC-0013 build plan
+   step 2).** `graph.schema`, `graph.query`, `graph.write` and `graph.ingest` reach one graph database over the Bolt
+   protocol (`tools.graph.uri`; the `graph` extra installs the official driver, which reaches Neo4j and Memgraph alike)
+   in openCypher: the reads register when the URI is set, the writers only with `tools.graph.write=true`, and `DELETE`,
+   `DETACH DELETE` and `DROP` are refused unless `tools.graph.delete=true`. The schema comes from the database's own
+   procedures (Neo4j's `db.schema.*`, else Memgraph's `schema.*`) with counts; a query runs in a read transaction, is
+   refused before sending when it carries a write clause outside a string or a comment, and returns its rows capped by
+   `tools.graph.max.rows` with nodes, relationships and paths rendered for the model; a write returns the counters; an
+   ingest merges a model's extraction - nodes by key and label, relationships between existing keys, every value a
+   parameter, `source` stamped on each - idempotently, in one transaction that checks the endpoints before any
+   relationship is written. Every statement carries the configured timeout server-side; a database failure comes back
+   by its own code as a 400 the model can act on, a timeout as a 408, an unreachable database as a 503 logged by type
+   only. `file.extract` (PDF and Word to text with page markers, a page range and a character cap; HTML and text files
+   too) registers with the file tools when the `documents` extra (`pypdf`, `python-docx`) is installed.
+   `dev/graph-up.sh` and `graph-down.sh` run Neo4j Community on Colima for development; the live test runs against it
+   when `TOOLS_GRAPH_TEST_URI` is set. The five new catalog rows join the `catalog/` folder and `describe`.
+
 ### Fixed
 
 1. **A direct `python extensions/mcp-binding/mcp_binding.py` now connects its servers.** The binding attached its boot

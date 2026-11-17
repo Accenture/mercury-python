@@ -20,7 +20,7 @@ mandatory.health.dependencies: 'tools.health'
 
 # Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
 show.env.variables: 'LOG_LEVEL'
-show.application.properties: 'application.name, rest.server.port, tools.file.root, tools.web.allow, tools.time'
+show.application.properties: 'application.name, rest.server.port, tools.file.root, tools.web.allow, tools.graph.uri, tools.graph.write, tools.time'
 
 # --- the sandboxes: a tool whose sandbox is not configured does not register ------------------
 #
@@ -37,6 +37,9 @@ tools.file.hidden: false
 tools.file.write.extensions: ''
 # a line file.search returns is cut to this many characters
 tools.file.line.max.chars: 500
+# the most characters file.extract returns of a document (PDF and Word need the documents extra:
+# pip install 'mercury-composable[documents]'; without it file.extract does not register)
+tools.file.extract.max.chars: 60000
 
 # The web: the sites the web tools (web.fetch, web.crawl) may reach - comma-separated host
 # patterns, e.g. 'docs.example.com, *.example.org'. A host is reached over https unless it is
@@ -54,6 +57,23 @@ tools.web.timeout.ms: 10000
 tools.web.crawl.max.pages: 50
 tools.web.crawl.delay.ms: 500
 tools.web.page.max.chars: 20000
+
+# The knowledge graph: the one database the graph tools reach over the Bolt protocol (Neo4j,
+# Memgraph; pip install 'mercury-composable[graph]'). graph.schema and graph.query register when the
+# URI is set; graph.write and graph.ingest only when tools.graph.write is true; DELETE and DROP are
+# refused unless tools.graph.delete is true as well. The credential is a reference, resolved from the
+# environment and never logged. Unset, the graph tools do not register.
+tools.graph.uri: '${TOOLS_GRAPH_URI:}'
+tools.graph.database: ''
+tools.graph.username: '${GRAPH_USER:neo4j}'
+tools.graph.password: '${GRAPH_PASSWORD:}'
+tools.graph.write: false
+tools.graph.delete: false
+# the most rows graph.query and graph.write return (the tool's cap is 2000), how long one
+# transaction may take (set server-side), and the most nodes one graph.ingest call may carry
+tools.graph.max.rows: 200
+tools.graph.timeout.ms: 10000
+tools.graph.ingest.max.nodes: 500
 
 # The clock (time.now) reads nothing and registers unless false.
 tools.time: true
