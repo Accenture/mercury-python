@@ -7,8 +7,8 @@
   pinned, a write bounded by `tools.file.max.bytes`, no `strict` on the rows, the statuses, row names = routes with
   `_`). In passing: the MCP binding's direct run never attached its boot hook (fixed; the Node binding attaches its
   hooks on both paths - checked 2026-11-17, nothing to do there). The engines' page `docs/guides/agent-tools.md`
-  landed as mercury-composable #644. **Step 2 BUILT 2026-11-17** (PR
-  opened the same day): the four graph tools over the Bolt driver (`graph` extra; a `Transaction` seam, a fake for the
+  landed as mercury-composable #644. **Step 2 BUILT 2026-11-17** as PR #64 (branch
+  `feat/agent-tools-graph`): the four graph tools over the Bolt driver (`graph` extra; a `Transaction` seam, a fake for the
   tests, Neo4j and Memgraph schema procedures), `file.extract` behind the `documents` extra, `dev/graph-up.sh` /
   `graph-down.sh`, 161 tests and a live round trip on the development Neo4j; eight defaults set without a ruling in
   the session log. Next: the engines' page and spec for step 2, then the Node twin. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
