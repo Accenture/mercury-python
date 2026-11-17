@@ -1,5 +1,5 @@
 - [ ] **(blueprint) The transcript audit store in the LLM helper: RFC-0012 build plan step 1, Python first, the Node
-  twin in lockstep.** Built 2026-11-17 on `feat/transcript-audit-store` (the PR pending): record version 2 with each
+  twin in lockstep.** Built 2026-11-17 on `feat/transcript-audit-store`, PR #59 OPENED 2026-11-17 (merge pending): record version 2 with each
   turn's facts, the store protocol's audit half on the memory and Redis stores, the `transcript.audit` function with
   one instance behind two local events (the write after every compare-and-set, the check behind a closing write), the
   sweep, PostgreSQL on psycopg 3 (the `postgres` extra), `schema/postgres.sql` and `purge.sql`, the `dev/` scripts on
