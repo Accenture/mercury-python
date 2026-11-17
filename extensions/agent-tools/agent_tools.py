@@ -16,6 +16,12 @@ The sandbox is deployment configuration, never an argument of a call:
   ``web.crawl``), over https unless a host is listed with ``http://``; an address in a loopback,
   private, link-local or multicast range is refused unless ``tools.web.allow.private=true``, and
   every redirect is checked again.
+- ``tools.graph.uri`` names the one graph database the four knowledge-graph tools reach over the
+  Bolt protocol (``graph.schema``, ``graph.query`` in a read transaction; ``graph.write`` and
+  ``graph.ingest`` only when ``tools.graph.write=true``, deletion only when ``tools.graph.delete=true``);
+  the ``graph`` extra installs the driver.
+- ``file.extract`` (PDF and Word documents to text) registers with the file tools when the
+  ``documents`` extra is installed.
 - ``time.now`` reads nothing and registers unless ``tools.time=false``.
 
 A tool whose sandbox is not configured does not register, so an unconfigured tool is a 404 to the
@@ -39,14 +45,18 @@ with the Node.js twin (mercury-nodejs ``extensions/agent-tools``).
 from __future__ import annotations
 
 import asyncio
+import base64
 import fnmatch
+import io
 import ipaddress
 import json
 import re
 import socket
 import sys
 import urllib.robotparser
+import zipfile
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -56,6 +66,24 @@ from urllib.parse import SplitResult, urljoin, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
+
+try:
+    import neo4j
+    from neo4j import exceptions as neo4j_errors
+except (
+    ImportError
+):  # the graph tools register only with the driver - pip install 'mercury-composable[graph]'
+    neo4j = None
+    neo4j_errors = None
+
+try:
+    import docx
+    import pypdf
+except (
+    ImportError
+):  # file.extract registers only with the libraries - pip install 'mercury-composable[documents]'
+    docx = None
+    pypdf = None
 
 from mercury_composable import (
     AppException,
@@ -114,6 +142,49 @@ CRAWL_RESULT_MAX_CHARS = 60000
 MAX_REDIRECTS = 5
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 FETCH_MODES = ("text", "markdown", "raw")
+
+# documents: file.extract
+FILE_EXTRACT_MAX_CHARS = "tools.file.extract.max.chars"
+DEFAULT_EXTRACT_MAX_CHARS = 60000
+DOCUMENTS_EXTRA = "pip install 'mercury-composable[documents]'"
+
+# the knowledge graph: one database over Bolt
+GRAPH_URI = "tools.graph.uri"
+GRAPH_DATABASE = "tools.graph.database"
+GRAPH_USERNAME = "tools.graph.username"
+GRAPH_PASSWORD = "tools.graph.password"
+GRAPH_WRITE = "tools.graph.write"
+GRAPH_DELETE = "tools.graph.delete"
+GRAPH_MAX_ROWS = "tools.graph.max.rows"
+GRAPH_TIMEOUT_MS = "tools.graph.timeout.ms"
+GRAPH_INGEST_MAX_NODES = "tools.graph.ingest.max.nodes"
+GRAPH_EXTRA = "pip install 'mercury-composable[graph]'"
+ROWS_DEFAULT, ROWS_CAP = 200, 2000
+DEFAULT_GRAPH_TIMEOUT_MS = 10000
+DEFAULT_INGEST_MAX_NODES = 500
+# a call may carry this many relationships per allowed node - the tool's own bound
+INGEST_RELATIONSHIPS_PER_NODE = 4
+IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
+PROPERTY_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+# the clauses a read-only query may not carry, and the ones the delete gate guards
+WRITE_CLAUSES = re.compile(r"\b(CREATE|MERGE|SET|DELETE|REMOVE|DROP|LOAD\s+CSV)\b", re.IGNORECASE)
+DELETE_CLAUSES = re.compile(r"\b(DELETE|DROP)\b", re.IGNORECASE)
+# string literals, quoted identifiers and comments, blanked before a query is scanned for clauses
+CYPHER_LITERALS = re.compile(
+    r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|`[^`]*`|//[^\n]*|/\*.*?\*/", re.DOTALL
+)
+KEY_MAX_CHARS = 512
+COUNTER_NAMES = (
+    "nodes_created",
+    "nodes_deleted",
+    "relationships_created",
+    "relationships_deleted",
+    "properties_set",
+    "labels_added",
+    "labels_removed",
+    "indexes_added",
+    "constraints_added",
+)
 
 # the clock
 TIME_ENABLED = "tools.time"
@@ -327,6 +398,134 @@ WEB_CRAWL_ROW = _row(
     ["url"],
 )
 
+FILE_EXTRACT_ROW = _row(
+    "file_extract",
+    "file.extract",
+    "Extract the text of a PDF or Word document in the agent's workspace (an HTML or plain text file works too), "
+    "with a marker before each page (--- page N ---). path is relative to the workspace root; pages selects a "
+    "range such as 1-3,7 (default: all pages); the text is cut at max_chars. Returns the path, the document type, "
+    "the number of pages the document has and the text. Use file_read for a plain text file.",
+    {
+        "path": {"type": "string", "description": "The document, relative to the workspace root."},
+        "pages": {
+            "type": "string",
+            "description": "The pages to extract, 1-based, such as 1-3,7; default: all.",
+        },
+        "max_chars": {
+            "type": "integer",
+            "minimum": 100,
+            "description": "Return at most this many characters (default and cap: the workspace's limit).",
+        },
+    },
+    ["path"],
+)
+
+GRAPH_SCHEMA_ROW = _row(
+    "graph_schema",
+    "graph.schema",
+    "The schema of the agent's knowledge graph: every node label with its count and its property names and types, "
+    "and every relationship type with its count and the labels it connects. Read it before writing a query or an "
+    "ingest, so labels, types and property names match what the graph holds.",
+    {},
+    [],
+)
+
+GRAPH_QUERY_ROW = _row(
+    "graph_query",
+    "graph.query",
+    "Run a read-only openCypher query against the agent's knowledge graph and return its rows. Pass values as "
+    "parameters ($name in the query, the value under that name in parameters) instead of writing them into the "
+    "query. A node comes back as {id, labels, properties}, a relationship as {id, type, start, end, properties}, a "
+    "path as a list of them. Rows are capped: narrow the query with WHERE and LIMIT when the result was cut. A query "
+    "that writes (CREATE, MERGE, SET, DELETE, REMOVE, DROP, LOAD CSV) is refused - use graph_write or graph_ingest.",
+    {
+        "query": {
+            "type": "string",
+            "description": "The openCypher query, read-only, with $parameters.",
+        },
+        "parameters": {"type": "object", "description": "The values the query's $parameters take."},
+    },
+    ["query"],
+)
+
+GRAPH_WRITE_ROW = _row(
+    "graph_write",
+    "graph.write",
+    "Run an openCypher statement that changes the agent's knowledge graph - an index or a constraint, a corrected "
+    "property, a relationship between existing nodes - and return the counters of what changed. Pass every value as "
+    "a parameter. DELETE and DROP are refused unless the deployment allows deletion. To load extracted entities "
+    "and relations, prefer graph_ingest, which merges them idempotently.",
+    {
+        "query": {"type": "string", "description": "The openCypher statement, with $parameters."},
+        "parameters": {
+            "type": "object",
+            "description": "The values the statement's $parameters take.",
+        },
+    },
+    ["query"],
+    write=True,
+)
+
+GRAPH_INGEST_ROW = _row(
+    "graph_ingest",
+    "graph.ingest",
+    "Load what you extracted from a document into the agent's knowledge graph, idempotently. Each node is merged "
+    "on its key - unique across the graph, the label in lower case as its prefix (clause:12, party:supplier-a) - "
+    "with its label and properties; each relationship is merged between two keys that exist (in this call or "
+    "already in the graph) with its type and properties. Labels and types are identifiers (letters, digits and "
+    "underscore, starting with a letter); property values are scalars or lists of scalars. Give source (the "
+    "document's path or URL) so an answer can cite it. Running the same ingest twice changes nothing.",
+    {
+        "nodes": {
+            "type": "array",
+            "description": "The entities: a key, a label and properties each.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Unique across the graph, prefixed with the label.",
+                    },
+                    "label": {"type": "string", "description": "The node's label, an identifier."},
+                    "properties": {
+                        "type": "object",
+                        "description": "Scalar or list-of-scalar values by name.",
+                    },
+                },
+                "required": ["key", "label"],
+                "additionalProperties": False,
+            },
+        },
+        "relationships": {
+            "type": "array",
+            "description": "The relations: from a key to a key, with a type and properties.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "from": {"type": "string", "description": "The key of the start node."},
+                    "to": {"type": "string", "description": "The key of the end node."},
+                    "type": {
+                        "type": "string",
+                        "description": "The relationship type, an identifier.",
+                    },
+                    "properties": {
+                        "type": "object",
+                        "description": "Scalar or list-of-scalar values by name.",
+                    },
+                },
+                "required": ["from", "to", "type"],
+                "additionalProperties": False,
+            },
+        },
+        "source": {
+            "type": "string",
+            "description": "The document the facts come from - its path or URL.",
+        },
+    },
+    [],
+    write=True,
+)
+
 TIME_NOW_ROW = _row(
     "time_now",
     "time.now",
@@ -344,8 +543,13 @@ ROWS: tuple[dict[str, Any], ...] = (
     FILE_WRITE_ROW,
     FILE_LIST_ROW,
     FILE_SEARCH_ROW,
+    FILE_EXTRACT_ROW,
     WEB_FETCH_ROW,
     WEB_CRAWL_ROW,
+    GRAPH_SCHEMA_ROW,
+    GRAPH_QUERY_ROW,
+    GRAPH_WRITE_ROW,
+    GRAPH_INGEST_ROW,
     TIME_NOW_ROW,
 )
 ROW_BY_ROUTE: dict[str, dict[str, Any]] = {row["route"]: row for row in ROWS}
@@ -477,6 +681,7 @@ class FileSandbox:
     hidden: bool = False
     write_extensions: tuple[str, ...] = ()
     line_max_chars: int = DEFAULT_LINE_MAX_CHARS
+    extract_max_chars: int = DEFAULT_EXTRACT_MAX_CHARS
 
 
 def load_file_sandbox() -> FileSandbox | None:
@@ -498,6 +703,9 @@ def load_file_sandbox() -> FileSandbox | None:
         hidden=_bool_setting(FILE_HIDDEN, False),
         write_extensions=extensions,
         line_max_chars=_int_setting(FILE_LINE_MAX_CHARS, DEFAULT_LINE_MAX_CHARS, floor=20),
+        extract_max_chars=_int_setting(
+            FILE_EXTRACT_MAX_CHARS, DEFAULT_EXTRACT_MAX_CHARS, floor=100
+        ),
     )
 
 
@@ -788,6 +996,163 @@ class FileTools:
             " (cut)" if truncated else "",
         )
         return {"matches": matches, "files_searched": searched, "truncated": truncated}
+
+    # -- file.extract: documents to text, behind the documents extra
+
+    def extract(self, _headers: dict[str, str], body: Body) -> Any:
+        args = _arguments(body, FILE_EXTRACT_ROW)
+        path = _string(args, "path")
+        pages_spec = args.get("pages")
+        if pages_spec is not None and not isinstance(pages_spec, str):
+            raise AppException(400, "pages must be a string such as 1-3,7")
+        limit = _integer(
+            args,
+            "max_chars",
+            default=self.sandbox.extract_max_chars,
+            floor=100,
+            cap=self.sandbox.extract_max_chars,
+        )
+        target, relative = self.resolve(path)
+        if target.is_dir():
+            raise AppException(400, f"{relative} is a directory - name a document")
+        if not target.is_file():
+            raise AppException(404, f"file not found: {relative}")
+        data = target.read_bytes()
+        kind = document_kind(data, target.suffix)
+        if kind is None:
+            raise AppException(
+                400,
+                f"{relative} is not a PDF, Word, HTML or text document "
+                f"({binary_kind(data[:8192]) or 'unknown format'})",
+            )
+        if kind == "pdf":
+            pages = _pdf_pages(data, relative)
+        elif kind == "docx":
+            pages = [_docx_text(data, relative)]
+        elif kind == "html":
+            pages = [html_to_text(data.decode("utf-8", errors="replace"))[1]]
+        else:
+            text = decode_utf8(data, truncated=False)
+            if text is None:
+                raise AppException(400, f"{relative} is not UTF-8 text")
+            pages = [text]
+        wanted = page_range(pages_spec, len(pages))
+        parts = [f"--- page {number} ---\n{pages[number - 1].strip()}" for number in wanted]
+        text = "\n\n".join(parts)
+        truncated = len(text) > limit
+        log.info(
+            "file.extract 200 %s, %d of %d pages, %d chars%s",
+            kind,
+            len(wanted),
+            len(pages),
+            min(len(text), limit),
+            " (cut)" if truncated else "",
+        )
+        return {
+            "path": relative,
+            "type": kind,
+            "pages": len(pages),
+            "text": text[:limit],
+            "truncated": truncated,
+        }
+
+
+# --- documents to text ----------------------------------------------------------------------------
+
+
+def documents_available() -> bool:
+    """Whether the ``documents`` extra is installed - pypdf and python-docx."""
+    return pypdf is not None and docx is not None
+
+
+def document_kind(data: bytes, suffix: str) -> str | None:
+    """``pdf``, ``docx``, ``html`` or ``text`` from the first bytes and the suffix; ``None`` for a
+    format the tool does not read."""
+    if data.startswith(b"%PDF"):
+        return "pdf"
+    if data.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                return "docx" if "word/document.xml" in archive.namelist() else None
+        except zipfile.BadZipFile:
+            return None
+    if binary_kind(data[:8192]) is not None:
+        return None
+    head = data[:2048].lstrip().lower()
+    if suffix.lower() in (".html", ".htm", ".xhtml") or head.startswith(
+        (b"<!doctype html", b"<html")
+    ):
+        return "html"
+    return "text"
+
+
+def page_range(spec: str | None, total: int) -> list[int]:
+    """``1-3,7`` to the 1-based page numbers inside the document, in order and without repeats;
+    an empty selection means every page."""
+    if total <= 0:
+        return []
+    if spec is None or not spec.strip():
+        return list(range(1, total + 1))
+    wanted: list[int] = []
+    for token in spec.split(","):
+        part = token.strip()
+        if not part:
+            continue
+        first, dash, last = part.partition("-")
+        try:
+            start = int(first)
+            end = int(last) if dash else start
+        except ValueError as exc:
+            raise AppException(400, "pages must be page numbers and ranges such as 1-3,7") from exc
+        if start < 1 or end < start:
+            raise AppException(
+                400, "pages must be page numbers and ranges such as 1-3,7, counted from 1"
+            )
+        for number in range(start, min(end, total) + 1):
+            if number not in wanted:
+                wanted.append(number)
+    return wanted
+
+
+def _pdf_pages(data: bytes, relative: str) -> list[str]:
+    assert pypdf is not None
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(data), strict=False)
+        if reader.is_encrypted:
+            try:
+                opened = reader.decrypt("")
+            except Exception as exc:  # any failure to open means the document stays closed
+                raise AppException(400, f"{relative} is an encrypted PDF") from exc
+            if not opened:
+                raise AppException(400, f"{relative} is an encrypted PDF")
+        return [page.extract_text() or "" for page in reader.pages]
+    except AppException:
+        raise
+    except Exception as exc:  # the library's own failure, named by type to the model
+        raise AppException(
+            400, f"{relative} could not be read as a PDF ({type(exc).__name__})"
+        ) from exc
+
+
+def _docx_text(data: bytes, relative: str) -> str:
+    assert docx is not None
+    try:
+        document = docx.Document(io.BytesIO(data))
+        blocks: list[str] = []
+        for item in document.iter_inner_content():
+            rows = getattr(item, "rows", None)
+            if rows is None:
+                text = str(getattr(item, "text", "")).strip()
+                if text:
+                    blocks.append(text)
+                continue
+            lines = [" | ".join(cell.text.strip() for cell in row.cells) for row in rows]
+            blocks.append("\n".join(line for line in lines if line.strip(" |")))
+        return "\n\n".join(blocks)
+    except Exception as exc:  # the library's own failure, named by type to the model
+        raise AppException(
+            400, f"{relative} could not be read as a Word document ({type(exc).__name__})"
+        ) from exc
 
 
 # --- HTML to text, in-house ----------------------------------------------------------------------
@@ -1532,6 +1897,659 @@ class WebTools:
         return {"pages": pages, "visited": visited, "truncated": truncated}
 
 
+# --- the knowledge graph, inside one database -------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GraphSandbox:
+    """One graph database over Bolt and the limits of the tools inside it; the credential is held
+    for the driver and never logged."""
+
+    uri: str
+    database: str | None = None
+    username: str | None = None
+    password: str | None = None
+    write: bool = False
+    delete: bool = False
+    max_rows: int = ROWS_DEFAULT
+    timeout_ms: int = DEFAULT_GRAPH_TIMEOUT_MS
+    ingest_max_nodes: int = DEFAULT_INGEST_MAX_NODES
+
+    @property
+    def address(self) -> str:
+        """The URI without its credential - what a log or a health report may show."""
+        parts = urlsplit(self.uri)
+        return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], "", "", ""))
+
+
+def load_graph_sandbox() -> GraphSandbox | None:
+    """The graph tools' sandbox from the configuration - ``None`` when ``tools.graph.uri`` is not
+    set, so the graph tools do not register; a URI without the driver stops the boot by name."""
+    uri = _setting(GRAPH_URI)
+    if uri is None:
+        return None
+    if neo4j is None:
+        raise ToolsError(f"{GRAPH_URI} is set but the Bolt driver is not installed - {GRAPH_EXTRA}")
+    scheme = urlsplit(str(uri)).scheme.lower()
+    if not scheme.startswith(("bolt", "neo4j")):
+        raise ToolsError(
+            f"{GRAPH_URI} must be a Bolt URI (bolt://, bolt+s://, neo4j://, neo4j+s://), not {uri}"
+        )
+    username = _setting(GRAPH_USERNAME)
+    password = _setting(GRAPH_PASSWORD)
+    database = _setting(GRAPH_DATABASE)
+    return GraphSandbox(
+        uri=str(uri),
+        database=None if database is None else str(database),
+        username=None if username is None else str(username),
+        password=None if password is None else str(password),
+        write=_bool_setting(GRAPH_WRITE, False),
+        delete=_bool_setting(GRAPH_DELETE, False),
+        max_rows=_int_setting(GRAPH_MAX_ROWS, ROWS_DEFAULT, cap=ROWS_CAP),
+        timeout_ms=_int_setting(
+            GRAPH_TIMEOUT_MS, DEFAULT_GRAPH_TIMEOUT_MS, floor=MIN_WEB_TIMEOUT_MS
+        ),
+        ingest_max_nodes=_int_setting(GRAPH_INGEST_MAX_NODES, DEFAULT_INGEST_MAX_NODES),
+    )
+
+
+@dataclass
+class Rows:
+    """What one statement returned: the column names, the rows as raw driver values (cut at a
+    limit), whether they were cut, and the summary counters."""
+
+    columns: list[str]
+    values: list[list[Any]]
+    truncated: bool = False
+    counters: dict[str, int] | None = None
+
+
+class Transaction:
+    """The statements of one transaction, run by a backend: the real one wraps the driver's managed
+    transaction; the tests' fake scripts the rows. ``run`` returns the rows and the counters."""
+
+    async def run(
+        self, query: str, parameters: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Rows:
+        raise NotImplementedError
+
+
+Work = Callable[[Transaction], Awaitable[Any]]
+
+
+class BoltTransaction(Transaction):
+    def __init__(self, tx: Any):
+        self._tx = tx
+
+    async def run(
+        self, query: str, parameters: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> Rows:
+        result = await self._tx.run(query, parameters or {})
+        columns = list(result.keys())
+        values: list[list[Any]] = []
+        truncated = False
+        async for record in result:
+            if limit is not None and len(values) >= limit:
+                truncated = True
+                break
+            values.append(list(record.values()))
+        summary = await result.consume()
+        counters = summary.counters
+        return Rows(
+            columns,
+            values,
+            truncated,
+            {name: int(getattr(counters, name, 0) or 0) for name in COUNTER_NAMES},
+        )
+
+
+class Bolt:
+    """The real backend: the official driver, one connection pool for the process, every statement
+    inside a managed transaction with the configured timeout set server-side."""
+
+    def __init__(self, sandbox: GraphSandbox):
+        assert neo4j is not None
+        self.sandbox = sandbox
+        auth = (sandbox.username or "", sandbox.password or "") if sandbox.username else None
+        self._driver = neo4j.AsyncGraphDatabase.driver(
+            sandbox.uri, auth=auth, connection_timeout=sandbox.timeout_ms / 1000
+        )
+
+    async def verify(self) -> None:
+        await self._driver.verify_connectivity()
+
+    async def close(self) -> None:
+        await self._driver.close()
+
+    def _session(self, *, write: bool) -> Any:
+        assert neo4j is not None
+        mode = neo4j.WRITE_ACCESS if write else neo4j.READ_ACCESS
+        if self.sandbox.database:
+            return self._driver.session(database=self.sandbox.database, default_access_mode=mode)
+        return self._driver.session(default_access_mode=mode)
+
+    async def execute(self, work: Work, *, write: bool) -> Any:
+        assert neo4j is not None
+
+        async def function(tx: Any) -> Any:
+            return await work(BoltTransaction(tx))
+
+        managed = neo4j.unit_of_work(timeout=self.sandbox.timeout_ms / 1000)(function)
+        async with self._session(write=write) as session:
+            if write:
+                return await session.execute_write(managed)
+            return await session.execute_read(managed)
+
+
+def graph_error(exc: BaseException, *, timeout_ms: int) -> AppException:
+    """The driver's failure as the tool's status: a client error (syntax, type, constraint, a write
+    in a read transaction) is a 400 carrying the database's code and message for the model; a
+    transaction that timed out a 408; an unreachable database or a refused credential a 503; the
+    rest a 502 by type. Never the parameters."""
+    if isinstance(exc, AppException):
+        return exc
+    if isinstance(exc, asyncio.TimeoutError):
+        return AppException(408, f"the graph database did not answer within {timeout_ms} ms")
+    name = type(exc).__name__
+    if neo4j_errors is not None:
+        if isinstance(exc, neo4j_errors.Neo4jError):
+            code = str(exc.code or "")
+            message = str(exc.message or exc)
+            if "TimedOut" in code or "Timeout" in code:
+                return AppException(
+                    408, f"the graph database did not answer within {timeout_ms} ms ({code})"
+                )
+            if isinstance(exc, neo4j_errors.AuthError):
+                return AppException(503, "the graph database refused this process's credential")
+            if isinstance(exc, (neo4j_errors.TransientError, neo4j_errors.DatabaseUnavailable)):
+                return AppException(503, f"the graph database is not available ({code})")
+            if isinstance(exc, neo4j_errors.ClientError):
+                return AppException(400, f"{code}: {message}")
+            return AppException(502, f"the graph database failed ({code})")
+        if isinstance(
+            exc,
+            (
+                neo4j_errors.ServiceUnavailable,
+                neo4j_errors.SessionExpired,
+                neo4j_errors.ConnectionAcquisitionTimeoutError,
+            ),
+        ):
+            return AppException(503, f"the graph database is not reachable ({name})")
+    return AppException(502, f"the graph database failed ({name})")
+
+
+def render_value(value: Any) -> Any:
+    """A driver value as JSON for the model: a node ``{id, labels, properties}``, a relationship
+    ``{id, type, start, end, properties}``, a path as the list of its nodes and relationships in
+    order, temporal and spatial values as text and ``{srid, coordinates}``, bytes as base64."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return base64.b64encode(bytes(value)).decode("ascii")
+    if isinstance(value, dict):
+        return {str(key): render_value(item) for key, item in value.items()}
+    if hasattr(value, "nodes") and hasattr(value, "relationships") and not hasattr(value, "labels"):
+        rendered: list[Any] = []
+        nodes = list(value.nodes)
+        relationships = list(value.relationships)
+        for index, node in enumerate(nodes):
+            rendered.append(render_value(node))
+            if index < len(relationships):
+                rendered.append(render_value(relationships[index]))
+        return rendered
+    if hasattr(value, "type") and hasattr(value, "start_node") and hasattr(value, "element_id"):
+        return {
+            "id": str(value.element_id),
+            "type": str(value.type),
+            "start": str(value.start_node.element_id),
+            "end": str(value.end_node.element_id),
+            "properties": {str(key): render_value(item) for key, item in value.items()},
+        }
+    if hasattr(value, "labels") and hasattr(value, "element_id"):
+        return {
+            "id": str(value.element_id),
+            "labels": sorted(str(label) for label in value.labels),
+            "properties": {str(key): render_value(item) for key, item in value.items()},
+        }
+    if hasattr(value, "srid") and isinstance(value, tuple):
+        return {"srid": getattr(value, "srid"), "coordinates": [float(c) for c in value]}  # noqa: B009
+    if hasattr(value, "iso_format"):
+        return value.iso_format()
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [render_value(item) for item in value]
+    return str(value)
+
+
+def strip_cypher_literals(query: str) -> str:
+    """The query with its string literals, quoted identifiers and comments blanked, so a clause
+    scan never fires on a word inside a string."""
+    return CYPHER_LITERALS.sub(" ", query)
+
+
+def write_clause(query: str) -> str | None:
+    """The first write clause a query carries, upper-cased, or ``None`` for a read."""
+    match = WRITE_CLAUSES.search(strip_cypher_literals(query))
+    return re.sub(r"\s+", " ", match.group(1).upper()) if match else None
+
+
+def delete_clause(query: str) -> str | None:
+    match = DELETE_CLAUSES.search(strip_cypher_literals(query))
+    return match.group(1).upper() if match else None
+
+
+def _scalar(value: Any) -> bool:
+    return value is None or isinstance(value, (bool, int, float, str))
+
+
+def _properties(value: Any, where: str) -> dict[str, Any]:
+    """The properties of a node or a relationship to ingest: names that are identifiers, values
+    that are scalars or lists of scalars; ``key`` and ``source`` are the tool's."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise AppException(400, f"{where}.properties must be a map")
+    checked: dict[str, Any] = {}
+    for name, item in value.items():
+        if not isinstance(name, str) or not PROPERTY_NAME.fullmatch(name):
+            raise AppException(
+                400, f"{where}.properties has a name that is not an identifier: {name!r}"
+            )
+        if name in ("key", "source"):
+            raise AppException(400, f"{where}.properties must not set {name} - the tool writes it")
+        if isinstance(item, list):
+            if not all(_scalar(element) and element is not None for element in item):
+                raise AppException(400, f"{where}.properties.{name} must be a list of scalars")
+        elif not _scalar(item):
+            raise AppException(
+                400, f"{where}.properties.{name} must be a scalar or a list of scalars"
+            )
+        if item is not None:
+            checked[name] = item
+    return checked
+
+
+def _key(value: Any, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise AppException(400, f"{where} must be a non-empty string")
+    if len(value) > KEY_MAX_CHARS:
+        raise AppException(400, f"{where} is longer than {KEY_MAX_CHARS} characters")
+    return value
+
+
+def _identifier(value: Any, where: str) -> str:
+    if not isinstance(value, str) or not IDENTIFIER.fullmatch(value):
+        raise AppException(
+            400,
+            f"{where} must be an identifier - letters, digits and underscore, starting with a letter",
+        )
+    return value
+
+
+@dataclass(frozen=True)
+class Ingest:
+    """A validated ingest: the nodes grouped by label and the relationships by type, each as the
+    rows a parameterized ``MERGE`` takes."""
+
+    nodes: dict[str, list[dict[str, Any]]]
+    relationships: dict[str, list[dict[str, Any]]]
+    source: str | None
+    node_count: int
+    relationship_count: int
+
+    @property
+    def endpoint_keys(self) -> list[str]:
+        keys: list[str] = []
+        for rows in self.relationships.values():
+            for row in rows:
+                for key in (row["from"], row["to"]):
+                    if key not in keys:
+                        keys.append(key)
+        return keys
+
+
+def plan_ingest(args: dict[str, Any], *, max_nodes: int) -> Ingest:
+    """Validate an ingest and group it: labels and types must be identifiers, keys non-empty
+    strings, properties scalars or lists of scalars, the counts inside the caps."""
+    nodes = args.get("nodes") or []
+    relationships = args.get("relationships") or []
+    source = args.get("source")
+    if not isinstance(nodes, list) or not isinstance(relationships, list):
+        raise AppException(400, "nodes and relationships must be arrays")
+    if source is not None and not isinstance(source, str):
+        raise AppException(400, "source must be a string")
+    if not nodes and not relationships:
+        raise AppException(400, "nothing to ingest - give nodes, relationships or both")
+    if len(nodes) > max_nodes:
+        raise AppException(
+            400,
+            f"{len(nodes)} nodes is over the limit of {max_nodes} per call ({GRAPH_INGEST_MAX_NODES}) - "
+            f"ingest in batches",
+        )
+    if len(relationships) > max_nodes * INGEST_RELATIONSHIPS_PER_NODE:
+        raise AppException(
+            400,
+            f"{len(relationships)} relationships is over the limit of "
+            f"{max_nodes * INGEST_RELATIONSHIPS_PER_NODE} per call - ingest in batches",
+        )
+    by_label: dict[str, list[dict[str, Any]]] = {}
+    seen_keys: set[str] = set()
+    for index, node in enumerate(nodes):
+        where = f"nodes[{index}]"
+        if not isinstance(node, dict):
+            raise AppException(400, f"{where} must be a map")
+        unknown = sorted(str(k) for k in node if k not in ("key", "label", "properties"))
+        if unknown:
+            raise AppException(
+                400,
+                f"{where} does not take {', '.join(unknown)} - a node has key, label and properties",
+            )
+        key = _key(node.get("key"), f"{where}.key")
+        label = _identifier(node.get("label"), f"{where}.label")
+        if key in seen_keys:
+            raise AppException(400, f"{where}.key {key!r} appears twice in this call")
+        seen_keys.add(key)
+        by_label.setdefault(label, []).append(
+            {"key": key, "properties": _properties(node.get("properties"), where)}
+        )
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for index, relationship in enumerate(relationships):
+        where = f"relationships[{index}]"
+        if not isinstance(relationship, dict):
+            raise AppException(400, f"{where} must be a map")
+        unknown = sorted(
+            str(k) for k in relationship if k not in ("from", "to", "type", "properties")
+        )
+        if unknown:
+            raise AppException(
+                400,
+                f"{where} does not take {', '.join(unknown)} - a relationship has from, to, type and "
+                f"properties",
+            )
+        row = {
+            "from": _key(relationship.get("from"), f"{where}.from"),
+            "to": _key(relationship.get("to"), f"{where}.to"),
+            "properties": _properties(relationship.get("properties"), where),
+        }
+        by_type.setdefault(_identifier(relationship.get("type"), f"{where}.type"), []).append(row)
+    return Ingest(by_label, by_type, source, len(nodes), len(relationships))
+
+
+def ingest_statements(plan: Ingest) -> list[tuple[str, dict[str, Any]]]:
+    """The parameterized statements of an ingest, nodes first, then the relationships - one
+    ``UNWIND ... MERGE`` per label and per type, every value a parameter, ``source`` stamped."""
+    stamp = ", n.source = $source" if plan.source is not None else ""
+    statements: list[tuple[str, dict[str, Any]]] = []
+    for label, rows in plan.nodes.items():
+        statements.append(
+            (
+                f"UNWIND $rows AS row MERGE (n:`{label}` {{key: row.key}}) SET n += row.properties{stamp}",
+                {"rows": rows, "source": plan.source},
+            )
+        )
+    stamp = ", r.source = $source" if plan.source is not None else ""
+    for kind, rows in plan.relationships.items():
+        statements.append(
+            (
+                (
+                    f"UNWIND $rows AS row MATCH (a {{key: row.from}}) MATCH (b {{key: row.to}}) "
+                    f"MERGE (a)-[r:`{kind}`]->(b) SET r += row.properties{stamp}"
+                ),
+                {"rows": rows, "source": plan.source},
+            )
+        )
+    return statements
+
+
+ENDPOINTS_QUERY = (
+    "UNWIND $keys AS key OPTIONAL MATCH (n {key: key}) WITH key, n WHERE n IS NULL RETURN key"
+)
+
+# the schema procedures: Neo4j's, then Memgraph's under the same column names
+NODE_PROPERTIES_QUERIES = (
+    (
+        "CALL db.schema.nodeTypeProperties() YIELD nodeLabels, propertyName, propertyTypes "
+        "RETURN nodeLabels, propertyName, propertyTypes"
+    ),
+    (
+        "CALL schema.node_type_properties() YIELD nodeLabels, propertyName, propertyTypes "
+        "RETURN nodeLabels, propertyName, propertyTypes"
+    ),
+)
+RELATIONSHIP_PROPERTIES_QUERIES = (
+    (
+        "CALL db.schema.relTypeProperties() YIELD relType, propertyName, propertyTypes "
+        "RETURN relType, propertyName, propertyTypes"
+    ),
+    (
+        "CALL schema.rel_type_properties() YIELD relType, propertyName, propertyTypes "
+        "RETURN relType, propertyName, propertyTypes"
+    ),
+)
+LABEL_COUNTS_QUERY = "MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS count"
+RELATIONSHIP_COUNTS_QUERY = "MATCH (a)-[r]->(b) RETURN type(r) AS type, labels(a) AS from, labels(b) AS to, count(*) AS count"
+
+
+def _relationship_type_name(value: Any) -> str:
+    """``:`KNOWS``` as Neo4j's procedure spells a type, or ``:KNOWS``, to ``KNOWS``."""
+    return str(value).lstrip(":").strip("`")
+
+
+async def _first_available(tx: Transaction, queries: tuple[str, ...]) -> Rows:
+    """The rows of the first procedure the database knows; a procedure the database lacks is tried
+    as the next one, any other failure is raised."""
+    failure: BaseException | None = None
+    for query in queries:
+        try:
+            return await tx.run(query)
+        except Exception as exc:  # the driver's error tells a missing procedure from a failure
+            text = str(exc).lower()
+            code = str(getattr(exc, "code", "") or "")
+            missing = "ProcedureNotFound" in code or (
+                "procedure" in text
+                and any(
+                    hint in text
+                    for hint in (
+                        "no procedure",
+                        "not found",
+                        "no such",
+                        "unknown",
+                        "exist",
+                        "not registered",
+                    )
+                )
+            )
+            if missing:
+                failure = exc
+                continue
+            raise
+    assert failure is not None
+    raise failure
+
+
+class GraphTools:
+    """The four knowledge-graph tools over one database: the schema, a read-only query, a write
+    and the structured ingest; the backend is the driver, or a fake in the tests."""
+
+    def __init__(self, sandbox: GraphSandbox, backend: Any | None = None):
+        self.sandbox = sandbox
+        self.backend: Any = backend if backend is not None else Bolt(sandbox)
+
+    async def close(self) -> None:
+        close = getattr(self.backend, "close", None)
+        if close is not None:
+            await close()
+
+    async def _run(self, work: Work, *, write: bool) -> Any:
+        try:
+            return await self.backend.execute(work, write=write)
+        except Exception as exc:  # every failure becomes the tool's status, by type
+            error = graph_error(exc, timeout_ms=self.sandbox.timeout_ms)
+            if error.status >= 500 or error.status == 408:
+                log.warning("graph tool failed - %s (%d)", type(exc).__name__, error.status)
+            raise error from exc
+
+    @staticmethod
+    def _parameters(args: dict[str, Any]) -> dict[str, Any]:
+        parameters = args.get("parameters")
+        if parameters is None:
+            return {}
+        if not isinstance(parameters, dict):
+            raise AppException(400, "parameters must be a map of names to values")
+        return {str(key): value for key, value in parameters.items()}
+
+    async def schema(self, _headers: dict[str, str], body: Body) -> Any:
+        _arguments(body, GRAPH_SCHEMA_ROW)
+
+        async def work(tx: Transaction) -> Any:
+            labels: dict[str, dict[str, Any]] = {}
+            for label, count in (await tx.run(LABEL_COUNTS_QUERY)).values:
+                labels[str(label)] = {"label": str(label), "count": int(count), "properties": []}
+            node_properties = await _first_available(tx, NODE_PROPERTIES_QUERIES)
+            for node_labels, name, types in node_properties.values:
+                for label in node_labels or []:
+                    entry = labels.setdefault(
+                        str(label), {"label": str(label), "count": 0, "properties": []}
+                    )
+                    if name is not None:
+                        entry["properties"].append(
+                            {"name": str(name), "types": [str(t) for t in (types or [])]}
+                        )
+            kinds: dict[str, dict[str, Any]] = {}
+            for kind, from_labels, to_labels, count in (
+                await tx.run(RELATIONSHIP_COUNTS_QUERY)
+            ).values:
+                entry = kinds.setdefault(
+                    str(kind),
+                    {"type": str(kind), "count": 0, "from": [], "to": [], "properties": []},
+                )
+                entry["count"] += int(count)
+                for label in from_labels or []:
+                    if str(label) not in entry["from"]:
+                        entry["from"].append(str(label))
+                for label in to_labels or []:
+                    if str(label) not in entry["to"]:
+                        entry["to"].append(str(label))
+            relationship_properties = await _first_available(tx, RELATIONSHIP_PROPERTIES_QUERIES)
+            for kind, name, types in relationship_properties.values:
+                entry = kinds.setdefault(
+                    _relationship_type_name(kind),
+                    {
+                        "type": _relationship_type_name(kind),
+                        "count": 0,
+                        "from": [],
+                        "to": [],
+                        "properties": [],
+                    },
+                )
+                if name is not None:
+                    entry["properties"].append(
+                        {"name": str(name), "types": [str(t) for t in (types or [])]}
+                    )
+            for entry in labels.values():
+                entry["properties"].sort(key=lambda item: item["name"])
+            for entry in kinds.values():
+                entry["properties"].sort(key=lambda item: item["name"])
+                entry["from"].sort()
+                entry["to"].sort()
+            return {
+                "labels": [labels[name] for name in sorted(labels)],
+                "relationship_types": [kinds[name] for name in sorted(kinds)],
+            }
+
+        result = await self._run(work, write=False)
+        log.info(
+            "graph.schema 200 %d labels, %d relationship types",
+            len(result["labels"]),
+            len(result["relationship_types"]),
+        )
+        return result
+
+    async def query(self, _headers: dict[str, str], body: Body) -> Any:
+        args = _arguments(body, GRAPH_QUERY_ROW)
+        query = _string(args, "query").strip()
+        if not query:
+            raise AppException(400, "query must not be empty")
+        parameters = self._parameters(args)
+        clause = write_clause(query)
+        if clause is not None:
+            raise AppException(
+                400,
+                f"query carries {clause}, a write clause - graph_query is read-only; "
+                f"graph_write or graph_ingest writes",
+            )
+        limit = self.sandbox.max_rows
+
+        async def work(tx: Transaction) -> Rows:
+            return await tx.run(query, parameters, limit=limit)
+
+        rows: Rows = await self._run(work, write=False)
+        log.info("graph.query 200 %d rows%s", len(rows.values), " (cut)" if rows.truncated else "")
+        return {
+            "columns": rows.columns,
+            "rows": [[render_value(v) for v in row] for row in rows.values],
+            "truncated": rows.truncated,
+        }
+
+    async def write(self, _headers: dict[str, str], body: Body) -> Any:
+        args = _arguments(body, GRAPH_WRITE_ROW)
+        query = _string(args, "query").strip()
+        if not query:
+            raise AppException(400, "query must not be empty")
+        parameters = self._parameters(args)
+        if not self.sandbox.delete:
+            clause = delete_clause(query)
+            if clause is not None:
+                raise AppException(
+                    400,
+                    f"query carries {clause} - deletion is not allowed on this graph ({GRAPH_DELETE})",
+                )
+        limit = self.sandbox.max_rows
+
+        async def work(tx: Transaction) -> Rows:
+            return await tx.run(query, parameters, limit=limit)
+
+        rows: Rows = await self._run(work, write=True)
+        counters = {name: int((rows.counters or {}).get(name, 0)) for name in COUNTER_NAMES}
+        log.info(
+            "graph.write 200 %s",
+            ", ".join(f"{k}={v}" for k, v in counters.items() if v) or "no change",
+        )
+        return {
+            "counters": counters,
+            "columns": rows.columns,
+            "rows": [[render_value(v) for v in row] for row in rows.values],
+            "truncated": rows.truncated,
+        }
+
+    async def ingest(self, _headers: dict[str, str], body: Body) -> Any:
+        args = _arguments(body, GRAPH_INGEST_ROW)
+        plan = plan_ingest(args, max_nodes=self.sandbox.ingest_max_nodes)
+        statements = ingest_statements(plan)
+        node_statements = len(plan.nodes)
+        endpoints = plan.endpoint_keys
+
+        async def work(tx: Transaction) -> dict[str, int]:
+            for query, parameters in statements[:node_statements]:
+                await tx.run(query, parameters)
+            if endpoints:
+                missing = await tx.run(ENDPOINTS_QUERY, {"keys": endpoints}, limit=20)
+                if missing.values:
+                    names = ", ".join(str(row[0]) for row in missing.values)
+                    raise AppException(
+                        400,
+                        f"relationship endpoints not found in the graph or in this call: {names}",
+                    )
+            for query, parameters in statements[node_statements:]:
+                await tx.run(query, parameters)
+            return {"nodes": plan.node_count, "relationships": plan.relationship_count}
+
+        result = await self._run(work, write=True)
+        log.info(
+            "graph.ingest 200 %d nodes, %d relationships", result["nodes"], result["relationships"]
+        )
+        return result
+
+
 # --- the clock ----------------------------------------------------------------------------------
 
 
@@ -1572,6 +2590,7 @@ class AgentTools:
         self.registry = registry or default_registry
         self.files: FileTools | None = None
         self.web: WebTools | None = None
+        self.graph: GraphTools | None = None
         self.registered: list[str] = []
 
     def _register(self, route: str, handler: Any) -> None:
@@ -1594,6 +2613,10 @@ class AgentTools:
                     ("file.search", self.files.search),
                 ):
                     self._register(route, handler)
+                if documents_available():
+                    self._register("file.extract", self.files.extract)
+                else:
+                    log.info("file.extract not registered - %s", DOCUMENTS_EXTRA)
                 log.info("File tools registered - workspace %s", file_sandbox.root)
             web_sandbox = load_web_sandbox()
             if web_sandbox is None:
@@ -1608,6 +2631,34 @@ class AgentTools:
                     len(web_sandbox.rules),
                     ", private addresses allowed" if web_sandbox.allow_private else "",
                 )
+            graph_sandbox = load_graph_sandbox()
+            if graph_sandbox is None:
+                log.info("Graph tools not registered - %s is not set", GRAPH_URI)
+            else:
+                self.graph = GraphTools(graph_sandbox)
+                self._register("graph.schema", self.graph.schema)
+                self._register("graph.query", self.graph.query)
+                if graph_sandbox.write:
+                    self._register("graph.write", self.graph.write)
+                    self._register("graph.ingest", self.graph.ingest)
+                else:
+                    log.info(
+                        "graph.write and graph.ingest not registered - %s is false", GRAPH_WRITE
+                    )
+                try:
+                    await self.graph.backend.verify()
+                    log.info(
+                        "Graph tools registered - %s%s%s",
+                        graph_sandbox.address,
+                        ", writes allowed" if graph_sandbox.write else "",
+                        ", deletion allowed" if graph_sandbox.delete else "",
+                    )
+                except Exception as exc:  # noqa: BLE001 - logged, not fatal
+                    log.warning(
+                        "Graph tools registered - %s does not answer yet (%s); calls fail until it does",
+                        graph_sandbox.address,
+                        type(exc).__name__,
+                    )
             if _bool_setting(TIME_ENABLED, True):
                 self._register("time.now", time_now)
             else:
@@ -1621,6 +2672,8 @@ class AgentTools:
     async def shutdown(self) -> None:
         if self.web is not None:
             await self.web.close()
+        if self.graph is not None:
+            await self.graph.close()
 
 
 agent_tools = AgentTools()
@@ -1639,6 +2692,7 @@ async def tools_health(headers: dict[str, str], _body: Body) -> Any:
             "tools": list(agent_tools.registered),
             "workspace": str(files.root) if files is not None else None,
             "allowed_sites": [str(rule) for rule in web.sandbox.rules] if web is not None else [],
+            "graph": agent_tools.graph.sandbox.address if agent_tools.graph is not None else None,
         }
     return "agent.tools is running fine"
 
@@ -1675,9 +2729,28 @@ def _states() -> dict[str, str]:
         )
     except ToolsError as exc:
         time_state = f"NOT registered ({exc})"
+    try:
+        graph = load_graph_sandbox()
+        if graph is None:
+            read_state = write_state = f"NOT registered ({GRAPH_URI} is not set)"
+        else:
+            read_state = f"registers ({graph.address})"
+            write_state = read_state if graph.write else f"NOT registered ({GRAPH_WRITE} is false)"
+    except ToolsError as exc:
+        read_state = write_state = f"NOT registered ({exc})"
+    extract_state = file_state
+    if file_state.startswith("registers") and not documents_available():
+        extract_state = f"NOT registered ({DOCUMENTS_EXTRA})"
     for route in ROW_BY_ROUTE:
         group = route.split(".", 1)[0]
-        states[route] = {"file": file_state, "web": web_state, "time": time_state}[group]
+        if route == "file.extract":
+            states[route] = extract_state
+        elif route in ("graph.write", "graph.ingest"):
+            states[route] = write_state
+        elif group == "graph":
+            states[route] = read_state
+        else:
+            states[route] = {"file": file_state, "web": web_state, "time": time_state}[group]
     return states
 
 

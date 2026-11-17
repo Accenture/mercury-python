@@ -1,8 +1,8 @@
 # The built-in agent tools
 
 The essential tools every second agent use case needs - **files** inside one workspace, **the web** inside an allowlist
-of sites, and **a clock** - as composable functions of a pack extension (RFC-0013 in the mercury-composable repository,
-`draft-design-specs/agent-essential-tools.md`; the knowledge-graph tools and `file.extract` follow in the next step). A
+of sites, **the agent's knowledge graph** inside one database, and **a clock** - as composable functions of a pack
+extension (RFC-0013 in the mercury-composable repository, `draft-design-specs/agent-essential-tools.md`). A
 graph's agent loop (`llm.run` in the engines) names a route of this application in its tool catalog, the engine reaches
 the route through declarative Event-over-HTTP like any other function, and the model's arguments arrive as the event
 body. The loop, the catalog and the graph see nothing special about a built-in tool: **a route names the capability**
@@ -26,7 +26,8 @@ The Node.js twin (mercury-nodejs `extensions/agent-tools`) serves the same route
 ## Run
 
 ```bash
-pip install mercury-composable                      # no extra: files, web and clock add no dependency
+pip install mercury-composable                      # files, web and clock add no dependency
+pip install 'mercury-composable[graph,documents]'   # + the Bolt driver (graph.*) and PDF/Word reading (file.extract)
 mercury-serve extensions/agent-tools/agent_tools.py -Dtools.file.root=/srv/workspace -Dtools.web.allow=docs.example.com
 python extensions/agent-tools/agent_tools.py        # the same without mercury-serve
 ```
@@ -38,12 +39,17 @@ default (`rest.server.port`). Its boot log says what registered:
 ```text
 File tools registered - workspace /srv/workspace
 Web tools registered - 1 allowed site pattern(s)
-Built-in tools ready - file.read, file.write, file.list, file.search, web.fetch, web.crawl, time.now
+Graph tools registered - bolt://127.0.0.1:7687, writes allowed
+Built-in tools ready - file.read, file.write, file.list, file.search, file.extract, web.fetch, web.crawl, graph.schema, graph.query, graph.write, graph.ingest, time.now
 ```
 
 Without `tools.file.root` the file tools stay out (`File tools not registered - tools.file.root is not set`); without
-`tools.web.allow` the web tools stay out; `time.now` registers unless `tools.time=false`. A root that is not a
-directory, an allowlist entry that is not a host pattern or a limit that is not a number stops the application by name.
+`tools.web.allow` the web tools stay out; without `tools.graph.uri` the graph tools stay out, and the two graph writers
+need `tools.graph.write=true` as well; `file.extract` registers with the file tools when the `documents` extra is
+installed; `time.now` registers unless `tools.time=false`. A root that is not a directory, an allowlist entry that is
+not a host pattern, a graph URI that is not a Bolt URI or without the driver installed, or a limit that is not a number
+stops the application by name. A graph database that does not answer at boot is logged, and its tools answer 503 until
+it does.
 
 ## The tools
 
@@ -62,8 +68,10 @@ the tree.
 | `file.list` | `file_list` | `path` (a folder, default `.`); `glob` (optional, `*.md` or `**/*.md`); `max_entries` (default 200, cap 2000) | `{entries: [{path, type, bytes, modified}], truncated}`, sorted by path; `type` is `file`, `directory` or `other`; `modified` in UTC |
 | `file.search` | `file_search` | `pattern` (required; a literal, or a regular expression with `regex: true`); `path` (default `.`); `glob` (default `**/*`); `case_sensitive` (default false); `context` (default 0, cap 3); `max_results` (default 100, cap 1000) | `{matches: [{path, line, text, before, after}], files_searched, truncated}`; text files only, binaries skipped, each line cut to `tools.file.line.max.chars` (500) |
 
-`file.write` carries the write mark, so under the node's default mode a person approves it; the other three are reads
-and run unasked.
+| `file.extract` | `file_extract` | `path` (required); `pages` (a range such as `1-3,7`, default all); `max_chars` (default and cap `tools.file.extract.max.chars`, 60 000) | `{path, type, pages, text, truncated}`; `type` is `pdf`, `docx`, `html` or `text`, `pages` the document's page count, the text carries a `--- page N ---` marker before each page; a PDF or Word document needs the `documents` extra (`pypdf`, `python-docx`), without which the tool does not register; an encrypted PDF or another format is a 400 |
+
+`file.write` carries the write mark, so under the node's default mode a person approves it; the other file tools are
+reads and run unasked.
 
 ### The web, inside an allowlist
 
@@ -85,6 +93,36 @@ The crawl is a bounded reader of a documentation section or a small site, not a 
 include prefix and the delay are all limits, and a model that needs more asks again with a narrower start. HTML is read
 by a small in-house parser (no dependency), enough for documentation and articles; an installation whose pages need
 main-content extraction may put a library behind the same route.
+
+### The knowledge graph, inside one database
+
+The agent's own store for what it extracts - documents ingested once, their entities, relations and rules queried many
+times (the design's principle 7: extract once, query many). The sandbox is one database, `tools.graph.uri` (a Bolt
+URI: `bolt://`, `bolt+s://`, `neo4j://`, `neo4j+s://`), `tools.graph.database` and the credential by reference
+(`tools.graph.username`, `tools.graph.password: ${GRAPH_PASSWORD}`); the `graph` extra installs the official driver,
+which reaches Neo4j and Memgraph alike. The query language is openCypher. The two reads register when the URI is set;
+the two writers only when `tools.graph.write=true`, and `DELETE`, `DETACH DELETE` and `DROP` are refused unless
+`tools.graph.delete=true` as well. Every statement runs in a managed transaction with `tools.graph.timeout.ms` set
+server-side, a read in a read transaction, so a statement that writes fails even if the clause scan missed it.
+
+| Route | Row | Arguments | Result |
+| --- | --- | --- | --- |
+| `graph.schema` | `graph_schema` | none | `{labels: [{label, count, properties: [{name, types}]}], relationship_types: [{type, count, from, to, properties}]}` from the database's own schema procedures (Neo4j's `db.schema.*`, else Memgraph's `schema.*`) and two counting queries; what the model reads before it writes a query or an ingest |
+| `graph.query` | `graph_query` | `query` (openCypher, read-only, required); `parameters` (a map) | `{columns, rows, truncated}`; refused before sending when it carries `CREATE`, `MERGE`, `SET`, `DELETE`, `REMOVE`, `DROP` or `LOAD CSV` outside a string or a comment; rows capped by `tools.graph.max.rows` (200, cap 2000); a node rendered `{id, labels, properties}`, a relationship `{id, type, start, end, properties}`, a path as the list of its nodes and relationships, temporal values as text, points as `{srid, coordinates}` |
+| `graph.write` | `graph_write`, **`write: true`** | `query`, `parameters` | `{counters: {nodes_created, nodes_deleted, relationships_created, relationships_deleted, properties_set, labels_added, labels_removed, indexes_added, constraints_added}, columns, rows, truncated}` from a write transaction |
+| `graph.ingest` | `graph_ingest`, **`write: true`** | `nodes: [{key, label, properties}]`, `relationships: [{from, to, type, properties}]`, `source` (optional) | `{nodes, relationships}` counts: one parameterized `MERGE` per label on `(:Label {key})` with `SET n += properties`, one per type between two keys that exist (in this call or already in the graph - a missing endpoint is a 400 naming the key, and nothing is written), `source` stamped on every node and relationship; labels and types `^[A-Za-z][A-Za-z0-9_]{0,63}$`, values scalars or lists of scalars, at most `tools.graph.ingest.max.nodes` (500) nodes and four times as many relationships per call; running it twice changes nothing |
+
+Why `graph.ingest` beside `graph.write`: a list of nodes and relationships is what a model extracts well, and a long
+`MERGE` with dozens of parameters is where Cypher goes wrong. The tool makes the Cypher, no value is ever interpolated
+into a statement, and the write is idempotent. The row's description tells the model the conventions: a key unique
+across the graph, prefixed with the label in lower case (`clause:12`, `party:supplier-a`); a `source` on every ingest
+so an answer can cite it. A database failure comes back by the database's own code (`Neo.ClientError.Statement.SyntaxError:
+...`) as a 400 the model can act on; a transaction over the timeout is a 408; an unreachable database or a refused
+credential a 503, logged by type only.
+
+For development, `dev/graph-up.sh` starts Neo4j Community on Colima with its Browser at `http://127.0.0.1:7474`
+(`GRAPH_PASSWORD=... extensions/agent-tools/dev/graph-up.sh`; `graph-down.sh` removes it), and the live test runs
+against it when `TOOLS_GRAPH_TEST_URI` and `TOOLS_GRAPH_TEST_PASSWORD` are set.
 
 ### The clock
 
@@ -108,6 +146,15 @@ time zone database (some containers) needs the `tzdata` package for any zone but
 | `tools.web.crawl.max.pages` | `50` | the most pages one crawl may ask for; the tool's cap, a deployment may lower it |
 | `tools.web.crawl.delay.ms` | `500` | the pause between two requests of a crawl |
 | `tools.web.page.max.chars` | `20000` | the characters kept of a page's text |
+| `tools.file.extract.max.chars` | `60000` | the most characters `file.extract` returns |
+| `tools.graph.uri` | unset | the graph database, a Bolt URI; unset, the graph tools do not register |
+| `tools.graph.database` | the server's default | the database name |
+| `tools.graph.username`, `tools.graph.password` | unset | the credential, by reference (`${GRAPH_PASSWORD}`); never logged |
+| `tools.graph.write` | `false` | register `graph.write` and `graph.ingest` |
+| `tools.graph.delete` | `false` | allow `DELETE` and `DROP` in `graph.write` |
+| `tools.graph.max.rows` | `200` | the most rows a query returns (the tool's cap is 2000) |
+| `tools.graph.timeout.ms` | `10000` | how long one transaction may take, set server-side |
+| `tools.graph.ingest.max.nodes` | `500` | the most nodes one `graph.ingest` call may carry (relationships: four times as many) |
 | `tools.time` | `true` | register `time.now` |
 
 Limits are defaults a deployment lowers, never raises past the tool's caps (a `tools.web.crawl.max.pages` above 50 is
@@ -120,11 +167,12 @@ logged and capped). The shipped `application.yml` takes the root and the allowli
 | --- | --- |
 | Request | The event body is the tool's arguments, a map of the row's properties. Anything else, an unknown argument or a wrong type is a 400 naming it. |
 | Reply | The result map of the table above. |
-| 400 | A refusal by rule: a path outside the workspace, a hidden entry, a binary file, a site that is not allowed, a private address, a bad argument, too many redirects, a response that is not text. The message names the rule and the key that governs it. |
+| 400 | A refusal by rule: a path outside the workspace, a hidden entry, a binary file, a site that is not allowed, a private address, a bad argument, too many redirects, a response that is not text, a write clause in a read-only query, a deletion without the gate, an ingest with a bad label or a missing endpoint; or the graph database's own client error, by its code. The message names the rule and the key that governs it. |
 | 404 | The file or folder does not exist. |
-| 408 | The site did not answer within `tools.web.timeout.ms`. |
+| 408 | The site or the graph database did not answer within its timeout. |
 | 409 | `file.write` in `create` mode found the file. |
-| 502 | The host cannot be resolved or the connection failed. |
+| 502 | The host cannot be resolved, the connection failed, or the graph database failed in a way that is not the caller's. |
+| 503 | The graph database is not reachable or refused this process's credential. |
 
 A Java or Rust engine maps the routes in its `yaml.event.over.http` file to this application's `/api/event`, and a
 graph's catalog row names the route:
@@ -132,13 +180,15 @@ graph's catalog row names the route:
 ```yaml
 event:
   http:
-    - route: 'file.read, file.write, file.list, file.search, web.fetch, web.crawl, time.now'
+    - route: 'file.read, file.write, file.list, file.search, file.extract, web.fetch, web.crawl'
+      target: 'http://127.0.0.1:8089/api/event'
+    - route: 'graph.schema, graph.query, graph.write, graph.ingest, time.now'
       target: 'http://127.0.0.1:8089/api/event'
 ```
 
 **Logs.** A tool logs its route, the status, the byte, entry or page count and the host of a URL - never a path's
-content, a page's text or a full URL (a query string may carry a token). The engines' trace names the route like any
-function's.
+content, a page's text, a full URL (a query string may carry a token), a query's parameters or a graph credential. The
+engines' trace names the route like any function's.
 
 ## The catalog rows
 
@@ -174,15 +224,19 @@ files. A catalog node on a graph takes them as its `tools` list:
 
 ## Health
 
-`tools.health` (the `/health` actuator, `mandatory.health.dependencies`) reports the registered routes, the workspace
-and the allowed site patterns - the answer to "what can this agent reach?" without reading code.
+`tools.health` (the `/health` actuator, `mandatory.health.dependencies`) reports the registered routes, the workspace,
+the allowed site patterns and the graph database's address (never its credential) - the answer to "what can this agent
+reach?" without reading code.
 
 ## Security
 
 - **The catalog is still the boundary.** A graph names the tools its agent reaches; a built-in the graph does not name
   is as unreachable as any route, and a deployment whose sandbox is not configured fails the graph's pre-flight check
   before a token is spent.
-- **The root, the allowlist and the private-address gate are certification artifacts**, reviewed with the deployment.
+- **The root, the allowlist, the private-address gate and the graph's two gates are certification artifacts**, reviewed
+  with the deployment. Writing the graph needs `tools.graph.write=true`; deleting needs `tools.graph.delete=true` as
+  well; a read runs in a read transaction; an ingest is parameters only, and a label or type that is not an identifier
+  is refused.
 - **No shell, no arbitrary request.** A URL the model chooses is checked by host, scheme, port, resolved address and
   on every redirect; a path the model chooses is resolved and checked against the root. There is no generic
   `http.request` and no command execution, by design.
@@ -199,5 +253,9 @@ pytest tests/test_agent_tools.py
 The file tools run against a workspace built in a temporary directory (a link that escapes it, hidden entries, a
 binary, a file that is not UTF-8, a large file); the HTML reader against a fixture page; the allowlist and the
 address rules without a network; the web tools against a small site served in-process by aiohttp (pages that link each
-other, `robots.txt`, redirects to allowed, private and foreign hosts, a slow page, a large body, charsets); the boot,
-the health route, the `describe` output and the catalog files complete the suite.
+other, `robots.txt`, redirects to allowed, private and foreign hosts, a slow page, a large body, charsets); the graph
+tools against a fake backend that scripts the rows (the schema from Neo4j's and from Memgraph's procedures, the clause
+scan, the row cap, the delete gate, the ingest's statement order and its endpoint check) and the pure half (rendering,
+the clause scan, the ingest plan, the error mapping on the driver's own exception classes); `file.extract` on a PDF and
+a Word document generated in the test; the boot, the health route, the `describe` output and the catalog files complete
+the suite. The live graph test runs when `TOOLS_GRAPH_TEST_URI` names a database.
