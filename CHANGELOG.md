@@ -44,6 +44,14 @@
    **Upgrade note:** a `-D` value that relied on a literal `${...}` is now resolved, as a file value always was; an
    unresolved reference without a default is no value, as in a file.
 
+2. **The transcript audit store's PostgreSQL pool sets a server-side `statement_timeout` from
+   `llm.transcript.audit.postgres.timeout.ms`.** The live drive of 2026-11-17 (mercury-composable
+   `docs/test-reports/transcript-audit-live-drive.md`) showed a stopped database failing a write by type within the
+   connection timeout, as designed, but a paused one - a TCP black hole - holding the pooled connection's statement, and
+   with it the audit function's mailbox, for the outage's length. The statement now times out on the server after the
+   same `timeout.ms`, so a stalled database behaves like a stopped one: a logged failure, repaired by the sweep. In
+   lockstep with the Node pack. **Upgrade note:** none.
+
 ## Version 4.12.30, 11/16/2026
 
 The catch-up round with the engines: the pack moves from 4.12.21 to 4.12.30, the number the Java engine released on

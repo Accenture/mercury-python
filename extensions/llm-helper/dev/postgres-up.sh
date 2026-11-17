@@ -22,7 +22,8 @@ docker run -d --name mercury-transcripts -p 5432:5432 \
   -v "${here}/../schema/postgres.sql:/docker-entrypoint-initdb.d/transcript.sql:ro" \
   postgres:17-alpine
 
-docker run -d --name mercury-transcripts-browser -p 8081:8081 \
+# restarted on failure: the browser exits when its database goes away, and does not come back by itself
+docker run -d --name mercury-transcripts-browser -p 8081:8081 --restart on-failure \
   sosedoff/pgweb --url "postgres://mercury:${POSTGRES_PASSWORD}@host.docker.internal:5432/mercury?sslmode=disable"
 
 echo "PostgreSQL: 127.0.0.1:5432, database mercury, user mercury (the schema applies at first start)"
