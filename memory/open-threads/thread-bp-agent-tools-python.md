@@ -1,7 +1,12 @@
 - [ ] **(blueprint) The essential built-in tools for agent loops, RFC-0013 build plan step 1 and 2 here, Python first
   (Eric: "proceed with essential tools", 2026-11-17; the spec is mercury-composable
-  `draft-design-specs/agent-essential-tools.md`, settled, rulings R1-R16).** NOT STARTED - the entry point for the next
-  session. Step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
+  `draft-design-specs/agent-essential-tools.md`, settled, rulings R1-R16).** **Step 1 BUILT 2026-11-17** as PR #63 (branch `feat/agent-tools`, opened the same day):
+  `extensions/agent-tools/agent_tools.py`, the seven routes, the catalog files, `describe`, `tools.health`, README,
+  98 tests on a workspace and a fixture site, a live https fetch through the pinned-address path; six defaults set
+  without a ruling are listed in the session log (hidden entries invisible to every file tool, the resolved address
+  pinned, a write bounded by `tools.file.max.bytes`, no `strict` on the rows, the statuses, row names = routes with
+  `_`). In passing: the MCP binding's direct run never attached its boot hook (fixed; check the Node twin at step
+  3). Next: the engines' docs page, then step 2. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
   `README.md`, `resources/application.yml`, a `describe` command printing every catalog row, `platform.on_startup` for the
   gated registration) with the file tools inside `tools.file.root` (`file.read`, `file.write` marked `write: true` with
   `create` the default, `file.list`, `file.search`; paths resolved with symlinks followed and refused outside the root;

@@ -1,0 +1,51 @@
+{
+  "name": "file_search",
+  "description": "Search the text files of the workspace for a literal (the default) or a regular expression (regex: true), case-insensitive unless case_sensitive is true. path narrows the search to a folder, glob to matching files (for example **/*.py); context adds up to 3 lines before and after each match. Returns the matching lines with their file and line number, how many files were searched and whether the result was cut at max_results. Binary files are skipped.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "The text to find, or a regular expression with regex: true."
+      },
+      "regex": {
+        "type": "boolean",
+        "default": false,
+        "description": "Treat pattern as a regular expression."
+      },
+      "path": {
+        "type": "string",
+        "default": ".",
+        "description": "The folder to search, relative to the root."
+      },
+      "glob": {
+        "type": "string",
+        "default": "**/*",
+        "description": "The files to search, as a pattern."
+      },
+      "case_sensitive": {
+        "type": "boolean",
+        "default": false
+      },
+      "context": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 3,
+        "default": 0,
+        "description": "Lines of context before and after each match."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 100,
+        "description": "At most this many matches."
+      }
+    },
+    "required": [
+      "pattern"
+    ],
+    "additionalProperties": false
+  },
+  "route": "file.search"
+}

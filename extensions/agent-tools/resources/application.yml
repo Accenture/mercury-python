@@ -1,0 +1,67 @@
+# The built-in agent tools' configuration - the engines' "resources" convention.
+# mercury-serve (and a direct `python agent_tools.py`) loads resources/application.yml from the
+# resources folder next to the application file (this one), never from the working directory.
+# Any key can be overridden at run time with the engines' -D syntax, e.g.:
+#   mercury-serve extensions/agent-tools/agent_tools.py -Dtools.file.root=/srv/workspace
+
+application.name: 'agent-tools'
+info.app.description: 'Mercury Composable built-in tools for agent loops (files, the web, a clock)'
+
+rest.server.port: 8089
+
+# text (default) | json (pretty-printed) | compact (single-line JSONL)
+log.format: text
+log.level: INFO
+
+# Actuator /health dependencies - routes of health check functions speaking the engines'
+# type=info / type=health contract (tools.health in agent_tools.py). It reports the registered
+# tools, the workspace and the allowed sites.
+mandatory.health.dependencies: 'tools.health'
+
+# Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
+show.env.variables: 'LOG_LEVEL'
+show.application.properties: 'application.name, rest.server.port, tools.file.root, tools.web.allow, tools.time'
+
+# --- the sandboxes: a tool whose sandbox is not configured does not register ------------------
+#
+# Files: the one directory tree the file tools (file.read, file.write, file.list, file.search)
+# may touch. Every path is relative to it, resolved with symbolic links followed, and refused
+# outside it. Unset, the file tools do not register. Run the process as a user with no rights
+# beyond this tree.
+tools.file.root: '${TOOLS_FILE_ROOT:}'
+# the most bytes file.read returns and file.write accepts (256 KiB)
+tools.file.max.bytes: 262144
+# hidden entries (a name starting with '.') are invisible to every file tool unless true
+tools.file.hidden: false
+# restrict file.write to these suffixes (comma-separated, e.g. '.md, .txt'); empty: any
+tools.file.write.extensions: ''
+# a line file.search returns is cut to this many characters
+tools.file.line.max.chars: 500
+
+# The web: the sites the web tools (web.fetch, web.crawl) may reach - comma-separated host
+# patterns, e.g. 'docs.example.com, *.example.org'. A host is reached over https unless it is
+# listed with its scheme ('http://intranet.example'); a port may be listed ('host:8443'). Every
+# redirect is checked against the same list. Empty: the web tools do not register.
+tools.web.allow: '${TOOLS_WEB_ALLOW:}'
+# addresses in loopback, private, link-local and multicast ranges are refused unless true -
+# this closes the request-forgery route to a cloud metadata service or an internal admin port
+tools.web.allow.private: false
+# the most bytes read from one response (1 MiB) and how long one request may take
+tools.web.max.bytes: 1048576
+tools.web.timeout.ms: 10000
+# a crawl's limits: the most pages a call may ask for (the tool's cap is 50; a deployment may
+# lower it), the pause between two requests and the characters kept of each page's text
+tools.web.crawl.max.pages: 50
+tools.web.crawl.delay.ms: 500
+tools.web.page.max.chars: 20000
+
+# The clock (time.now) reads nothing and registers unless false.
+tools.time: true
+
+# OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin. Switch it on
+# at run time with -Dotel.forwarding=true; the endpoint and credential come from the
+# environment. Header names are logged, never values.
+otel.forwarding: false
+otel.exporter.otlp.endpoint: '${OTLP_API_ENDPOINT:http://localhost:4318/v1/traces}'
+otel.exporter.otlp.headers: '${OTLP_AUTH_HEADER} ${OTLP_TOKEN}'
+otel.service.name: '${OTLP_SERVICE_NAME:agent-tools}'

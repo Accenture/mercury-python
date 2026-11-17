@@ -608,13 +608,20 @@ def _main(argv: list[str]) -> int:
     words = [a for a in argv if not a.startswith("-D")]
     if words and words[0] == "describe":
         return describe(words[1:])
+    _attach()
     platform.run()
     return 0
+
+
+def _attach() -> None:
+    # the servers connect inside the serving loop, before the first request - under mercury-serve
+    # and under a direct `python mcp_binding.py` alike
+    platform.on_startup(binding.boot)
+    platform.on_cleanup(binding.shutdown)
 
 
 if __name__ == "__main__":
     raise SystemExit(_main(sys.argv[1:]))
 else:
-    # loaded by mercury-serve: the servers connect inside the serving loop, before the first request
-    platform.on_startup(binding.boot)
-    platform.on_cleanup(binding.shutdown)
+    # loaded by mercury-serve
+    _attach()

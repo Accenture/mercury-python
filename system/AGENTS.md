@@ -34,7 +34,7 @@ wrapper's docs cover only the Python function surface.
 |------|------|
 | `src/` | the `mercury_composable` package — Event API host, `PostOffice`, envelope codec, actuators |
 | `examples/` | runnable reference functions |
-| `extensions/` | function hosts that add a capability to an installation — the LLM helper (`llm.chat`, `llm.stream`) |
+| `extensions/` | function hosts that add a capability to an installation — the LLM helper (`llm.chat`, `llm.stream`), the MCP binding (a composable function per MCP tool) and the built-in agent tools (`file.*`, `web.*`, `time.now`) |
 | `docs/` | the MkDocs guide site source |
 | `tests/` | unit and integration tests |
 

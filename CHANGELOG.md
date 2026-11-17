@@ -33,6 +33,33 @@
    lockstep. **Upgrade note:** none without `llm.transcript.audit`. A record saved by the previous helper (version 1)
    continues under the new one; its turns before the upgrade carry no facts, and the check logs them as unaudited.
 
+2. **The built-in agent tools: files inside one workspace, the web inside an allowlist, and a clock (RFC-0013 in
+   mercury-composable, build plan step 1).** `extensions/agent-tools/agent_tools.py` serves seven composable functions
+   an agent loop names in its tool catalog: `file.read`, `file.write` (the one writer, `write: true`, `create` the
+   default and refusing an existing file), `file.list` and `file.search` inside `tools.file.root` - every path
+   relative to the root, resolved with symbolic links followed and refused outside it, hidden entries invisible unless
+   `tools.file.hidden=true`; `web.fetch` and `web.crawl` inside `tools.web.allow` - https unless a host is listed with
+   `http://`, the host resolved and checked against the loopback, private, link-local and multicast ranges before the
+   request is made to the checked address, every redirect checked again, the body cut at `tools.web.max.bytes`, HTML
+   reduced to readable text or Markdown by a small in-house parser, a crawl same-host, breadth-first, `robots.txt`
+   honoured, bounded by pages, depth, an include prefix and a delay; and `time.now`. A tool whose sandbox is not
+   configured does not register, so an unconfigured tool is a 404 to the loop's pre-flight check; every refusal is a
+   400 naming the rule and the key, which the loop returns to the model as the call's error. Each tool ships its
+   catalog row - the name the model sees, the description, the closed input schema, the route and the write mark - as a
+   constant, as a file under `extensions/agent-tools/catalog/` (shared byte for byte with the Node.js twin) and through
+   `python agent_tools.py describe`, which also says what registers under the current configuration. `tools.health`
+   reports the registered routes, the workspace and the allowed sites. No new dependency: aiohttp fetches, the standard
+   library parses. Pinned by `tests/test_agent_tools.py` (97 tests: a workspace with an escaping link, a fixture site
+   served in-process with redirects to private and foreign hosts, the allowlist and address rules without a network).
+   The knowledge-graph tools and `file.extract` follow as step 2, the Node.js twin as step 3.
+
+### Fixed
+
+1. **A direct `python extensions/mcp-binding/mcp_binding.py` now connects its servers.** The binding attached its boot
+   and shutdown hooks to the platform only when loaded by `mercury-serve`; run directly, the Event API started with no
+   server connected and every bound route answered 503. Both entry points attach the hooks now, so a bad server file
+   stops the direct run by name as it stops the served one.
+
 ### Changed
 
 1. **A `-D` override value is resolved with the same `${ENV_VAR:default}` substitution as a file value - the engines'
