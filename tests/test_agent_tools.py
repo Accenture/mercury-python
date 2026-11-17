@@ -848,6 +848,13 @@ async def test_crawl_follows_links_breadth_first_inside_the_include(
     assert [p["title"] for p in reply["pages"]] == ["Home", "Section A", "Section B", "Section C"]
     assert reply["pages"][1]["text"] == "A\n\nText of A, see C."
     assert (reply["visited"], reply["truncated"]) == (4, False)
+    relative = await web_tools.web_crawl({}, {"url": f"{site}/", "include": "ocs/"})
+    assert [p["url"] for p in relative["pages"]] == [
+        f"{site}/",
+        f"{site}/docs/a",
+        f"{site}/docs/b",
+        f"{site}/docs/c",
+    ], "a relative include matches anywhere in the path"
     shallow = await web_tools.web_crawl({}, {"url": f"{site}/", "include": "docs/", "max_depth": 1})
     assert [p["url"] for p in shallow["pages"]] == [f"{site}/", f"{site}/docs/a", f"{site}/docs/b"]
     assert shallow["truncated"] is False

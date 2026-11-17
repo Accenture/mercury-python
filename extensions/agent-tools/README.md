@@ -87,7 +87,7 @@ identifies itself as `Mercury-Composable-AgentTools/<version>`.
 | Route | Row | Arguments | Result |
 | --- | --- | --- | --- |
 | `web.fetch` | `web_fetch` | `url` (required); `as`: `text` (default), `markdown`, `raw` | `{url, status, content_type, title, text, bytes, truncated}`; HTML is reduced to its readable text (scripts, styles, `nav`, `header` and `footer` dropped; headings, lists, code and links kept as text or as Markdown); a text resource (`text/*`, JSON, XML) is returned as is; `raw` returns the body as received; a binary response is a 400; the page's own status (a 404, a 500) is a result, not an error |
-| `web.crawl` | `web_crawl` | `url` (the start page); `max_pages` (default 10, cap `tools.web.crawl.max.pages`, 50); `max_depth` (default 2, cap 5); `include` (a path prefix the followed links must start with) | `{pages: [{url, title, text, bytes}], visited, truncated}`; same host only, links followed breadth-first, `robots.txt` honoured, `tools.web.crawl.delay.ms` (500) between requests, each page's text cut to `tools.web.page.max.chars` (20 000), the whole result to 60 000 characters |
+| `web.crawl` | `web_crawl` | `url` (the start page); `max_pages` (default 10, cap `tools.web.crawl.max.pages`, 50); `max_depth` (default 2, cap 5); `include` (a path prefix the followed links must start with when it starts with `/`, else a part of the path - `guides/` and `/docs/guides/` both work) | `{pages: [{url, title, text, bytes}], visited, truncated}`; same host only, links followed breadth-first, `robots.txt` honoured, `tools.web.crawl.delay.ms` (500) between requests, each page's text cut to `tools.web.page.max.chars` (20 000), the whole result to 60 000 characters |
 
 The crawl is a bounded reader of a documentation section or a small site, not a spider: the page cap, the depth, the
 include prefix and the delay are all limits, and a model that needs more asks again with a narrower start. HTML is read
@@ -180,10 +180,11 @@ graph's catalog row names the route:
 ```yaml
 event:
   http:
-    - route: 'file.read, file.write, file.list, file.search, file.extract, web.fetch, web.crawl'
+    - route: 'file.read'
       target: 'http://127.0.0.1:8089/api/event'
-    - route: 'graph.schema, graph.query, graph.write, graph.ingest, time.now'
+    - route: 'web.fetch'
       target: 'http://127.0.0.1:8089/api/event'
+    # ... one entry per route the graph names - the engines' map takes no comma-separated list
 ```
 
 **Logs.** A tool logs its route, the status, the byte, entry or page count and the host of a URL - never a path's

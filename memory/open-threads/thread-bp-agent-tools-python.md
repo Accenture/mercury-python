@@ -11,7 +11,10 @@
   MERGED 2026-11-17 - the pack's version 1 of the tools is complete): the four graph tools over the Bolt driver (`graph` extra; a `Transaction` seam, a fake for the
   tests, Neo4j and Memgraph schema procedures), `file.extract` behind the `documents` extra, `dev/graph-up.sh` /
   `graph-down.sh`, 161 tests and a live round trip on the development Neo4j; eight defaults set without a ruling in
-  the session log. Next: the engines' page and spec for step 2, then the Node twin. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
+  the session log. The Node twin landed as mercury-nodejs #130; the Playground's three graphs as
+  mercury-composable #647 (step 4), driven live through both packs 2026-11-17 - the drive taught a relative `include`
+  (PR opened the same day, with the README's Event-over-HTTP snippet corrected to one route per entry). Next: nothing
+  here until the recipes page (step 5, the engine's). The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
   `README.md`, `resources/application.yml`, a `describe` command printing every catalog row, `platform.on_startup` for the
   gated registration) with the file tools inside `tools.file.root` (`file.read`, `file.write` marked `write: true` with
   `create` the default, `file.list`, `file.search`; paths resolved with symlinks followed and refused outside the root;
