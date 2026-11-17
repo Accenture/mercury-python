@@ -1,0 +1,36 @@
+{
+  "name": "web_crawl",
+  "description": "Read a documentation section or a small site: fetch the start page and follow its links on the same site, breadth-first, up to max_pages pages and max_depth links deep, honouring robots.txt. include keeps the crawl under a path prefix (for example /docs/guides/). Returns each page's URL, title and readable text, how many pages were fetched and whether the result was cut; when it was cut, ask again from a narrower start page or with include.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The start page."
+      },
+      "max_pages": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10,
+        "description": "At most this many pages."
+      },
+      "max_depth": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 5,
+        "default": 2,
+        "description": "How many links deep to follow from the start page."
+      },
+      "include": {
+        "type": "string",
+        "description": "A path prefix the followed links must start with."
+      }
+    },
+    "required": [
+      "url"
+    ],
+    "additionalProperties": false
+  },
+  "route": "web.crawl"
+}

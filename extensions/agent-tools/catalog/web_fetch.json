@@ -1,0 +1,28 @@
+{
+  "name": "web_fetch",
+  "description": "Fetch one web page or text resource from a site this agent may reach and return its readable text. HTML is reduced to its text with scripts, styles and navigation dropped; as: markdown keeps headings, lists and links as Markdown; as: raw returns the body as received when it is text. A URL outside the allowed sites is an error naming the rule. Returns the final URL, the HTTP status, the content type, the title, the text, the size in bytes and whether the text was cut.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The https URL to fetch."
+      },
+      "as": {
+        "type": "string",
+        "enum": [
+          "text",
+          "markdown",
+          "raw"
+        ],
+        "default": "text",
+        "description": "text: readable text; markdown: text with headings, lists and links; raw: the body."
+      }
+    },
+    "required": [
+      "url"
+    ],
+    "additionalProperties": false
+  },
+  "route": "web.fetch"
+}

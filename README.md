@@ -227,7 +227,10 @@ allowlisted remote tool, over stdio or streamable HTTP, on the official MCP SDK.
 
 The LLM helper in `extensions/llm-helper/` is an application on this package, not part of it.
 Its `llm.chat` is configurable: a stateless chat, or one turn of a multi-turn tool-use loop whose
-transcript lives in the store the helper is configured with.
+transcript lives in the store the helper is configured with. The built-in agent tools in
+`extensions/agent-tools/` are the essential tools such a loop names in its catalog - files inside one
+workspace, the web inside an allowlist of sites, a clock - each a composable function whose sandbox is
+deployment configuration, never an argument of a call.
 
 ## Development
 

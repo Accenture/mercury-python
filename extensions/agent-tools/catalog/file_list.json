@@ -1,0 +1,28 @@
+{
+  "name": "file_list",
+  "description": "List the files and folders of a workspace directory. path is a folder relative to the workspace root (default: the root); glob filters by pattern, recursively with ** (for example **/*.md). Each entry has its path, type (file or directory), size in bytes and modification time. Hidden entries are not listed. The list is cut at max_entries.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "default": ".",
+        "description": "The folder, relative to the workspace root."
+      },
+      "glob": {
+        "type": "string",
+        "description": "A pattern such as *.md or **/*.py; without it, the folder's direct entries."
+      },
+      "max_entries": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2000,
+        "default": 200,
+        "description": "At most this many entries."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "route": "file.list"
+}

@@ -1,0 +1,34 @@
+{
+  "name": "file_write",
+  "description": "Write a UTF-8 text file in the agent's workspace. path is relative to the workspace root; missing parent folders are created. mode is create (the default; it refuses a file that exists), overwrite (replace the file) or append (add to its end). Returns the path, the bytes written and the mode.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "The file, relative to the workspace root."
+      },
+      "content": {
+        "type": "string",
+        "description": "The text to write."
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "create",
+          "overwrite",
+          "append"
+        ],
+        "default": "create",
+        "description": "create refuses an existing file; overwrite replaces it; append extends it."
+      }
+    },
+    "required": [
+      "path",
+      "content"
+    ],
+    "additionalProperties": false
+  },
+  "route": "file.write",
+  "write": true
+}

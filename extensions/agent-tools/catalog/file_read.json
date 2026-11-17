@@ -1,0 +1,23 @@
+{
+  "name": "file_read",
+  "description": "Read a UTF-8 text file from the agent's workspace. path is relative to the workspace root (for example notes/plan.md); an absolute path or one that leaves the workspace is refused. Returns the text, the file's size in bytes and whether the text was cut at max_bytes. A binary file is an error naming its type.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "The file, relative to the workspace root."
+      },
+      "max_bytes": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Read at most this many bytes (default and cap: the workspace's limit)."
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false
+  },
+  "route": "file.read"
+}

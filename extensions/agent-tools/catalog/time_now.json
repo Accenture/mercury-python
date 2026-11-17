@@ -1,0 +1,17 @@
+{
+  "name": "time_now",
+  "description": "The current date and time. timezone is an IANA name (for example Europe/Berlin; default UTC). Returns the UTC time, the local time in that zone, its offset, the weekday and the epoch in milliseconds. Use it before reasoning about today, deadlines or periods.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "timezone": {
+        "type": "string",
+        "default": "UTC",
+        "description": "An IANA time zone name."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "route": "time.now"
+}
