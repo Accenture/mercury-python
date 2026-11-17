@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Added
+
+1. **The transcript audit store: a durable, queryable record of every model turn (RFC-0012 in mercury-composable).**
+   The LLM helper's transcript store is a working store - its time to live is the transaction's, and `retention` deletes
+   a record at the end of the run by default - so an audit had no store to ask. `llm.transcript.audit: postgres` adds
+   one beside it. Every turn is recorded asynchronously, off the turn's path: after the compare-and-set accepted a turn,
+   `llm.chat` sends one local event to `transcript.audit`, a private composable function of the helper's process with one
+   instance, whose mailbox orders the writes and the end-of-run check of a conversation without a lock. The function
+   reads the working record - version 2 now, carrying each turn's facts inside the same compare-and-set (trace id and
+   path, correlation id, the UTC bounds of the model call, outcome, usage) with the system prompt, the catalog and the
+   graph context stored once - and writes the rows PostgreSQL lacks: a conversation row (identity, status, turn count,
+   times, token totals, the first-turn snapshot) and a turn row per model turn (the messages the turn sent as `request`,
+   the assistant content blocks as `response`, the normalized `calls`), the provider's format as sent and as returned.
+   A closing turn sends the integrity check behind its write: the turns the record holds are counted against the rows
+   the store holds, the missing ones written, and only then is the working record released to the `retention` it
+   carried (`0` deletes it); until then it waits with `llm.transcript.audit.grace` (`1d`). A sweep
+   (`llm.transcript.audit.sweep.ms`, 60 s, one replica per interval on Redis) sends a check for every record whose
+   audited mark - a third hash field beside `turn` and `record` - lags its turn count: the runs the loop stopped and the
+   writes a dying process lost. A failed write is logged by type and SQLSTATE, never by content, and never refuses a turn.
+   The `postgres` extra adds psycopg 3 (`pip install 'mercury-composable[llm,postgres]'`); a configured driver that is not
+   installed stops the application by name, a database that does not answer at boot is logged and repaired by the sweep.
+   `extensions/llm-helper/schema/postgres.sql` and `purge.sql` ship the reference schema and the purge (retention and
+   purge are the installation's; `expires_at` is written from `llm.transcript.audit.retention`, `365d`),
+   `dev/postgres-up.sh`, `postgres-down.sh` and `audit-purge.sh` the development setup on Colima with pgweb as the SQL
+   browser. `llm.chat` records the loop's `x-graph-id` and `x-node` headers at the first turn; `llm.health` reports
+   `transcript_audit`. Pinned by `tests/test_transcript_audit.py` (28 tests on the memory store and a recording fake of
+   the connection pool) and a live test gated on `LLM_TRANSCRIPT_AUDIT_TEST_URL`; the shared loop vector file is
+   unchanged, since the audit is a side effect of a turn and not part of the loop contract. The Node twin follows in
+   lockstep. **Upgrade note:** none without `llm.transcript.audit`. A record saved by the previous helper (version 1)
+   continues under the new one; its turns before the upgrade carry no facts, and the check logs them as unaudited.
+
 ## Version 4.12.30, 11/16/2026
 
 The catch-up round with the engines: the pack moves from 4.12.21 to 4.12.30, the number the Java engine released on

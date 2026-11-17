@@ -21,7 +21,7 @@ mandatory.health.dependencies: 'llm.health'
 
 # Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
 show.env.variables: 'LOG_LEVEL'
-show.application.properties: 'application.name, rest.server.port, llm.backend, llm.model, llm.transcript.store'
+show.application.properties: 'application.name, rest.server.port, llm.backend, llm.model, llm.transcript.store, llm.transcript.audit'
 
 # --- the helper's settings (a call's params.* win over these) -----------------------------
 # The credential is never configured here: ANTHROPIC_API_KEY (the Claude API) or the AWS
@@ -64,6 +64,30 @@ llm.transcript.store: 'memory'
 # llm.transcript.redis.ssl: false
 # llm.transcript.redis.database: 0
 # llm.transcript.redis.timeout.ms: 5000
+
+# --- the transcript audit store (RFC-0012): every model turn, durable and queryable ---------
+# unset: no audit, the helper as above. postgres: the transcript.audit function records every turn
+# in PostgreSQL behind a local event, off the turn's path (the [postgres] extra); a closed working
+# record is released once the end-of-run check holds every turn. dev/postgres-up.sh starts a
+# PostgreSQL with the schema (schema/postgres.sql) and pgweb as the SQL browser
+# llm.transcript.audit: 'postgres'
+# how long a conversation is kept, written as its expires_at; the purge is the installation's
+# llm.transcript.audit.retention: '365d'
+# how long a closed working record waits for its check before it expires unreleased
+# llm.transcript.audit.grace: '1d'
+# the sweep that repairs lost events and stopped runs; 0 disables it
+# llm.transcript.audit.sweep.ms: 60000
+# the connection: the engines' convention under this store's prefix. The user and the password come
+# from the environment, never from this file (the two keys are active, inert without the audit, so
+# the development setup needs no credential on a command line); ssl true is sslmode=require, false
+# sslmode=disable
+llm.transcript.audit.postgres.username: '${POSTGRES_USER:mercury}'
+llm.transcript.audit.postgres.password: '${POSTGRES_PASSWORD:}'
+# llm.transcript.audit.postgres.host: '127.0.0.1'
+# llm.transcript.audit.postgres.port: 5432
+# llm.transcript.audit.postgres.database: 'mercury'
+# llm.transcript.audit.postgres.ssl: true
+# llm.transcript.audit.postgres.timeout.ms: 5000
 
 # OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin. Switch it on
 # at run time with -Dotel.forwarding=true; the endpoint and credential come from the

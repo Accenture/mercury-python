@@ -53,7 +53,7 @@
   optional extras, all for the LLM helper (`extensions/llm-helper`; the package itself stays SDK-free): `llm` = `anthropic`
   >=1,<2 (`pip install 'mercury-composable[llm]'`; `google-genai` was removed 2026-10-01 with the Gemini provider, PR #38),
   `bedrock` = `anthropic[bedrock]` >=1,<2 (the AWS Bedrock backend, PR #43), `redis` = `redis` >=5,<9 (the transcript
-  store, PR #47)
+  store, PR #47), `postgres` = `psycopg[binary,pool]` >=3.2,<4 (the transcript audit store, 2026-11-17)
   <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-03 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
@@ -206,6 +206,33 @@
   which side records it in the Java engine and mirror that side; a lineage check parses every record of the trace from every
   process and verifies each parent is a span some record owns.
   <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: working | origin: 2026-11-14-115310 -->
+
+- **The transcript audit store: every model turn recorded by a composable function behind a local event, off the
+  turn's path, into PostgreSQL beside the working store (RFC-0012 in mercury-composable, Eric's rulings of 2026-11-17;
+  built here 2026-11-17).** `llm.transcript.audit: postgres` registers `transcript.audit` at boot - private, ONE
+  instance, so its mailbox orders a conversation's writes and its check without a lock. The working record is version
+  2: beside the messages it carries each turn's facts (trace id and path, correlation id, UTC bounds, status, stop
+  reason, request id, usage, `messages: [first request message, response]`), the first turn's system prompt, catalog,
+  correlation id and the loop's `x-graph-id` and `x-node`, and the closing `retention`, all saved inside the
+  compare-and-set. After a compare-and-set accepted turn N, `llm.chat` sends `{conversation, turn: N}` through a local
+  `PostOffice().send`; a closing turn adds `{conversation, check: true}` behind it and the record waits with
+  `llm.transcript.audit.grace` (`1d`) instead of `retention`. The function reads the record, writes the rows the store
+  lacks in one transaction (the conversation row upserted, the turn rows `ON CONFLICT DO NOTHING`, the totals
+  recomputed from the turn rows) and marks the record `audited` - a third hash field the compare-and-set never
+  touches; a check releases a closed record to its `retention` first and marks it after, a closing write leaves both to
+  its check, an open record is only filled. A sweep (`llm.transcript.audit.sweep.ms`, 60 s, `SET NX PX` on
+  `transcript:audit:sweep`) sends a check for every record whose mark lags. Failures are logged by type and SQLSTATE,
+  never by message (a constraint violation quotes the row), and never refuse a turn. The rows: `request` is the array
+  of messages the turn sent, `response` the array of assistant blocks, `calls` the normalized tool calls; JSON travels
+  as text cast to `jsonb` and stamps as text cast to `timestamptz`, so the Node twin runs the same statements.
+  `MemoryAuditStore` keeps the reference semantics in the module for tests and parity, not configurable. The schema
+  (`schema/postgres.sql`, `purge.sql`) is byte-identical across the packs; retention and purge are the installation's
+  (`expires_at` from `llm.transcript.audit.retention`, `365d`; `dev/audit-purge.sh` the sample). **How to apply:** a
+  new audit fact is a field of the turn's facts written in `_turn_facts` and a column in both packs' schema and the
+  published page, never a second key or a second write; anything the audit must know at the end of a run travels in
+  the record, since the check reads nothing else; a `-D` override value is never substituted, so a credential reaches
+  the helper through the yml's `${ENV}` references.
+  <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 1 | tier: working | origin: 2026-11-17-080036 -->
 
 ## Conventions
 

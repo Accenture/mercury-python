@@ -57,6 +57,22 @@ export REDIS_PASSWORD=...                  # from the environment, like every cr
 mercury-serve extensions/llm-helper/llm_helper.py -Dllm.transcript.store=redis
 ```
 
+To keep a durable, queryable record of every model turn beside the working store, add the audit store (see The
+audit store); the `postgres` extra adds the driver, and `dev/postgres-up.sh` runs a PostgreSQL with the schema and
+pgweb as the SQL browser for development:
+
+```bash
+pip install 'mercury-composable[llm,redis,postgres]'
+export POSTGRES_PASSWORD=...               # from the environment, like every credential
+extensions/llm-helper/dev/postgres-up.sh
+mercury-serve extensions/llm-helper/llm_helper.py -Dllm.transcript.store=redis \
+  -Dllm.transcript.audit=postgres -Dllm.transcript.audit.postgres.ssl=false
+```
+
+`resources/application.yml` reads the database user and password from `POSTGRES_USER` (default `mercury`) and
+`POSTGRES_PASSWORD`, so no credential travels on a command line (a `-D` value is taken as written, never
+substituted); the other connection keys default to the development container.
+
 The app listens on port 8086 (`rest.server.port` in `resources/application.yml`). Map its routes
 from the engine's `event-over-http.yaml`, as the Java and Rust MiniGraph Playgrounds do:
 
@@ -212,6 +228,62 @@ window), the record takes `retention` instead: `0` deletes it, and anything long
 the store's access control, because a transcript may hold personal data. A run the loop stops itself (a turn cut off
 at `max_tokens`, or the loop's own limits) keeps its `ttl` and expires with it.
 
+### The audit store
+
+The transcript store is a **working store**: its time to live is the transaction's, and when the model ends the run
+the record takes `retention`, which deletes it by default. An audit needs the opposite shape - durable, indexed for
+people, kept on a policy the installation sets - so `llm.transcript.audit` adds one beside it (RFC-0012 in
+mercury-composable). `postgres` is the reference store (the `postgres` extra adds psycopg 3); the schema is
+published (`docs/guides/transcript-audit-schema.md` in mercury-composable, shipped here as `schema/postgres.sql`),
+so an installation that runs another database implements the same two tables behind the same contract.
+
+**Every turn is recorded, asynchronously, off the turn's path.** After the compare-and-set accepted a turn, `llm.chat`
+sends one local event to `transcript.audit`, a private composable function of this process with one instance: its
+mailbox orders the writes and the end-of-run check of a conversation without a lock. The function reads the working
+record - since record version 2 it carries each turn's facts, saved inside the same compare-and-set: the trace id and
+path, the correlation id, the UTC bounds of the model call, the outcome, the usage - and writes the rows the store
+lacks. One **conversation** row: the reference, the correlation id, the graph and the node from the loop's
+`x-graph-id` and `x-node` headers, the model, the status (`open`, `done`, `refusal`, `cap`; `expired` is the purge's),
+the turn count, the times, the token totals, the system prompt and the catalog as advertised at the first turn. One
+**turn** row per model turn: the trace id and path, the bounds, the stop reason, the status, the provider's request id,
+the usage, the messages the turn sent as `request` (the prompt, or the one message of tool results), the assistant
+content blocks it got back as `response`, and the normalized `calls` of a tool_use turn. The content is the provider's
+format, as sent and as returned. A failed write is logged by type - the conversation reference, the turn, a SQLSTATE,
+never a prompt, a completion, an argument or a result - and the turn is not refused.
+
+**The end of a run is an integrity check.** A closing turn sends a second event behind its write: the check counts the
+turns the record holds against the rows the store holds, writes the missing ones, and only then **releases** the working
+record - its time to live becomes the `retention` the turn carried (`0` deletes it at once). Until then the closed record
+waits with `llm.transcript.audit.grace` (default `1d`), not with `retention`; an open record (a run waiting for a tool
+result, a person or the loop's next turn) is filled by a check and never released. A sweep every
+`llm.transcript.audit.sweep.ms` (default 60 s; on Redis one replica per interval, by a short lock under
+`transcript:audit:sweep`) sends a check for every record whose audited mark lags its turn count - the runs the loop
+stopped and the writes a dying process lost. The mark is a third hash field, `audited`, beside `turn` and `record`;
+the compare-and-set never touches it. Without an audit store nothing of this runs and `retention` applies at the
+close as before.
+
+**Retention and purge are the installation's.** `expires_at` is written as the first turn's start plus
+`llm.transcript.audit.retention` (default `365d`); the helper runs no purge. `schema/purge.sql` holds the two
+statements a purge is, `dev/audit-purge.sh` runs them against the development container by hand (`--dry-run` counts,
+`--before <date>` also removes the conversations started before it), and operations automate the same statements on
+the enterprise's own schedule and policy.
+
+**Development.** `dev/postgres-up.sh` runs PostgreSQL 17 with the schema applied at first start and pgweb as the SQL
+browser at `http://127.0.0.1:8081`, on Colima or Docker, `POSTGRES_PASSWORD` from the environment;
+`dev/postgres-down.sh` removes both. The browser answers the natural questions - by correlation id (every turn of a
+transaction, suspend and resume included), by trace id (the turns one request ran), by time (what ran between two
+instants, with the graph and the node) - and shows the whole transcript of a conversation as the model exchanged it:
+
+```sql
+SELECT c.system, c.tools, t.turn, t.request, t.response, t.calls
+FROM transcript c JOIN transcript_turn t USING (conversation) WHERE c.conversation = $1 ORDER BY t.turn;
+```
+
+The audit store holds everything telemetry refuses to, so it is personal data until proven otherwise: give the
+function a role that may `INSERT`, `SELECT` and `UPDATE` the two tables and nothing else, people a reader role, and
+keep TLS on (`llm.transcript.audit.postgres.ssl`, the default). The audit does not redact; a redaction policy is the
+installation's, applied on read.
+
 ## Configuration
 
 `resources/application.yml`, or `-Dkey=value` at run time. A call's `params` win over these keys.
@@ -233,6 +305,11 @@ at `max_tokens`, or the loop's own limits) keeps its `ttl` and expires with it.
 | `llm.transcript.ttl` | `7d` | A loop turn's `ttl` when the request carries none. |
 | `llm.transcript.retention` | `0` | A loop turn's `retention` when the request carries none. |
 | `llm.transcript.redis.host`, `.port`, `.username`, `.password`, `.ssl`, `.database`, `.timeout.ms` | `127.0.0.1`, `6379`, none, none, `false`, `0`, `5000` | The Redis connection: the engines' `redis.*` set under this store's own prefix. The password comes from the environment (`${REDIS_PASSWORD}`). |
+| `llm.transcript.audit` | unset | `postgres`: record every model turn in the audit store (see The audit store). Unset, no audit. |
+| `llm.transcript.audit.retention` | `365d` | Written as a conversation's `expires_at`; the purge is the installation's. |
+| `llm.transcript.audit.grace` | `1d` | How long a closed working record waits for its integrity check before it expires unreleased. |
+| `llm.transcript.audit.sweep.ms` | `60000` | The sweep that repairs lost events and stopped runs; `0` disables it. |
+| `llm.transcript.audit.postgres.host`, `.port`, `.database`, `.username`, `.password`, `.ssl`, `.timeout.ms` | `127.0.0.1`, `5432`, `mercury`, none, none, `true`, `5000` | The PostgreSQL connection, the engines' convention under this store's prefix. The shipped `application.yml` sets the user and the password from the environment (`${POSTGRES_USER:mercury}`, `${POSTGRES_PASSWORD}`); `ssl` `true` is `sslmode=require`, `false` `sslmode=disable`. |
 
 The credential is never configured here. `ANTHROPIC_API_KEY` (or whatever the SDK resolves: an
 auth token, or a profile) comes from the environment for the Claude API; the AWS credential chain,
@@ -258,7 +335,9 @@ section above gives each model's cadence.
 A call logs its model, `stop_reason`, token usage, `request_id` and elapsed time. A prompt, a
 system prompt or a completion never reaches a log. Usage also rides the call's trace record as
 annotations (`llm_model`, `llm_stop_reason`, `llm_input_tokens`, `llm_output_tokens`,
-`llm_request_id`), so telemetry shows what a call cost.
+`llm_request_id`), so telemetry shows what a call cost. With an audit store, the `transcript.audit` executions a turn
+triggers show in the same trace as the function's own; their log lines carry the conversation reference, the turn
+numbers written and the failure's type, never the content.
 
 ## Backends
 
@@ -315,12 +394,19 @@ store's Lua. Then come the tests a vector cannot express (token batches are neve
 in a log, the deadline cancels the call, trace annotations, health, the backend seam, the Bedrock clients with their
 region and credential checks, the stored blocks as the SDK sends them back, the Redis store's keys,
 compare-and-set and connection settings). No token is spent and no credential is needed.
+`tests/test_transcript_audit.py` pins the audit store: record version 2 and the facts a turn saves, the two events
+behind a turn and the grace, the function driven through its mailbox (a write that fails, the check that repairs it
+before the release, an open record only filled), the sweep, the audited mark on Redis, and the PostgreSQL store on a
+recording fake of the pool that pins every statement and its parameters; the loop vector file gains no case, because
+the audit is a side effect of a turn, not part of the loop contract.
 
 ```bash
 pip install -e '.[dev]'
-pytest tests/test_llm_helper.py
+pytest tests/test_llm_helper.py tests/test_transcript_audit.py
 LLM_TRANSCRIPT_REDIS_URL=redis://127.0.0.1:6379/15 pytest tests/test_llm_helper.py -k live_redis   # on a real Redis
+LLM_TRANSCRIPT_AUDIT_TEST_URL='postgres://mercury:...@127.0.0.1:5432/mercury?sslmode=disable' \
+  pytest tests/test_transcript_audit.py -k live_postgres                                          # on a real PostgreSQL
 ```
 
-The live run touches only the keys of the vectors' own conversations; mercury-composable's
-`helpers/redis-standalone` is a local Redis without Docker.
+The live runs touch only the keys and rows of the tests' own conversations; mercury-composable's
+`helpers/redis-standalone` is a local Redis without Docker, and `dev/postgres-up.sh` the PostgreSQL on Colima.
