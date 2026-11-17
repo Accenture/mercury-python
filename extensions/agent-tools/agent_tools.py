@@ -1676,6 +1676,12 @@ def _host_header(parts: SplitResult) -> str:
     return host if parts.port in (None, default) else f"{host}:{parts.port}"
 
 
+def _under(path: str, include: str) -> bool:
+    """Whether a link's path is inside the crawl's include: a prefix when the include starts with a
+    slash, else anywhere in the path - a model names a section as `guides/` as often as `/guides/`."""
+    return path.startswith(include) if include.startswith("/") else include in path
+
+
 class WebTools:
     """The two web tools over one allowlist, sharing one HTTP client without a cookie jar."""
 
@@ -1819,8 +1825,6 @@ class WebTools:
         include = args.get("include")
         if include is not None and not isinstance(include, str):
             raise AppException(400, "include must be a string")
-        if include and not include.startswith("/"):
-            include = "/" + include
         start = self.sandbox.check_url(url)
         site = (start.scheme, (start.hostname or "").lower(), start.port)
         robots = await self._robots(start)
@@ -1871,7 +1875,7 @@ class WebTools:
                     candidate.port,
                 ) != site:
                     continue
-                if include and not candidate.path.startswith(include):
+                if include and not _under(candidate.path, include):
                     continue
                 normalized = urlunsplit(
                     (

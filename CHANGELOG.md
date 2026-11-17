@@ -79,7 +79,12 @@
 
 ### Changed
 
-1. **A `-D` override value is resolved with the same `${ENV_VAR:default}` substitution as a file value - the engines'
+1. **`web.crawl` accepts a relative `include`.** A prefix that does not start with `/` now matches anywhere in a link's path,
+   since a model names a section as `guides/` as often as `/guides/`: the live drive of the Playground's `site-notes` graph
+   showed a crawl returning the start page alone because the model's `include` was relative. The README's Event-over-HTTP
+   example lists one route per entry - the engines' map takes no comma-separated list.
+
+2. **A `-D` override value is resolved with the same `${ENV_VAR:default}` substitution as a file value - the engines'
    change of the same day.** `AppConfig.get` returned an override as written, so a key moved from `application.yml` to
    a `-D` flag silently lost its substitution and a credential had to travel on the command line in clear. Now the value
    of a `-D` override (and of `AppConfig.set`) - an environment variable with a default, or a reference to another
