@@ -14,9 +14,11 @@ Settings live in resources/application.yml (or -Dkey=value): llm.backend (anthro
 bedrock), llm.aws.api (mantle or runtime), llm.aws.region, llm.model, llm.max.tokens,
 llm.timeout.ms, llm.max.retries, llm.fallbacks, llm.effort, and for the agent loop's turns
 llm.transcript.store (memory or redis), llm.transcript.ttl, llm.transcript.retention and the
-llm.transcript.redis.* connection keys. The contract, the keys and the backends are documented in
-README.md next to this file. The Node.js twin (mercury-nodejs extensions/llm-helper) speaks
-the same contract, and both are pinned by shared vector files.
+llm.transcript.redis.* connection keys; the optional transcript audit store (RFC-0012) adds
+llm.transcript.audit (postgres), llm.transcript.audit.retention, .grace, .sweep.ms and the
+llm.transcript.audit.postgres.* connection keys. The contract, the keys and the backends are
+documented in README.md next to this file. The Node.js twin (mercury-nodejs
+extensions/llm-helper) speaks the same contract, and both are pinned by shared vector files.
 
 Then map the routes from a Mercury engine application (event-over-http.yaml):
 
@@ -38,6 +40,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 try:
@@ -52,10 +55,13 @@ from mercury_composable import (
     Body,
     EventEnvelope,
     EventStreamWriter,
+    PostOffice,
     annotate_trace,
     app_config,
+    default_registry,
     get_logger,
     get_trace,
+    iso_utc,
     platform,
     preload,
 )
@@ -134,6 +140,25 @@ MISSING_REDIS_SDK = (
     "The redis transcript store needs redis - pip install 'mercury-composable[redis]'"
 )
 STREAM_LOOP = "tools and the loop fields are not part of the streaming contract - use llm.chat"
+
+# --- the transcript audit store's defaults and limits (RFC-0012) ----------------------------
+# a durable, queryable record of every model turn, written by the transcript.audit function behind
+# a local event, never on the turn's path; PostgreSQL is the reference store, its schema published
+AUDIT_ROUTE = "transcript.audit"
+AUDIT_POSTGRES = "postgres"
+AUDITS = (AUDIT_POSTGRES,)
+DEFAULT_AUDIT_RETENTION = "365d"
+DEFAULT_AUDIT_GRACE = "1d"
+DEFAULT_AUDIT_SWEEP_MS = 60000
+# the sweep's lock on Redis, under the store's prefix so one ACL covers it; never a conversation key
+AUDIT_SWEEP_LOCK = TRANSCRIPT_PREFIX + "audit:sweep"
+# the graph context the engines' loop sends on a turn, recorded at the first turn (null without)
+GRAPH_ID_HEADER = "x-graph-id"
+NODE_HEADER = "x-node"
+MISSING_AUDIT = "transcript audit store not configured - set llm.transcript.audit (postgres)"
+MISSING_POSTGRES_SDK = (
+    "The postgres transcript audit store needs psycopg - pip install 'mercury-composable[postgres]'"
+)
 
 
 def _prop(key: str, default: str | None = None) -> str | None:
@@ -836,7 +861,10 @@ def _summary(route: str, done: Completion, started: float) -> None:
 # Only this app reads or writes a transcript. A record holds the model pinned at the first turn,
 # the messages in the provider's format, the turn count and the ids of the calls the last turn
 # made. A write is a compare-and-set on the turn count, so a duplicated turn can never fork a
-# conversation, and every write sets the record's time to live.
+# conversation, and every write sets the record's time to live. Since record version 2
+# (RFC-0012) a record also carries the facts the audit rows need - saved inside the same
+# compare-and-set, so a turn that lost the race leaves no facts behind - and the store keeps a
+# third value beside the turn count and the record, the audited mark, owned by the audit function.
 
 
 @dataclass(frozen=True)
@@ -846,20 +874,37 @@ class Transcript:
     turn: int
     pending: list[str]  # the ids of the last turn's tool calls, in call order
     closed: bool = False  # the run ended; a retained record is kept for audit, never continued
+    # the audit facts (record version 2): what the audit rows need and the transcript did not hold
+    retention: int = 0  # the seconds the closing turn was given; the audit's check applies them
+    correlation_id: str | None = None  # the business correlation id of the transaction
+    graph_id: str | None = None  # the graph and the loop node, from the engines' two headers
+    node: str | None = None
+    system: str | None = None  # the first turn's system prompt, stored once
+    tools: list[dict[str, Any]] | None = None  # the catalog as advertised at the first turn
+    turns: list[dict[str, Any]] = field(default_factory=list)  # one entry of facts per turn
 
     def to_json(self) -> str:
         record = {
-            "v": 1,
+            "v": 2,
             "model": self.model,
             "turn": self.turn,
             "pending": self.pending,
             "closed": self.closed,
+            "retention": self.retention,
+            "correlation_id": self.correlation_id,
+            "graph_id": self.graph_id,
+            "node": self.node,
+            "system": self.system,
+            "tools": self.tools,
+            "turns": self.turns,
             "messages": self.messages,
         }
         return json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
     @staticmethod
     def from_json(text: str) -> Transcript:
+        """A version 2 record, or a version 1 record (a conversation that was open when the helper
+        was upgraded): its turns so far carry no facts, and the audit's check says so."""
         record = json.loads(text)
         return Transcript(
             model=record["model"],
@@ -867,6 +912,13 @@ class Transcript:
             turn=record["turn"],
             pending=record["pending"],
             closed=record["closed"],
+            retention=int(record.get("retention") or 0),
+            correlation_id=record.get("correlation_id"),
+            graph_id=record.get("graph_id"),
+            node=record.get("node"),
+            system=record.get("system"),
+            tools=record.get("tools"),
+            turns=list(record.get("turns") or []),
         )
 
 
@@ -884,6 +936,28 @@ class TranscriptStore(Protocol):
         ttl_s to live; ttl_s 0 deletes it instead. False when another write came first."""
         ...
 
+    # the audit half (RFC-0012): the audited mark is the audit function's, never the turn's
+
+    async def audited(self, conversation: str) -> int:
+        """The highest turn the audit store is known to hold for the record; 0 when none."""
+        ...
+
+    async def mark_audited(self, conversation: str, turn: int) -> None:
+        """Set the audited mark; a record that is gone stays gone, and its time to live stays."""
+        ...
+
+    async def release(self, conversation: str, retention_s: int) -> None:
+        """The record's time to live becomes retention_s; 0 deletes it at once."""
+        ...
+
+    async def unaudited(self) -> list[str]:
+        """The conversations whose audited mark is below their turn count - the sweep's work."""
+        ...
+
+    async def sweep_lock(self, interval_ms: int, /) -> bool:
+        """Claim this interval's sweep for this process; False when another replica holds it."""
+        ...
+
 
 class MemoryStore:
     """One process: for development and tests. A second replica cannot see these records."""
@@ -892,9 +966,10 @@ class MemoryStore:
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
-        self._records: dict[str, tuple[float, int, str]] = {}  # expiry, turn, record
+        # expiry, turn, record, audited
+        self._records: dict[str, tuple[float, int, str, int]] = {}
 
-    def _live(self, conversation: str) -> tuple[float, int, str] | None:
+    def _live(self, conversation: str) -> tuple[float, int, str, int] | None:
         entry = self._records.get(conversation)
         if entry is not None and entry[0] <= self._clock():
             del self._records[conversation]
@@ -916,11 +991,45 @@ class MemoryStore:
         if ttl_s == 0:
             self._records.pop(conversation, None)
         else:
-            self._records[conversation] = (self._clock() + ttl_s, record.turn, record.to_json())
+            audited = 0 if entry is None else entry[3]  # the compare-and-set never touches it
+            self._records[conversation] = (
+                self._clock() + ttl_s, record.turn, record.to_json(), audited
+            )
         return True
 
+    async def audited(self, conversation: str) -> int:
+        entry = self._live(conversation)
+        return 0 if entry is None else entry[3]
 
-# one script, one key: atomic on a standalone server and safe on a cluster
+    async def mark_audited(self, conversation: str, turn: int) -> None:
+        entry = self._live(conversation)
+        if entry is not None:
+            self._records[conversation] = (entry[0], entry[1], entry[2], turn)
+
+    async def release(self, conversation: str, retention_s: int) -> None:
+        entry = self._live(conversation)
+        if entry is None:
+            return
+        if retention_s == 0:
+            del self._records[conversation]
+        else:
+            self._records[conversation] = (self._clock() + retention_s, *entry[1:])
+
+    async def unaudited(self) -> list[str]:
+        lagging: list[str] = []
+        for conversation in list(self._records):
+            entry = self._live(conversation)
+            if entry is not None and entry[3] < entry[1]:
+                lagging.append(conversation)
+        return lagging
+
+    async def sweep_lock(self, _interval_ms: int) -> bool:
+        return True  # one process sweeps its own records
+
+
+# one script, one key: atomic on a standalone server and safe on a cluster. It writes the turn
+# count and the record and sets the time to live - never the audited mark, which the audit
+# function owns, so the two writers share a key and not a field
 REDIS_SAVE = """
 local held = redis.call('HGET', KEYS[1], 'turn')
 if ARGV[1] == '0' then
@@ -937,9 +1046,19 @@ end
 return 1
 """
 
+# the audited mark, set only on a record that still exists: a bare HSET would resurrect a released
+# record as a hash with no time to live
+REDIS_MARK_AUDITED = """
+if redis.call('EXISTS', KEYS[1]) == 1 then
+  redis.call('HSET', KEYS[1], 'audited', ARGV[1])
+end
+return 1
+"""
+
 
 class RedisStore:
-    """A hash per conversation under transcript:{conversation}: the turn count and the record."""
+    """A hash per conversation under transcript:{conversation}: the turn count, the record and
+    the audited mark."""
 
     name = STORE_REDIS
 
@@ -956,6 +1075,40 @@ class RedisStore:
         key = TRANSCRIPT_PREFIX + conversation
         args = (str(expected_turn), str(record.turn), record.to_json(), str(ttl_s))
         return bool(await self._client.eval(REDIS_SAVE, 1, key, *args))
+
+    async def audited(self, conversation: str) -> int:
+        value = await self._client.hget(TRANSCRIPT_PREFIX + conversation, "audited")
+        return int(value) if value else 0
+
+    async def mark_audited(self, conversation: str, turn: int) -> None:
+        await self._client.eval(REDIS_MARK_AUDITED, 1, TRANSCRIPT_PREFIX + conversation, str(turn))
+
+    async def release(self, conversation: str, retention_s: int) -> None:
+        key = TRANSCRIPT_PREFIX + conversation
+        if retention_s == 0:
+            await self._client.delete(key)
+        else:
+            await self._client.expire(key, retention_s)
+
+    async def unaudited(self) -> list[str]:
+        """Two hash fields per live record and no database query; the sweep's lock and anything
+        else under the prefix that is not a conversation key are skipped."""
+        lagging: list[str] = []
+        async for key in self._client.scan_iter(match=TRANSCRIPT_PREFIX + "*", count=100):
+            conversation = str(key)[len(TRANSCRIPT_PREFIX):]
+            if not CONVERSATION_ID.fullmatch(conversation):
+                continue
+            turn, audited = await self._client.hmget(key, "turn", "audited")
+            if turn is not None and int(audited or 0) < int(turn):
+                lagging.append(conversation)
+        return lagging
+
+    async def sweep_lock(self, interval_ms: int) -> bool:
+        # SET NX PX: one sweep per interval across the replicas; the lock expires with the interval
+        claimed = await self._client.set(
+            AUDIT_SWEEP_LOCK, uuid.uuid4().hex, nx=True, px=max(1, interval_ms)
+        )
+        return bool(claimed)
 
 
 def _redis_store() -> RedisStore:
@@ -1106,27 +1259,101 @@ def _loop_outcome(request: LlmRequest, done: Completion) -> dict[str, Any]:
     raise AppException(502, f"LLM stop_reason={stop} is not part of the loop contract")
 
 
-async def _loop_turn(body: dict[str, Any]) -> dict[str, Any]:
+def _correlation_id(headers: dict[str, str]) -> str | None:
+    """The business correlation id of the transaction: the trace context's, which the host fills
+    from the engine-managed tag at delivery, else the read-only header view of the same value."""
+    info = get_trace()
+    if info is not None and info.my_correlation_id:
+        return info.my_correlation_id
+    return headers.get("my_correlation_id") or None
+
+
+def _first_record(request: LlmRequest, loop: LoopTurn, headers: dict[str, str]) -> Transcript:
+    """A new conversation's record: the model pinned, the first turn's messages, and what the
+    audit rows need (record version 2) - the correlation id, the graph and the node the engines'
+    loop sends as headers (null when a caller sends none), the system prompt and the catalog once."""
+    return Transcript(
+        request.model,
+        list(request.messages),
+        0,
+        [],
+        correlation_id=_correlation_id(headers),
+        graph_id=headers.get(GRAPH_ID_HEADER) or None,
+        node=headers.get(NODE_HEADER) or None,
+        system=request.system,
+        tools=loop.tools,
+    )
+
+
+def _turn_facts(
+    turn: int,
+    status: str,
+    done: Completion,
+    bounds: tuple[str, str],
+    headers: dict[str, str],
+    indexes: list[int],
+) -> dict[str, Any]:
+    """The facts of one turn, saved in the record inside the compare-and-set: the identity from
+    the trace context, the model call's UTC bounds, its outcome and usage, and where the turn's
+    request and response sit in the messages (``[first request message, response]``)."""
+    info = get_trace()
+    return {
+        "turn": turn,
+        "trace_id": info.trace_id if info else None,
+        "trace_path": info.trace_path if info else None,
+        "correlation_id": _correlation_id(headers),
+        "started_at": bounds[0],
+        "ended_at": bounds[1],
+        "status": status,
+        "stop_reason": done.stop_reason,
+        "request_id": done.request_id,
+        "usage": {
+            "input_tokens": done.input_tokens,
+            "output_tokens": done.output_tokens,
+            "cache_creation_input_tokens": done.cache_creation_input_tokens,
+            "cache_read_input_tokens": done.cache_read_input_tokens,
+        },
+        "messages": indexes,
+    }
+
+
+def _record_ttl(loop: LoopTurn, outcome: dict[str, Any], closed: bool, audited: bool) -> int:
+    """How long the saved record lives. A run the model ended takes the retention; a run the loop
+    stops (a cut-off turn, or the loop's own limits) keeps its time to live and expires with it.
+    With an audit store, a closed record waits for its integrity check instead, which releases it
+    to the retention once the audit holds every turn (RFC-0012, section 4)."""
+    if audited and closed:
+        return _audit_grace_s()
+    model_ended = outcome["status"] in ("done", "refusal") or outcome.get("cap") == "context"
+    return loop.retention_s if model_ended else loop.ttl_s
+
+
+async def _loop_turn(headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
     """One model turn of an agent loop: load and check the record, append the tool results, call
-    the model, append its turn, and save under the compare-and-set."""
+    the model, append its turn and its facts, save under the compare-and-set, and tell the audit
+    function when one is configured - off the turn's path."""
     loop = prepare_loop(body)
     request = prepare(body, streaming=False, continuation=loop.conversation is not None)
     store = get_store()
+    audited = audit_configured()
     try:
         if loop.conversation is None:
             conversation = _new_conversation_id()
-            record = Transcript(request.model, list(request.messages), 0, [])
+            record = _first_record(request, loop, headers)
             messages = list(record.messages)
+            first = 0  # a first turn's request is every message it sent
         else:
             conversation = loop.conversation
             record = _check_turn(conversation, await store.load(conversation), loop, body)
             messages = [*record.messages, _tool_results(record.pending, loop.results)]
+            first = len(record.messages)  # the one message of tool results
     except AppException:
         raise
     except Exception as exc:  # the store's own failure - a connection, a timeout
         raise _store_failure(exc) from exc
     request = replace(request, model=record.model, messages=messages, tools=loop.tools)
     started = time.perf_counter()
+    started_at = iso_utc()
     try:
         done = await asyncio.wait_for(
             _complete(request, get_backend()), timeout=request.timeout_ms / 1000
@@ -1137,23 +1364,26 @@ async def _loop_turn(body: dict[str, Any]) -> dict[str, Any]:
             raise
         log.warning("llm.chat failed - status=%d turn=%d", failure.status, record.turn + 1)
         raise failure from exc
+    ended_at = iso_utc()
     outcome = _loop_outcome(request, done)
     status = outcome["status"]
     calls = outcome.get("calls", [])
     turn = record.turn + 1
-    saved = Transcript(
-        model=record.model,
+    closed = status != "tool_use"
+    facts = _turn_facts(turn, status, done, (started_at, ended_at), headers, [first, len(messages)])
+    saved = replace(
+        record,
         messages=[*messages, {"role": "assistant", "content": done.content}],
         turn=turn,
         pending=[call["id"] for call in calls],
-        closed=status != "tool_use",
+        closed=closed,
+        retention=loop.retention_s,
+        turns=[*record.turns, facts],
     )
-    # a run the model ended takes the retention; a run the loop stops (a cut-off turn, or the
-    # loop's own limits) keeps its time to live and expires with it
-    model_ended = status in ("done", "refusal") or outcome.get("cap") == "context"
-    ttl_s = loop.retention_s if model_ended else loop.ttl_s
     try:
-        written = await store.save(conversation, record.turn, saved, ttl_s)
+        written = await store.save(
+            conversation, record.turn, saved, _record_ttl(loop, outcome, closed, audited)
+        )
     except Exception as exc:  # the store's own failure - a connection, a timeout
         raise _store_failure(exc) from exc
     if not written:
@@ -1162,6 +1392,8 @@ async def _loop_turn(body: dict[str, Any]) -> dict[str, Any]:
             f"conversation {conversation} moved on before turn {turn} was saved - "
             "a duplicated turn",
         )
+    if audited:
+        await _notify_audit(conversation, turn, closed)
     _annotate(done)
     annotate_trace("llm_status", status)
     annotate_trace("llm_turn", str(turn))
@@ -1199,11 +1431,477 @@ async def _loop_turn(body: dict[str, Any]) -> dict[str, Any]:
     return reply
 
 
+# --- the transcript audit store (RFC-0012) --------------------------------------------------
+#
+# The working store's expiry covers the transaction; the audit store covers the record. Every turn
+# is recorded, asynchronously: after the compare-and-set accepts a turn, llm.chat sends one local
+# event to transcript.audit, a composable function of this process with ONE instance, so its
+# mailbox orders the writes and the check of a conversation without a lock. The function reads the
+# working record - the one place the content lives - and writes the rows the audit store lacks.
+# The closing turn sends a second event behind its write, the integrity check, which repairs
+# whatever a failed write left behind and only then releases the working record. A sweep sends a
+# check for every record whose audited mark lags its turn count: the runs the loop stopped and
+# the writes a dying process lost. A failure is logged by type and never refuses a turn.
+
+
+class AuditStore(Protocol):
+    name: str
+
+    async def open(self) -> None:
+        """Connect, at boot. A store that does not answer raises; the sweep repairs later."""
+        ...
+
+    async def close(self) -> None: ...
+
+    async def turns(self, conversation: str) -> set[int]:
+        """The turn numbers the store holds for a conversation."""
+        ...
+
+    async def write(self, conversation: dict[str, Any], turns: list[dict[str, Any]]) -> None:
+        """Upsert the conversation row and insert the turn rows in one transaction. Idempotent: a
+        turn row that exists is left as it is, the conversation row's status, turn count, times
+        and totals are brought up to date, and the totals are recomputed from the turn rows."""
+        ...
+
+
+# the conversation row's token totals, recomputed from the turn rows on every write
+TOKEN_COLUMNS = (
+    "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
+)  # fmt: skip
+
+
+class MemoryAuditStore:
+    """The reference semantics in memory, for the tests and the twins' parity - never a configured
+    store: an audit needs a durable, governed database."""
+
+    name = "memory"
+
+    def __init__(self) -> None:
+        self.conversations: dict[str, dict[str, Any]] = {}
+        self.turn_rows: dict[str, dict[int, dict[str, Any]]] = {}
+
+    async def open(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    async def turns(self, conversation: str) -> set[int]:
+        return set(self.turn_rows.get(conversation, {}))
+
+    async def write(self, conversation: dict[str, Any], turns: list[dict[str, Any]]) -> None:
+        key = str(conversation["conversation"])
+        held = self.conversations.get(key)
+        if held is None:
+            held = dict(conversation)  # INSERT
+            self.conversations[key] = held
+        else:  # ON CONFLICT DO UPDATE of what a turn changes; the first-turn snapshot stays
+            for column in ("status", "turns", "updated_at", "ended_at"):
+                held[column] = conversation[column]
+        rows = self.turn_rows.setdefault(key, {})
+        for row in turns:
+            rows.setdefault(int(row["turn"]), dict(row))  # ON CONFLICT DO NOTHING
+        for column in TOKEN_COLUMNS:
+            held[column] = sum(int(row[column]) for row in rows.values())
+
+
+# the statements the reference store runs, with psycopg's placeholders. JSON travels as text cast
+# to jsonb and a UTC stamp as ISO-8601 text cast to timestamptz, so the Node twin runs the same
+# statements with its own placeholders and no driver-specific wrapper
+SQL_TURNS = "SELECT turn FROM transcript_turn WHERE conversation = %s"
+SQL_UPSERT_CONVERSATION = """
+INSERT INTO transcript (conversation, correlation_id, graph_id, node, model, status, turns,
+  started_at, updated_at, ended_at, expires_at, system, tools)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s::timestamptz, %s::timestamptz, %s::timestamptz,
+  %s::timestamptz, %s, %s::jsonb)
+ON CONFLICT (conversation) DO UPDATE SET status = EXCLUDED.status, turns = EXCLUDED.turns,
+  updated_at = EXCLUDED.updated_at, ended_at = EXCLUDED.ended_at
+""".strip()
+SQL_INSERT_TURN = """
+INSERT INTO transcript_turn (conversation, turn, trace_id, trace_path, correlation_id,
+  started_at, ended_at, stop_reason, status, request_id, input_tokens, output_tokens,
+  cache_creation_input_tokens, cache_read_input_tokens, request, response, calls)
+VALUES (%s, %s, %s, %s, %s, %s::timestamptz, %s::timestamptz, %s, %s, %s, %s, %s, %s, %s,
+  %s::jsonb, %s::jsonb, %s::jsonb)
+ON CONFLICT (conversation, turn) DO NOTHING
+""".strip()
+SQL_TOTALS = """
+UPDATE transcript SET input_tokens = totals.input_tokens, output_tokens = totals.output_tokens,
+  cache_creation_input_tokens = totals.cache_creation_input_tokens,
+  cache_read_input_tokens = totals.cache_read_input_tokens
+FROM (SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens,
+  COALESCE(SUM(output_tokens), 0) AS output_tokens,
+  COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+  COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens
+  FROM transcript_turn WHERE conversation = %s) AS totals
+WHERE transcript.conversation = %s
+""".strip()
+
+
+def _json_text(value: Any) -> str | None:
+    """JSON for a jsonb column, compact and as the record holds it; None stays NULL."""
+    return None if value is None else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _conversation_params(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        row["conversation"], row["correlation_id"], row["graph_id"], row["node"], row["model"],
+        row["status"], row["turns"], row["started_at"], row["updated_at"], row["ended_at"],
+        row["expires_at"], row["system"], _json_text(row["tools"]),
+    )  # fmt: skip
+
+
+def _turn_params(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        row["conversation"], row["turn"], row["trace_id"], row["trace_path"],
+        row["correlation_id"], row["started_at"], row["ended_at"], row["stop_reason"],
+        row["status"], row["request_id"], row["input_tokens"], row["output_tokens"],
+        row["cache_creation_input_tokens"], row["cache_read_input_tokens"],
+        _json_text(row["request"]), _json_text(row["response"]), _json_text(row["calls"]),
+    )  # fmt: skip
+
+
+class PostgresAuditStore:
+    """The reference store: psycopg 3 over an asynchronous connection pool (the ``postgres``
+    extra). The function connects as a writer that may insert, select and update the two tables
+    and nothing else (schema/postgres.sql); people and the SQL browser read."""
+
+    name = AUDIT_POSTGRES
+
+    def __init__(self, pool: Any, timeout_s: float = 5.0) -> None:
+        self._pool = pool  # psycopg_pool.AsyncConnectionPool, or a recording fake in the tests
+        self._timeout_s = timeout_s
+
+    async def open(self) -> None:
+        await self._pool.open(wait=True, timeout=self._timeout_s)
+
+    async def close(self) -> None:
+        await self._pool.close()
+
+    async def turns(self, conversation: str) -> set[int]:
+        async with self._pool.connection() as connection:
+            cursor = await connection.execute(SQL_TURNS, (conversation,))
+            return {int(row[0]) for row in await cursor.fetchall()}
+
+    async def write(self, conversation: dict[str, Any], turns: list[dict[str, Any]]) -> None:
+        key = str(conversation["conversation"])
+        async with self._pool.connection() as connection, connection.transaction():
+            await connection.execute(SQL_UPSERT_CONVERSATION, _conversation_params(conversation))
+            for row in turns:
+                await connection.execute(SQL_INSERT_TURN, _turn_params(row))
+            await connection.execute(SQL_TOTALS, (key, key))
+
+
+def _postgres_audit_store() -> PostgresAuditStore:
+    """The pool from the llm.transcript.audit.postgres.* keys - the working store's connection set
+    under the audit's own prefix. Nothing connects until open(); the password comes from the
+    environment, never from a file."""
+    if any(importlib.util.find_spec(name) is None for name in ("psycopg", "psycopg_pool")):
+        raise AppException(503, MISSING_POSTGRES_SDK)
+    from psycopg_pool import AsyncConnectionPool  # the [postgres] extra; checked above
+
+    prefix = "llm.transcript.audit.postgres."
+    timeout_s = _whole_number(prefix + "timeout.ms", _prop(prefix + "timeout.ms", "5000"), 1) / 1000
+    ssl = str(_prop(prefix + "ssl", "true")).lower() == "true"
+    settings: dict[str, Any] = {
+        "host": str(_prop(prefix + "host", "127.0.0.1")),
+        "port": _whole_number(prefix + "port", _prop(prefix + "port", "5432"), 1),
+        "dbname": str(_prop(prefix + "database", "mercury")),
+        "user": _prop(prefix + "username") or None,
+        "password": _prop(prefix + "password") or None,
+        "sslmode": "require" if ssl else "disable",
+        "connect_timeout": max(1, round(timeout_s)),
+    }
+    pool = AsyncConnectionPool(
+        kwargs={key: value for key, value in settings.items() if value is not None},
+        min_size=1,
+        max_size=4,
+        open=False,
+        timeout=timeout_s,
+    )
+    return PostgresAuditStore(pool, timeout_s)
+
+
+_post_office = PostOffice()  # local sends to transcript.audit: no endpoint, the in-process bus
+_audit: AuditStore | None = None  # built at boot - module-level so tests can inject
+_sweep_task: asyncio.Task[None] | None = None
+
+
+def audit_configured() -> bool:
+    return bool(_prop("llm.transcript.audit"))
+
+
+def get_audit_store() -> AuditStore:
+    global _audit
+    audit = _audit
+    if audit is None:
+        name = str(_prop("llm.transcript.audit", "") or "").lower()
+        if not name:
+            raise AppException(503, MISSING_AUDIT)
+        if name not in AUDITS:
+            raise AppException(500, f"llm.transcript.audit must be one of: {', '.join(AUDITS)}")
+        audit = _postgres_audit_store()
+        _audit = audit
+    return audit
+
+
+def _audit_grace_s() -> int:
+    return _duration(
+        "llm.transcript.audit.grace", _prop("llm.transcript.audit.grace", DEFAULT_AUDIT_GRACE), 1
+    )
+
+
+def _audit_retention_s() -> int:
+    return _duration(
+        "llm.transcript.audit.retention",
+        _prop("llm.transcript.audit.retention", DEFAULT_AUDIT_RETENTION),
+        0,
+    )
+
+
+def _audit_sweep_ms() -> int:
+    return _whole_number(
+        "llm.transcript.audit.sweep.ms",
+        _prop("llm.transcript.audit.sweep.ms", str(DEFAULT_AUDIT_SWEEP_MS)),
+        0,
+    )
+
+
+async def _audit_send(event: dict[str, Any]) -> None:
+    """A local drop-n-forget event to transcript.audit over the in-process bus, the turn's trace
+    inherited so the write shows as the function's own execution. A failure to send is logged by
+    type and never refuses the turn: the sweep repairs what a lost event leaves behind."""
+    try:
+        ack = await _post_office.send(AUDIT_ROUTE, event)
+    except Exception as exc:  # noqa: BLE001 - in-process; nothing here may fail the turn
+        log.warning("%s event not sent - %s", AUDIT_ROUTE, type(exc).__name__)
+        return
+    if ack.has_error():
+        log.warning("%s event not accepted - status=%d", AUDIT_ROUTE, ack.get_status())
+
+
+async def _notify_audit(conversation: str, turn: int, closed: bool) -> None:
+    """Tell transcript.audit, off the turn's path: the write of this turn and, behind it, the
+    integrity check when the turn closed the run - one mailbox, one worker, so the check can
+    never overtake the write it verifies."""
+    await _audit_send({"conversation": conversation, "turn": turn})
+    if closed:
+        await _audit_send({"conversation": conversation, "check": True})
+
+
+def _plus_seconds(stamp: str, seconds: int) -> str:
+    """An ISO-8601 UTC stamp moved by seconds (the conversation row's expires_at)."""
+    moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return iso_utc(moment + timedelta(seconds=seconds))
+
+
+def _calls_of(blocks: Any) -> list[dict[str, Any]] | None:
+    """The normalized calls of a tool_use response, for the person who queries."""
+    calls = [
+        {"id": block["id"], "name": block["name"], "input": block["input"]}
+        for block in blocks
+        if isinstance(block, dict) and block.get("type") == "tool_use"
+    ]
+    return calls or None
+
+
+def _turn_row(conversation: str, record: Transcript, fact: dict[str, Any]) -> dict[str, Any]:
+    """A turn row from the record: the turn's facts, the messages it sent before the model
+    answered (its request: the prompt, or the one message of tool results) and the assistant
+    content blocks it got back (its response), as the model exchanged them."""
+    first, answer = fact["messages"]
+    usage: dict[str, Any] = fact.get("usage") or {}
+    content = record.messages[answer]["content"]
+    return {
+        "conversation": conversation,
+        "turn": int(fact["turn"]),
+        "trace_id": fact.get("trace_id"),
+        "trace_path": fact.get("trace_path"),
+        "correlation_id": fact.get("correlation_id"),
+        "started_at": fact["started_at"],
+        "ended_at": fact["ended_at"],
+        "stop_reason": fact.get("stop_reason"),
+        "status": fact["status"],
+        "request_id": fact.get("request_id"),
+        **{column: int(usage.get(column) or 0) for column in TOKEN_COLUMNS},
+        "request": record.messages[first:answer],
+        "response": content,
+        "calls": _calls_of(content) if fact["status"] == "tool_use" else None,
+    }
+
+
+def _conversation_row(conversation: str, record: Transcript, now: str) -> dict[str, Any]:
+    """The conversation row from the record: the identity, the first-turn snapshot, the status
+    and the bounds. A record from before version 2 carries no facts: its row opens now."""
+    first = record.turns[0] if record.turns else None
+    last = record.turns[-1] if record.turns else None
+    ended = last if record.closed and last is not None and last["turn"] == record.turn else None
+    started_at = str(first["started_at"]) if first else now
+    return {
+        "conversation": conversation,
+        "correlation_id": record.correlation_id,
+        "graph_id": record.graph_id,
+        "node": record.node,
+        "model": record.model,
+        "status": ended["status"] if ended else "open",
+        "turns": record.turn,
+        "started_at": started_at,
+        "updated_at": now,
+        "ended_at": ended["ended_at"] if ended else None,
+        "expires_at": _plus_seconds(started_at, _audit_retention_s()),
+        "system": record.system,
+        "tools": record.tools,
+    }
+
+
+def _audit_failure(exc: BaseException) -> str:
+    """A failure as a log may carry it: the type and the database's SQLSTATE, never the message of
+    an error that could quote a row (a constraint violation details the failing row); the first
+    line of a connection failure or a configuration error, which quotes none."""
+    name = type(exc).__name__
+    state = getattr(exc, "sqlstate", None)
+    detail = f"{name} sqlstate={state}" if state else name
+    quotes_no_row = isinstance(exc, (OSError, TimeoutError, AppException)) or name in (
+        "OperationalError", "PoolTimeout",
+    )  # fmt: skip
+    text = str(getattr(exc, "message", None) or exc).strip()
+    if quotes_no_row and text:
+        return f"{detail}: {text.splitlines()[0]}"
+    return detail
+
+
+async def _audit_apply(conversation: str, check: bool) -> None:
+    """One event: write what the audit store lacks of the conversation's record, then mark the
+    record audited. A check on a closed record releases it first, so the mark says the check is
+    done; a write of a closing turn leaves both to the check right behind it; an open record (a
+    run waiting for a tool result, a person or the loop's next turn) is only filled."""
+    store = get_store()
+    audit = get_audit_store()
+    record = await store.load(conversation)
+    if record is None:
+        log.warning(
+            "%s conversation=%s no working record - expired or released", AUDIT_ROUTE, conversation
+        )
+        return
+    held = await audit.turns(conversation)
+    facts = {int(fact["turn"]): fact for fact in record.turns}
+    missing = [turn for turn in range(1, record.turn + 1) if turn not in held]
+    rows = [_turn_row(conversation, record, facts[turn]) for turn in missing if turn in facts]
+    await audit.write(_conversation_row(conversation, record, iso_utc()), rows)
+    unauditable = [turn for turn in missing if turn not in facts]
+    if unauditable:
+        # a record from before version 2: its earlier turns carry no facts (the one time the
+        # audit is knowingly incomplete)
+        log.warning(
+            "%s conversation=%s turn(s) %s carry no facts - unaudited",
+            AUDIT_ROUTE, conversation, ",".join(str(turn) for turn in unauditable),
+        )  # fmt: skip
+    released = False
+    if record.closed and check:
+        await store.release(conversation, record.retention)
+        released = True
+    if check or not record.closed:
+        await store.mark_audited(conversation, record.turn)
+    log.info(
+        "%s conversation=%s turn=%d written=%d check=%s released=%s",
+        AUDIT_ROUTE, conversation, record.turn, len(rows), check, released,
+    )  # fmt: skip
+
+
+async def transcript_audit(_headers: dict[str, str], body: Body) -> None:
+    """The audit function (RFC-0012): registered at boot as a private route with ONE instance when
+    llm.transcript.audit is configured. Two events, both local and drop-n-forget from llm.chat -
+    ``{conversation, turn}`` after a compare-and-set accepted the turn, and ``{conversation,
+    check: true}`` behind the write of a closing turn (and from the sweep). A failure is logged by
+    type - never a prompt, a completion, an argument or a result - and the sweep repairs it."""
+    event: dict[str, Any] = body if isinstance(body, dict) else {}
+    conversation = event.get("conversation")
+    if not isinstance(conversation, str) or not CONVERSATION_ID.fullmatch(conversation):
+        log.warning("%s event without a conversation reference ignored", AUDIT_ROUTE)
+        return
+    check = bool(event.get("check"))
+    try:
+        await _audit_apply(conversation, check)
+    except Exception as exc:  # noqa: BLE001 - off the turn's path: logged, the sweep repairs
+        log.warning(
+            "%s conversation=%s %s failed - %s",
+            AUDIT_ROUTE, conversation, "check" if check else "write", _audit_failure(exc),
+        )  # fmt: skip
+
+
+async def audit_sweep() -> int:
+    """One sweep: a check event for every live record whose audited mark lags its turn count -
+    the runs the loop stopped, and the writes a dying process lost. On Redis one replica per
+    interval does it; the memory store sweeps its own process. The number of checks sent."""
+    store = get_store()
+    if not await store.sweep_lock(_audit_sweep_ms()):
+        return 0
+    lagging = await store.unaudited()
+    for conversation in lagging:
+        await _audit_send({"conversation": conversation, "check": True})
+    if lagging:
+        log.info("%s sweep: %d record(s) behind their audit", AUDIT_ROUTE, len(lagging))
+    return len(lagging)
+
+
+async def _sweep_forever(interval_ms: int) -> None:
+    while True:
+        await asyncio.sleep(interval_ms / 1000)
+        try:
+            await audit_sweep()
+        except Exception as exc:  # noqa: BLE001 - the store may be down; the next interval retries
+            log.warning("%s sweep failed - %s", AUDIT_ROUTE, _audit_failure(exc))
+
+
+async def audit_boot() -> None:
+    """Start the audit when llm.transcript.audit is configured: register transcript.audit with one
+    instance, open the store and start the sweep. A driver that is not installed stops the
+    application by name (a deployment error); a database that does not answer is logged, and the
+    sweep repairs what the outage defers."""
+    global _sweep_task
+    if not audit_configured():
+        return
+    try:
+        audit = get_audit_store()
+    except AppException as exc:
+        log.error("transcript audit store cannot start - %s", exc.message)
+        raise SystemExit(1) from exc
+    if not default_registry.exists(AUDIT_ROUTE):
+        default_registry.register(AUDIT_ROUTE, transcript_audit, instances=1, private=True)
+        log.info("Loaded PRIVATE %s, instances=1 - audit store %s", AUDIT_ROUTE, audit.name)
+    try:
+        await audit.open()
+        log.info("transcript audit store %s ready", audit.name)
+    except Exception as exc:  # noqa: BLE001 - an outage, not a deployment error
+        log.warning(
+            "transcript audit store %s not answering at start - %s; the sweep repairs what the "
+            "outage defers",
+            audit.name, _audit_failure(exc),
+        )  # fmt: skip
+    sweep_ms = _audit_sweep_ms()
+    if sweep_ms > 0 and _sweep_task is None:
+        _sweep_task = asyncio.get_running_loop().create_task(
+            _sweep_forever(sweep_ms), name="transcript-audit-sweep"
+        )
+
+
+async def audit_shutdown() -> None:
+    global _sweep_task
+    task = _sweep_task
+    _sweep_task = None
+    if task is not None:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    audit = _audit
+    if audit is not None:
+        await audit.close()
+
+
 # --- the functions -----------------------------------------------------------------------
 
 
 @preload(route="llm.chat", instances=50)
-async def llm_chat(_headers: dict[str, str], body: Body) -> dict[str, Any]:
+async def llm_chat(headers: dict[str, str], body: Body) -> dict[str, Any]:
     """Single-shot completion - the AI node a graph's ``graph.task`` or a flow's task calls.
 
     Input (map):
@@ -1222,10 +1920,12 @@ async def llm_chat(_headers: dict[str, str], body: Body) -> dict[str, Any]:
     A request that carries ``tools`` is one turn of an agent loop (RFC-0011): ``conversation``,
     ``turn``, ``results``, ``ttl`` and ``retention`` come with it, and the reply carries
     ``status`` (done, tool_use, refusal or cap), ``calls``, ``conversation`` and ``turn``. The
-    transcript stays in this app's store; see README.md, "The loop contract".
+    transcript stays in this app's store; see README.md, "The loop contract". The loop's
+    ``x-graph-id`` and ``x-node`` headers are recorded for the audit store, when one is
+    configured (README.md, "The audit store").
     """
     if isinstance(body, dict) and _is_loop(body):
-        return await _loop_turn(body)
+        return await _loop_turn(headers, body)
     request = prepare(body, streaming=False)
     started = time.perf_counter()
     try:
@@ -1346,12 +2046,19 @@ async def llm_health(headers: dict[str, str], _body: Body) -> Any:
         store = _prop("llm.transcript.store")
         if store:
             info["transcript_store"] = store  # where a loop's transcripts are kept
+        audit = _prop("llm.transcript.audit")
+        if audit:
+            info["transcript_audit"] = audit  # where every model turn is recorded for audit
         return info
     problem = backend.credential_problem()
     if problem:
         raise AppException(503, problem)
     return "llm.helper is running fine"
 
+
+# the audit starts inside the serving loop, before the first request, when it is configured
+platform.on_startup(audit_boot)
+platform.on_cleanup(audit_shutdown)
 
 if __name__ == "__main__":
     platform.run()
