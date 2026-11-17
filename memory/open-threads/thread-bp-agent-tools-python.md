@@ -5,8 +5,8 @@
   98 tests on a workspace and a fixture site, a live https fetch through the pinned-address path; six defaults set
   without a ruling are listed in the session log (hidden entries invisible to every file tool, the resolved address
   pinned, a write bounded by `tools.file.max.bytes`, no `strict` on the rows, the statuses, row names = routes with
-  `_`). In passing: the MCP binding's direct run never attached its boot hook (fixed; check the Node twin at step
-  3). Next: the engines' docs page, then step 2. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
+  `_`). In passing: the MCP binding's direct run never attached its boot hook (fixed; the Node binding attaches its
+  hooks on both paths - checked 2026-11-17, nothing to do there). Next: the engines' docs page, then step 2. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
   `README.md`, `resources/application.yml`, a `describe` command printing every catalog row, `platform.on_startup` for the
   gated registration) with the file tools inside `tools.file.root` (`file.read`, `file.write` marked `write: true` with
   `create` the default, `file.list`, `file.search`; paths resolved with symlinks followed and refused outside the root;
