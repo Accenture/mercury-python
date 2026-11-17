@@ -209,7 +209,7 @@
 
 - **The transcript audit store: every model turn recorded by a composable function behind a local event, off the
   turn's path, into PostgreSQL beside the working store (RFC-0012 in mercury-composable, Eric's rulings of 2026-11-17;
-  built here 2026-11-17).** `llm.transcript.audit: postgres` registers `transcript.audit` at boot - private, ONE
+  built here as PR #59, MERGED 2026-11-17, merge `a2f53dfe3`).** `llm.transcript.audit: postgres` registers `transcript.audit` at boot - private, ONE
   instance, so its mailbox orders a conversation's writes and its check without a lock. The working record is version
   2: beside the messages it carries each turn's facts (trace id and path, correlation id, UTC bounds, status, stop
   reason, request id, usage, `messages: [first request message, response]`), the first turn's system prompt, catalog,
