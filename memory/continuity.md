@@ -230,8 +230,11 @@
   (`expires_at` from `llm.transcript.audit.retention`, `365d`; `dev/audit-purge.sh` the sample). **How to apply:** a
   new audit fact is a field of the turn's facts written in `_turn_facts` and a column in both packs' schema and the
   published page, never a second key or a second write; anything the audit must know at the end of a run travels in
-  the record, since the check reads nothing else; a `-D` override value is never substituted, so a credential reaches
-  the helper through the yml's `${ENV}` references.
+  the record, since the check reads nothing else; the shipped yml takes the database credential from `${ENV}` references
+  (since #60 a `-D` value resolves them too). **Driven live 2026-11-17** (mercury-composable
+  `docs/test-reports/transcript-audit-live-drive.md`): every turn recorded off the turn's path, a stopped database repaired by
+  the sweep; #62 added a server-side `statement_timeout` from `.timeout.ms`, because a paused database stalls a pooled
+  statement where a stopped one fails it.
   <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 1 | tier: working | origin: 2026-11-17-080036 -->
 
 ## Conventions
