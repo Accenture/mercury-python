@@ -1601,7 +1601,8 @@ def _postgres_audit_store() -> PostgresAuditStore:
     from psycopg_pool import AsyncConnectionPool  # the [postgres] extra; checked above
 
     prefix = "llm.transcript.audit.postgres."
-    timeout_s = _whole_number(prefix + "timeout.ms", _prop(prefix + "timeout.ms", "5000"), 1) / 1000
+    timeout_ms = _whole_number(prefix + "timeout.ms", _prop(prefix + "timeout.ms", "5000"), 1)
+    timeout_s = timeout_ms / 1000
     ssl = str(_prop(prefix + "ssl", "true")).lower() == "true"
     settings: dict[str, Any] = {
         "host": str(_prop(prefix + "host", "127.0.0.1")),
@@ -1611,6 +1612,10 @@ def _postgres_audit_store() -> PostgresAuditStore:
         "password": _prop(prefix + "password") or None,
         "sslmode": "require" if ssl else "disable",
         "connect_timeout": max(1, round(timeout_s)),
+        # the server-side bound on a statement: a database that stalls (a paused container, a lock
+        # held) frees the function's mailbox after the timeout instead of holding it for the
+        # outage's length, as the live drive of 2026-11-17 showed a stopped one does by itself
+        "options": f"-c statement_timeout={timeout_ms}",
     }
     pool = AsyncConnectionPool(
         kwargs={key: value for key, value in settings.items() if value is not None},

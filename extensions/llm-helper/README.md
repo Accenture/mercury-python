@@ -310,7 +310,7 @@ installation's, applied on read.
 | `llm.transcript.audit.retention` | `365d` | Written as a conversation's `expires_at`; the purge is the installation's. |
 | `llm.transcript.audit.grace` | `1d` | How long a closed working record waits for its integrity check before it expires unreleased. |
 | `llm.transcript.audit.sweep.ms` | `60000` | The sweep that repairs lost events and stopped runs; `0` disables it. |
-| `llm.transcript.audit.postgres.host`, `.port`, `.database`, `.username`, `.password`, `.ssl`, `.timeout.ms` | `127.0.0.1`, `5432`, `mercury`, none, none, `true`, `5000` | The PostgreSQL connection, the engines' convention under this store's prefix. The shipped `application.yml` sets the user and the password from the environment (`${POSTGRES_USER:mercury}`, `${POSTGRES_PASSWORD}`); `ssl` `true` is `sslmode=require`, `false` `sslmode=disable`. |
+| `llm.transcript.audit.postgres.host`, `.port`, `.database`, `.username`, `.password`, `.ssl`, `.timeout.ms` | `127.0.0.1`, `5432`, `mercury`, none, none, `true`, `5000` | The PostgreSQL connection, the engines' convention under this store's prefix. The shipped `application.yml` sets the user and the password from the environment (`${POSTGRES_USER:mercury}`, `${POSTGRES_PASSWORD}`); `ssl` `true` is `sslmode=require`, `false` `sslmode=disable`; `timeout.ms` bounds a connection attempt, a wait for the pool and, on the server, a statement (`statement_timeout`). |
 
 The credential is never configured here. `ANTHROPIC_API_KEY` (or whatever the SDK resolves: an
 auth token, or a profile) comes from the environment for the Claude API; the AWS credential chain,

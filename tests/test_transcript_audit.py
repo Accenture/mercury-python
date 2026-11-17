@@ -705,6 +705,7 @@ def test_the_postgres_store_is_built_from_its_connection_keys(
         "password": "test-only-password",
         "sslmode": "disable",
         "connect_timeout": 2,
+        "options": "-c statement_timeout=2500",
     }
     assert (pool.min_size, pool.max_size, pool.timeout) == (1, 4, 2.5)
     assert store._timeout_s == 2.5
@@ -717,7 +718,7 @@ def test_the_postgres_store_is_built_from_its_connection_keys(
     pool = helper.get_audit_store()._pool
     assert pool.kwargs == {
         "host": "127.0.0.1", "port": 5432, "dbname": "mercury", "sslmode": "require",
-        "connect_timeout": 5,
+        "connect_timeout": 5, "options": "-c statement_timeout=5000",
     }  # fmt: skip
 
 
