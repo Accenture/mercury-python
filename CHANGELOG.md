@@ -33,6 +33,17 @@
    lockstep. **Upgrade note:** none without `llm.transcript.audit`. A record saved by the previous helper (version 1)
    continues under the new one; its turns before the upgrade carry no facts, and the check logs them as unaudited.
 
+### Changed
+
+1. **A `-D` override value is resolved with the same `${ENV_VAR:default}` substitution as a file value - the engines'
+   change of the same day.** `AppConfig.get` returned an override as written, so a key moved from `application.yml` to
+   a `-D` flag silently lost its substitution and a credential had to travel on the command line in clear. Now the value
+   of a `-D` override (and of `AppConfig.set`) - an environment variable with a default, or a reference to another
+   configuration key - is resolved the way a file value is, at read time, so `-Dkey='${ENV_VAR}'` keeps the secret out
+   of the process list and container `args` arrays, which do no shell expansion. In lockstep with the Node pack.
+   **Upgrade note:** a `-D` value that relied on a literal `${...}` is now resolved, as a file value always was; an
+   unresolved reference without a default is no value, as in a file.
+
 ## Version 4.12.30, 11/16/2026
 
 The catch-up round with the engines: the pack moves from 4.12.21 to 4.12.30, the number the Java engine released on

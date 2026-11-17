@@ -120,6 +120,29 @@ def test_d_argument_overrides_win(tmp_path: Path):
     assert config.get("new.key") == "live"
 
 
+def test_an_override_value_resolves_references_like_a_file_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """-Dkey='${ENV_VAR}' keeps a credential out of the process list: the reference is resolved
+    in the application with the same ${ENV:default} rule as a file value - an environment
+    variable, a default, another configuration key - and so is a set() value."""
+    path = str(tmp_path / "application.yml")
+    write(path, "peer:\n  port: 8085\n")
+    monkeypatch.delenv("MERCURY_TEST_TOKEN", raising=False)
+    config = AppConfig(path=path, argv=[
+        "-Dpeer.url=http://127.0.0.1:${peer.port}/api",
+        "-Dwith.default=${NOT_SET_ANYWHERE_EITHER:from-default}",
+        "-Dtoken=${MERCURY_TEST_TOKEN}",
+    ])
+    assert config.get("peer.url") == "http://127.0.0.1:8085/api"
+    assert config.get("with.default") == "from-default"
+    assert config.get("token") is None, "an unresolved reference is no value, as in a file"
+    monkeypatch.setenv("MERCURY_TEST_TOKEN", "env-only")
+    assert config.get("token") == "env-only"
+    config.set("peer.url", "${MERCURY_TEST_TOKEN}")
+    assert config.get("peer.url") == "env-only"
+
+
 def test_set_is_runtime_override(tmp_path: Path):
     path = str(tmp_path / "application.yml")
     write(path, "some:\n  key: 'original'\n")

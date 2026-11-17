@@ -154,7 +154,10 @@ class AppConfig:
 
     def get(self, key: str, default: Any = None) -> Any:
         if key in self._overrides:
-            return self._overrides[key]
+            value = self._overrides[key]
+            # an override's value resolves references the way a file value does, so a credential
+            # may be given as -Dkey='${ENV_VAR}' and never appear in the process list
+            return self._substitute(value, default) if isinstance(value, str) else value
         if key in self._store:
             value = self._store[key]
             if isinstance(value, str):
