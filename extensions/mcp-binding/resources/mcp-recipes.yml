@@ -62,9 +62,10 @@ servers:
       NEO4J_DATABASE: '${NEO4J_DATABASE:neo4j}'
   # GitHub's server (vendor server). The hosted endpoint over streamable HTTP with a fine-grained
   # personal access token of least privilege (or the deployment's GitHub App token); the toolsets
-  # header selects the tool families, the read-only header hides every write. The listing needs the
-  # credential, so its digests are not pinned on the page: run describe with the token and pin what it
-  # prints. A self-hosted alternative is the vendor's container image over stdio.
+  # header selects the tool families (the default lists 39 tools), the read-only header hides the
+  # seventeen that write. The listing needs the credential: the page's digests were read with a
+  # maintainer's token, and the gated test checks them when GITHUB_MCP_TOKEN is set. A self-hosted
+  # alternative is the vendor's container image over stdio.
   github:
     transport: http
     url: 'https://api.githubcopilot.com/mcp/'

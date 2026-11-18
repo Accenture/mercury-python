@@ -130,9 +130,10 @@ servers Git, Time, Fetch and Filesystem (started with `uvx` and `npx`, versions 
 hosted server and Playwright's browser. Every environment-specific value is a `${NAME:default}` reference and every
 credential a reference without a default. The binding does not read the file: copy an entry into `mcp-servers.yml`,
 set the references it names, run `describe` on it and declare the tools you want with `bind` and a function, as above.
-The page carries the digests of the six servers that list their tools without a credential, read on 2026-11-18 from
-the pinned versions, and `tests/test_mcp_recipes.py` re-reads them live when `MCP_RECIPES_LIVE=1` is set (the Neo4j
-server also wants `NEO4J_PASSWORD` and a database): a recipe that rots fails at the digest, as the boot would.
+The page carries the digests of all seven servers, read on 2026-11-18 from the pinned versions (GitHub's with a
+maintainer's token), and `tests/test_mcp_recipes.py` re-reads them live when `MCP_RECIPES_LIVE=1` is set (the Neo4j
+server also wants `NEO4J_PASSWORD` and a database, GitHub's `GITHUB_MCP_TOKEN`): a recipe that rots fails at the
+digest, as the boot would.
 
 ## The function contract
 
