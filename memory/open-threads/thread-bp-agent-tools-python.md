@@ -19,7 +19,7 @@
   servers that list without a credential, read through `describe`, identical from both packs) and
   `tests/test_mcp_recipes.py` (five tests on every run, six gated live on `MCP_RECIPES_LIVE=1`; 11 passed live; PR #66, merge `8db480a`, MERGED
   2026-11-18); the page is the engine's `docs/guides/tools-from-mcp-servers.md`. GitHub's digests pinned the same day with Eric's
-  token (39 tools, 22 under the read-only header; two live tests gated on `GITHUB_MCP_TOKEN`; PR-PENDING). Next: nothing
+  token (39 tools, 22 under the read-only header; two live tests gated on `GITHUB_MCP_TOKEN`; PR #67). Next: nothing
   until Eric rules on RFC-0013's promotion. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
   `README.md`, `resources/application.yml`, a `describe` command printing every catalog row, `platform.on_startup` for the
   gated registration) with the file tools inside `tools.file.root` (`file.read`, `file.write` marked `write: true` with
