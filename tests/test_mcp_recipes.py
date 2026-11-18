@@ -29,14 +29,28 @@ _DIGESTS = _TESTS / "vectors" / "mcp-recipes.json"
 # the Node.js twin pins the same digest: change the file in both packs or in neither
 _DIGESTS_SHA256 = "10c70fe179d315cb0932d56cf0bc1e11290eb7c922ff439e5b9e7944df437d53"
 
-_spec = importlib.util.spec_from_file_location("mcp_binding_recipes_under_test", _BINDING)
-assert _spec is not None
-assert _spec.loader is not None
-# typed Any: the module is loaded dynamically from a file path, so its attributes are
-# unknowable statically - Any tells every analyzer to trust the runtime
-binding: Any = importlib.util.module_from_spec(_spec)
-sys.modules.setdefault("mcp_binding_recipes_under_test", binding)
-_spec.loader.exec_module(binding)
+# the module name tests/test_mcp_binding.py loads the binding under: one process executes the
+# module once, because a second execution would register mermaid.render again with a second function
+# object and break that test's identity check (the preload registry is shared)
+_MODULE = "mcp_binding_under_test"
+
+
+def _load_binding() -> Any:
+    # typed Any: the module is loaded dynamically from a file path, so its attributes are
+    # unknowable statically - Any tells every analyzer to trust the runtime
+    loaded = sys.modules.get(_MODULE)
+    if loaded is not None:
+        return loaded
+    spec = importlib.util.spec_from_file_location(_MODULE, _BINDING)
+    assert spec is not None
+    assert spec.loader is not None
+    module: Any = importlib.util.module_from_spec(spec)
+    sys.modules[_MODULE] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+binding: Any = _load_binding()
 
 DIGESTS: dict[str, Any] = json.loads(_DIGESTS.read_text(encoding="utf-8"))
 LIVE = bool(os.environ.get("MCP_RECIPES_LIVE"))
