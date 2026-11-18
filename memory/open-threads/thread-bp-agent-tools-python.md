@@ -17,7 +17,7 @@
   entries - git, time, fetch, filesystem, neo4j, github, playwright - with `${NAME:default}` references and pinned
   versions, not loaded by default), the shared digest vector `tests/vectors/mcp-recipes.json` (56 tools of the six
   servers that list without a credential, read through `describe`, identical from both packs) and
-  `tests/test_mcp_recipes.py` (five tests on every run, six gated live on `MCP_RECIPES_LIVE=1`; 11 passed live); the
+  `tests/test_mcp_recipes.py` (five tests on every run, six gated live on `MCP_RECIPES_LIVE=1`; 11 passed live; PR #66); the
   page is the engine's `docs/guides/tools-from-mcp-servers.md`. Next: nothing until Eric rules on RFC-0013's promotion. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
   `README.md`, `resources/application.yml`, a `describe` command printing every catalog row, `platform.on_startup` for the
   gated registration) with the file tools inside `tools.file.root` (`file.read`, `file.write` marked `write: true` with
