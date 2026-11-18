@@ -122,6 +122,18 @@ catalog row (name your function's route; review the description before the graph
 
 A tool the server offers but no function binds is shown as `not bound` and is never served.
 
+## Recipes
+
+`resources/mcp-recipes.yml` holds one ready entry for each server of the engines' page
+[Tools from MCP Servers](https://accenture.github.io/mercury-composable/guides/tools-from-mcp-servers/): the reference
+servers Git, Time, Fetch and Filesystem (started with `uvx` and `npx`, versions pinned), Neo4j's Cypher server, GitHub's
+hosted server and Playwright's browser. Every environment-specific value is a `${NAME:default}` reference and every
+credential a reference without a default. The binding does not read the file: copy an entry into `mcp-servers.yml`,
+set the references it names, run `describe` on it and declare the tools you want with `bind` and a function, as above.
+The page carries the digests of the six servers that list their tools without a credential, read on 2026-11-18 from
+the pinned versions, and `tests/test_mcp_recipes.py` re-reads them live when `MCP_RECIPES_LIVE=1` is set (the Neo4j
+server also wants `NEO4J_PASSWORD` and a database): a recipe that rots fails at the digest, as the boot would.
+
 ## The function contract
 
 | | |
@@ -182,6 +194,7 @@ server's `tools/call` is inside that `exec_time`, not a span of its own. Driven 
 ```bash
 pip install -e '.[dev]'
 pytest tests/test_mcp_binding.py
+MCP_RECIPES_LIVE=1 pytest tests/test_mcp_recipes.py    # starts the recipe servers with uvx and npx
 ```
 
 The shared vector file pins the pure half (the digest, the verification of declared bindings, the result mapping) in

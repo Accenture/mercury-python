@@ -13,8 +13,12 @@
   `graph-down.sh`, 161 tests and a live round trip on the development Neo4j; eight defaults set without a ruling in
   the session log. The Node twin landed as mercury-nodejs #130; the Playground's three graphs as
   mercury-composable #647 (step 4), driven live through both packs 2026-11-17 - the drive taught a relative `include`
-  (PR #65, merge `30cbb0d`, MERGED 2026-11-17, with the README's Event-over-HTTP snippet corrected to one route per entry). Next: nothing
-  here until the recipes page (step 5, the engine's). The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
+  (PR #65, merge `30cbb0d`, MERGED 2026-11-17, with the README's Event-over-HTTP snippet corrected to one route per entry). **Step 5, the pack's half, BUILT 2026-11-18:** `extensions/mcp-binding/resources/mcp-recipes.yml` (seven server
+  entries - git, time, fetch, filesystem, neo4j, github, playwright - with `${NAME:default}` references and pinned
+  versions, not loaded by default), the shared digest vector `tests/vectors/mcp-recipes.json` (56 tools of the six
+  servers that list without a credential, read through `describe`, identical from both packs) and
+  `tests/test_mcp_recipes.py` (five tests on every run, six gated live on `MCP_RECIPES_LIVE=1`; 11 passed live; PR #66); the
+  page is the engine's `docs/guides/tools-from-mcp-servers.md`. Next: nothing until Eric rules on RFC-0013's promotion. The plan as settled - step 1: `extensions/agent-tools/agent_tools.py` (the layout of `extensions/mcp-binding`: a module docstring, a
   `README.md`, `resources/application.yml`, a `describe` command printing every catalog row, `platform.on_startup` for the
   gated registration) with the file tools inside `tools.file.root` (`file.read`, `file.write` marked `write: true` with
   `create` the default, `file.list`, `file.search`; paths resolved with symlinks followed and refused outside the root;
@@ -34,4 +38,4 @@
   plus its skill inventory `files.list`), the Node twin (step 3), the Playground graphs and the recipes (steps 4-5, in the
   engine repo). RFC-0012 is done and promoted (ADR-0035, mercury-composable #643).
   → serves: vision-mercury-python
-  <!-- id: bp-agent-tools-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 1 | tier: working | origin: 2026-11-17-094509 -->
+  <!-- id: bp-agent-tools-python | created: 2026-11-17 | last_used: 2026-11-18 | uses: 1 | tier: working | origin: 2026-11-17-094509 -->
