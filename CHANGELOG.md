@@ -76,10 +76,12 @@
    pinned), Neo4j's Cypher server, GitHub's hosted server and Playwright's browser - with every environment-specific
    value a `${NAME:default}` reference and every credential a reference without a default. The binding does not load
    the file; an entry is copied into `mcp-servers.yml` and its tools declared with `bind` as before.
-   `tests/vectors/mcp-recipes.json`, shared byte for byte with the Node.js pack, pins the input-schema digests of the
-   six servers that list their tools without a credential (56 tools, read 2026-11-18 through both packs' `describe`,
-   identical), and `tests/test_mcp_recipes.py` loads the recipes file on every run and, with `MCP_RECIPES_LIVE=1`,
-   starts each server through the binding's own probe and compares the digests, so a recipe that rots fails by name.
+   `tests/vectors/mcp-recipes.json`, shared byte for byte with the Node.js pack, pins the input-schema digests of all
+   seven servers (95 tools, read 2026-11-18 through both packs' `describe`, identical; GitHub's hosted server with a
+   maintainer's token - 39 tools of its three default toolsets, 22 of them under the read-only header), and
+   `tests/test_mcp_recipes.py` loads the recipes file on every run and, with `MCP_RECIPES_LIVE=1`, starts each server
+   through the binding's own probe and compares the digests (GitHub's when `GITHUB_MCP_TOKEN` is set, in both modes), so
+   a recipe that rots fails by name.
 
 ### Fixed
 

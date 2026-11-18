@@ -27,7 +27,7 @@ _BINDING = _TESTS.parent / "extensions" / "mcp-binding" / "mcp_binding.py"
 _RECIPES = _BINDING.parent / "resources" / "mcp-recipes.yml"
 _DIGESTS = _TESTS / "vectors" / "mcp-recipes.json"
 # the Node.js twin pins the same digest: change the file in both packs or in neither
-_DIGESTS_SHA256 = "10c70fe179d315cb0932d56cf0bc1e11290eb7c922ff439e5b9e7944df437d53"
+_DIGESTS_SHA256 = "844e729bc41e667892ecd5a6e864568b2c10d4785f0624864c91834074b47aac"
 
 # the module name tests/test_mcp_binding.py loads the binding under: one process executes the
 # module once, because a second execution would register mermaid.render again with a second function
@@ -55,7 +55,7 @@ binding: Any = _load_binding()
 DIGESTS: dict[str, Any] = json.loads(_DIGESTS.read_text(encoding="utf-8"))
 LIVE = bool(os.environ.get("MCP_RECIPES_LIVE"))
 RECIPE_SERVERS = ["fetch", "filesystem", "git", "github", "neo4j", "playwright", "time"]
-# the servers that list their tools without a credential - the ones the page pins
+# the servers that list their tools without a credential; GitHub's hosted server lists with a token
 CREDENTIAL_FREE = ["git", "time", "fetch", "filesystem", "playwright"]
 # a credential the file references but these tests never send gets a placeholder, so the file
 # loads; a real value already in the environment (the Neo4j run) is kept
@@ -114,7 +114,8 @@ def test_the_references_resolve_from_the_environment(recipes: dict[str, Any]) ->
 
 def test_every_pinned_server_has_a_recipe_and_tools(recipes: dict[str, Any]) -> None:
     pinned = DIGESTS["servers"]
-    assert sorted(pinned) == sorted(CREDENTIAL_FREE + ["neo4j"])
+    assert sorted(pinned) == RECIPE_SERVERS
+    assert set(pinned["github"]["read_only_tools"]) <= set(pinned["github"]["tools"])
     assert set(pinned) <= set(recipes)
     for name, server in pinned.items():
         assert server["tools"], name
@@ -162,4 +163,39 @@ async def test_live_neo4j_recipe_digests(recipes: dict[str, Any]) -> None:
     missing, changed = rot(actual, DIGESTS["servers"]["neo4j"]["tools"])
     assert not missing and not changed, (
         f"the neo4j recipe rotted - missing {missing}, changed {changed}"
+    )
+
+
+# --- GitHub's hosted server, live with a token (gated) -----------------------------------------
+
+GITHUB_LIVE = LIVE and bool(os.environ.get("GITHUB_MCP_TOKEN"))
+GITHUB_REASON = (
+    "set MCP_RECIPES_LIVE=1 and GITHUB_MCP_TOKEN (a fine-grained, read-only token) to list "
+    "GitHub's hosted server"
+)
+
+
+@pytest.mark.skipif(not GITHUB_LIVE, reason=GITHUB_REASON)
+@pytest.mark.asyncio
+async def test_live_github_read_only_header_hides_every_write(recipes: dict[str, Any]) -> None:
+    # the recipe's default, X-MCP-Readonly true: exactly the pinned read tools, with their digests
+    actual = await offered_digests(recipes["github"])
+    pinned = DIGESTS["servers"]["github"]
+    expected = {name: pinned["tools"][name] for name in pinned["read_only_tools"]}
+    assert actual == expected, "the read-only listing differs from the pinned read tools"
+
+
+@pytest.mark.skipif(not GITHUB_LIVE, reason=GITHUB_REASON)
+@pytest.mark.asyncio
+async def test_live_github_recipe_digests(
+    monkeypatch: pytest.MonkeyPatch, recipes: dict[str, Any]
+) -> None:
+    # with the writes listed: every pinned tool offered, with its digest
+    assert "github" in recipes
+    monkeypatch.setenv("GITHUB_MCP_READONLY", "false")
+    github = {spec.name: spec for spec in binding.load_servers(str(_RECIPES))}["github"]
+    actual = await offered_digests(github)
+    missing, changed = rot(actual, DIGESTS["servers"]["github"]["tools"])
+    assert not missing and not changed, (
+        f"the github recipe rotted - missing {missing}, changed {changed}"
     )
