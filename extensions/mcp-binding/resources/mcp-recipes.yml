@@ -1,0 +1,85 @@
+# Recipes - the MCP servers of the engines' page "Tools from MCP servers" (RFC-0013, step 5), one
+# entry per server, ready to copy into mcp-servers.yml. The binding does not read this file by
+# default, and nothing here is served until a function binds a tool of it: a bind line in
+# mcp_binding.py (or in an application that imports it), a preload function on a route of your own,
+# a catalog row on the graph and an Event-over-HTTP entry on the engine.
+#
+# Everything environment-specific is a ${NAME:default} reference, resolved from this process's
+# environment at boot. A credential has no default, so a missing one stops the boot by name, and a
+# resolved value is never logged. The package versions are the ones the page's digests were read
+# from (2026-11-18): bump one, run describe, review the schema and re-pin the digest next to the
+# function that binds the tool.
+#
+# The gated test tests/test_mcp_recipes.py loads this file on every run and, with MCP_RECIPES_LIVE=1,
+# starts each server with uvx or npx through the binding's own probe and checks the digests pinned
+# in tests/vectors/mcp-recipes.json (the Neo4j server also wants NEO4J_PASSWORD and a database, for
+# example the one extensions/agent-tools/dev/graph-up.sh starts).
+servers:
+  # Git (reference server, Python). The history and state of one repository; --repository confines
+  # every tool to it, and the function that binds a tool adds repo_path from configuration, so no
+  # graph names a path. The reads are git_status, git_diff_unstaged, git_diff_staged, git_diff,
+  # git_log, git_show, git_branch and git_remote; git_add, git_commit, git_reset, git_create_branch,
+  # git_checkout and git_merge are write: true on the graph.
+  git:
+    transport: stdio
+    command: uvx
+    args: ['mcp-server-git==2026.11.11', '--repository', '${MCP_GIT_REPOSITORY:/srv/repository}']
+  # Time (reference server, Python). The alternative to the built-in time.now when a use case
+  # converts between zones or reasons about relative times; --local-timezone fixes the server's
+  # default zone. All three tools read.
+  time:
+    transport: stdio
+    command: uvx
+    args: ['mcp-server-time==2026.11.11', '--local-timezone', '${MCP_TIME_ZONE:UTC}']
+  # Fetch (reference server, Python). The alternative to the built-in web.fetch: one tool, Markdown
+  # out, robots.txt honoured, private addresses refused by default, and --allowed-hosts as the
+  # allowlist (repeat the option for more hosts). The built-in web.crawl has no counterpart here.
+  fetch:
+    transport: stdio
+    command: uvx
+    args: ['mcp-server-fetch==2026.11.11', '--allowed-hosts', '${MCP_FETCH_ALLOWED_HOST:docs.example.com}']
+  # Filesystem (reference server, Node.js). The alternative to the built-in file.* tools, started in
+  # read-only mode: the ten tools that read and list. Without --read-only the server also offers
+  # write_file, edit_file, create_directory, move_file and copy_file, each write: true on the graph.
+  # The directories named are the sandbox; a path outside them is refused by the server.
+  filesystem:
+    transport: stdio
+    command: npx
+    args: ['-y', '@modelcontextprotocol/server-filesystem@2.3.0', '--read-only', '${MCP_FILESYSTEM_ROOT:/srv/documents}']
+  # Neo4j's Cypher server (vendor server, Python). The alternative to graph.schema, graph.query and
+  # graph.write over the vendor's own server: get_neo4j_schema (needs the APOC plugin in the
+  # database), read_neo4j_cypher and write_neo4j_cypher (write: true on the graph; add --read-only to
+  # leave it out of the listing). graph.ingest has no counterpart - the model would write the MERGE
+  # statements itself.
+  neo4j:
+    transport: stdio
+    command: uvx
+    args: ['mcp-neo4j-cypher==0.6.0']
+    env:
+      NEO4J_URI: '${NEO4J_URI:bolt://127.0.0.1:7687}'
+      NEO4J_USERNAME: '${NEO4J_USERNAME:neo4j}'
+      NEO4J_PASSWORD: '${NEO4J_PASSWORD}'
+      NEO4J_DATABASE: '${NEO4J_DATABASE:neo4j}'
+  # GitHub's server (vendor server). The hosted endpoint over streamable HTTP with a fine-grained
+  # personal access token of least privilege (or the deployment's GitHub App token); the toolsets
+  # header selects the tool families, the read-only header hides every write. The listing needs the
+  # credential, so its digests are not pinned on the page: run describe with the token and pin what it
+  # prints. A self-hosted alternative is the vendor's container image over stdio.
+  github:
+    transport: http
+    url: 'https://api.githubcopilot.com/mcp/'
+    headers:
+      Authorization: 'Bearer ${GITHUB_MCP_TOKEN}'
+      X-MCP-Toolsets: '${GITHUB_MCP_TOOLSETS:repos,issues,pull_requests}'
+      X-MCP-Readonly: '${GITHUB_MCP_READONLY:true}'
+    timeout_ms: 30000
+  # Playwright's server (vendor server, Node.js). A headless browser with an in-memory profile;
+  # --allowed-origins is the allowlist of sites the browser may request. The reads are the snapshot,
+  # the screenshot, find, the console and network listings and navigation; the actions (click, type,
+  # fill_form, select_option, press_key, drag, file_upload, handle_dialog) are write: true on the
+  # graph; browser_evaluate and browser_run_code_unsafe are never bound.
+  playwright:
+    transport: stdio
+    command: npx
+    args: ['-y', '@playwright/mcp@0.0.85', '--headless', '--isolated', '--allowed-origins', '${MCP_PLAYWRIGHT_ORIGINS:https://docs.example.com}']
+    timeout_ms: 60000

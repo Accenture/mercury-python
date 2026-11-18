@@ -70,6 +70,17 @@
    `dev/graph-up.sh` and `graph-down.sh` run Neo4j Community on Colima for development; the live test runs against it
    when `TOOLS_GRAPH_TEST_URI` is set. The five new catalog rows join the `catalog/` folder and `describe`.
 
+4. **Recipes for tools from existing MCP servers (RFC-0013 in mercury-composable, step 5).**
+   `extensions/mcp-binding/resources/mcp-recipes.yml` holds one ready server-file entry for each server of the engines'
+   page *Tools from MCP Servers* - the reference servers Git, Time, Fetch and Filesystem (`uvx` and `npx`, versions
+   pinned), Neo4j's Cypher server, GitHub's hosted server and Playwright's browser - with every environment-specific
+   value a `${NAME:default}` reference and every credential a reference without a default. The binding does not load
+   the file; an entry is copied into `mcp-servers.yml` and its tools declared with `bind` as before.
+   `tests/vectors/mcp-recipes.json`, shared byte for byte with the Node.js pack, pins the input-schema digests of the
+   six servers that list their tools without a credential (56 tools, read 2026-11-18 through both packs' `describe`,
+   identical), and `tests/test_mcp_recipes.py` loads the recipes file on every run and, with `MCP_RECIPES_LIVE=1`,
+   starts each server through the binding's own probe and compares the digests, so a recipe that rots fails by name.
+
 ### Fixed
 
 1. **A direct `python extensions/mcp-binding/mcp_binding.py` now connects its servers.** The binding attached its boot

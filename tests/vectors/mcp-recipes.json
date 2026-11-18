@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "read_on": "2026-11-18",
+  "note": "The SHA-256 input-schema digests of the MCP servers the engines' page 'Tools from MCP servers' gives recipes for, read with the binding's describe command from the servers mcp-recipes.yml starts. Shared byte for byte by mercury-python and mercury-nodejs. The gated recipes test starts each server and compares; a missing tool or a changed digest is the recipe rotting - run describe, review the schema, re-pin here and on the page.",
+  "servers": {
+    "git": {
+      "started_with": "uvx mcp-server-git==2026.11.11",
+      "tools": {
+        "git_add": "fe607783e69161974a5f7a4ccd35c37a74701420facc8f99a153e9e1bd268a00",
+        "git_branch": "268f353022c7efb49a6e61f3bd3c81522910358facafa35c16fca0a5a305f693",
+        "git_checkout": "b655a056a01c07675207106a974e3c18649ad97cfe5049bbc68b5f033a8ce4d6",
+        "git_commit": "c5cd9087b800e226a17190a2b110c7d9fe5a1131288faeb0f21478403293b967",
+        "git_create_branch": "9118849f78270629cb79f009849443a991834e4e6a1a6767671d8efd5306d7b8",
+        "git_diff": "32ee0e282fb126d18d4a4c6615b17defcaab9535409999d8625718408f57a8c4",
+        "git_diff_staged": "a34503e2686d88a396e63b81ab6bff39b2ab9dbdca5de355ceab4e6b4a74399e",
+        "git_diff_unstaged": "b5f28e179d77d1f8132248f474d5d7e689ff385ac68eb29cacd14e0b3c93e593",
+        "git_log": "c4e5907dca6fbbbb7ba130e7ab57445f91d7c1df0d67f01a610940176b3c708e",
+        "git_merge": "c26790c6086e8573806324d6f22714afb77481979c1bda9bc9295148b4cd96b9",
+        "git_remote": "53800ff477e1de5e8a838b9eaa6b03f2d0b118320bdeae3d2d16e93b3ad20e79",
+        "git_reset": "eea611c41ac2f0dac25fa3cc39a6b9692425bd6bc1de10c91e3ec81846c9707e",
+        "git_show": "fa979031e75d98d89ad67bda75bdebe7069fbad3f5907c50cb0aafd8fc4c9ad1",
+        "git_status": "7bd4de8036937dec083fd66e127b8e7ba67ec8e38453a3d20872e5eefafd6a48"
+      }
+    },
+    "time": {
+      "started_with": "uvx mcp-server-time==2026.11.11",
+      "tools": {
+        "convert_time": "d4b3b9657b706c76a75371dccba7d10c119e8000c2edc03068c3676d7dc066cb",
+        "get_current_time": "0fad5d2bdd1e327fb88f14add9d4052c3bbccf1f661cc78cd4261ac1f41788a4",
+        "get_time_ago": "5e938ffeb16607ee3cf0f6d1e4c9df7de60b37f372f6449e330647267f1fe6dc"
+      }
+    },
+    "fetch": {
+      "started_with": "uvx mcp-server-fetch==2026.11.11",
+      "tools": {
+        "fetch": "16fdd8e4c71db0b8693474bca52a6a1d81f6d862bb842ccead7287a220e1ef98"
+      }
+    },
+    "filesystem": {
+      "started_with": "npx -y @modelcontextprotocol/server-filesystem@2.3.0 --read-only",
+      "tools": {
+        "directory_tree": "69bdec6a46d6ec8303f47749ba940e28f0bf859ef07aa6a842cf3ac86c14a7cd",
+        "get_file_info": "341692883b0120e165caa3d5736d66b11710a7ff8a5f4dfbef0dbb822b1138b4",
+        "list_allowed_directories": "93ab7499dc3c616f8db8780fed0d9f69270803cda913882ad2ef3943db8d7225",
+        "list_directory": "b82677a25149a3481a3c05f4b769b1c6496911bac868335e54170e09c24d1e66",
+        "list_directory_with_sizes": "c4e7d1e4396f0d78e5506c159a12b540e513da82dd8814ff3f7ae724fc86870d",
+        "read_file": "3c51bad3f48b697f48fd24a1f310baf60fe906021ef15b38cd179ec856b635c6",
+        "read_media_file": "0bf785608c87d1c51b81eb946f9e7801fff5c59647b4806820eeaa2419e698a3",
+        "read_multiple_files": "e33001b8d3c59a392539941ea3ce0fb40beba8cbbe687f40d850eeee50515aa8",
+        "read_text_file": "3c51bad3f48b697f48fd24a1f310baf60fe906021ef15b38cd179ec856b635c6",
+        "search_files": "ad17e78560702ac5a0cbf3caf5ce0ff09ba13de8e0053642778e138b1bd3b444"
+      }
+    },
+    "neo4j": {
+      "started_with": "uvx mcp-neo4j-cypher==0.6.0",
+      "tools": {
+        "get_neo4j_schema": "51d2e5525a9bb54a5a06451a19eea2832e868b6c9c44637f29294e52c35b70ce",
+        "read_neo4j_cypher": "9631746823a32739ed4fa1dd5bd2bd04c93780ade4ba3b48aa9f3915b4069562",
+        "write_neo4j_cypher": "9631746823a32739ed4fa1dd5bd2bd04c93780ade4ba3b48aa9f3915b4069562"
+      }
+    },
+    "playwright": {
+      "started_with": "npx -y @playwright/mcp@0.0.85",
+      "tools": {
+        "browser_click": "7fed82f52ae7018670d967e4429b63501948c80de2df2e9279ce4c103694d0d3",
+        "browser_close": "71fc596a20f27da3dec80050e5d1f553eba34aea24c2853b853488a811e6b892",
+        "browser_console_messages": "0d6cacf9f20123a6a4559c2bb05816020528d6529e6c1cb14520ea00fb9e23ef",
+        "browser_drag": "3dcca018f0b0e9341fee3c91b5420f82557a59a9d9763699e90970b2bd3ed1cb",
+        "browser_drop": "2f2a2c904744c935fc66547031c43b43466e86043f6c306624b536867b18d8e8",
+        "browser_emulate_media": "3b4bcf539a7e561f0e7e233035d5e616d295c9fe0bd5d3c165120b305d2edaeb",
+        "browser_evaluate": "04a3962dec15576f5ad84707db0251b84868e4d7dd4a5cf5e5e0ded786fc7d03",
+        "browser_file_upload": "c76aede191ef1e3bdd09ff177419a1e77a0e1f3f676bdd7c8053ac78e6a80086",
+        "browser_fill_form": "c991223a68247bd517c0fa1b61db444178ff6ad546e7214936d29b8de4c2f2ee",
+        "browser_find": "d060308e6e1797f03317b2368c4d658b0013b0eb00c5ae7534db13b4528f0c3e",
+        "browser_handle_dialog": "2d4cacf71e9fd7f902bebbc84f106614b891c2654de32b71b1f0d629a10d8b5c",
+        "browser_hover": "3b0a5a3333d051dba9f6b023c341eef00f0e5264bef37bc0a11f83156937e803",
+        "browser_navigate": "2165538e098634780eec628947d795a2619b4d2e3cef0e36d3084ac46abb94f7",
+        "browser_navigate_back": "71fc596a20f27da3dec80050e5d1f553eba34aea24c2853b853488a811e6b892",
+        "browser_network_request": "f0dbfd6ba87b3b7739e5b0aa6fa8c0d981aa214128eb3c1a8891caa46bd60b30",
+        "browser_network_requests": "e943ec891442cf3a071a3d090af243ca4e3db8924c7e95650672e47917d5da56",
+        "browser_press_key": "57a7f701ebf865e5a7a759c15e8d04bca12cb756c2e3f4ae7280070bb6e310e2",
+        "browser_resize": "4a80d1f511092cf5e94b689f81afd36ec42b0ac74a510f7220a7c9987af00b84",
+        "browser_run_code_unsafe": "6a9943c16c5666a93c77010063b536f864936fc22606c48e7bb3a36b5b7fd444",
+        "browser_select_option": "03b097752bdb41817ec0a6a259062598e5c85c1a8c7106d0f2fde506321096bd",
+        "browser_snapshot": "1d7650f3b9f3612bbb4f1511c77944e7b9ed6e98c9e012926a243c58f016df6f",
+        "browser_tabs": "fc3f534e7428342371db86b438fad5f52abbe45d43b6e18fd79fb3d23de782c8",
+        "browser_take_screenshot": "78dcb99cc226d741aa8c11a11ee0df62e15a9f9ab9db1a1ce4fdc5512d323d96",
+        "browser_type": "ed892740ebc14bb2a49467c08b8bb02717d50f1f3ef8ed06d51abf5ebb3249da",
+        "browser_wait_for": "cee58694f677034e21fc68446200888eb28469696b4ca9259047e15084fb22ff"
+      }
+    }
+  }
+}
