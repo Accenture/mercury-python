@@ -10,7 +10,9 @@ application is one of those routes. It is a standalone application on the packag
   wait (`kind` `approval` or `question`) is **upserted** on `(graph_id, correlation_id, turn)` - a re-advice for the same
   turn updates the card rather than adding one - and an **advice** (a status update, an acknowledgement, an outcome) is
   **appended**, since those accumulate. Write first: the row is committed before any push to a browser.
-- **The person's side**, under the pack's host: `GET /questions/app` is the page; `GET /questions?since=<seq>` the
+- **The person's side**, under the pack's host: `GET /questions/app` is the page - a sticky header with the person's
+  name and the count of open cards, the cases that wait for a decision or a look first, and the closed cases in a
+  scrollable History panel that keeps its place while new cards arrive; `GET /questions?since=<seq>` the
   **replay** a reconnecting device calls first - every row that changed since its cursor, waits and advices alike, with
   the cursor to continue from; `GET /questions/events` the **stream** a connected device holds, each event carrying a
   changed row, `Last-Event-ID` the same cursor, so a browser's reconnect misses nothing. The person selects which card
@@ -24,6 +26,10 @@ application is one of those routes. It is a standalone application on the packag
   and the row records the first: an acceptance always wins the row, and a `nothing waiting` that lands after one
   never overwrites it (the live drive of 2026-11-19). Rows are never deleted here; `schema/purge.sql` is the
   installation's.
+
+A richer person's side - a small React app over the same three endpoints and the same stream - is planned in the
+Node.js pack only, so there is one app to maintain in one place (Eric, 2026-11-19): use it from mercury-nodejs
+`extensions/agent-question` against this app's inbox when it lands; the vanilla page here stays as the fallback.
 
 The Node.js twin (mercury-nodejs `extensions/agent-question`) serves the same route, the same page and the same
 schema, pinned by the same vector file.

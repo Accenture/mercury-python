@@ -338,7 +338,9 @@ async def test_the_replay_lists_every_change_since_the_cursor(
         async with http.get(f"{host}/questions?since=x") as response:
             assert response.status == 400
         async with http.get(f"{host}/questions/app") as response:
-            assert response.status == 200 and "Agent questions" in await response.text()
+            text = await response.text()
+            assert response.status == 200 and "Agent questions" in text
+            assert 'id="history"' in text and "Waiting for you" in text, "the page separates what waits from the history"
 
 
 async def test_the_stream_replays_then_follows_the_changes_with_keep_alives(

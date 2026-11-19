@@ -285,6 +285,10 @@
   never deleted by the app; a new card state is a change to `state_after` and the schema's check constraint in both
   packs; a wait decided elsewhere stays open on a card until a device tries it (410 → expired) or it expires - the
   acknowledgement advice beside it tells the person.
+  **The person's side (Eric, 2026-11-19):** the page is one vanilla file, byte-identical in both packs - since 2026-11-19
+  a sticky header with the count of open cards, *Waiting for you* and a scrollable *History* panel; its successor, a
+  small React app, is built and maintained in the Node pack only (mercury-nodejs thread `agent-question-react-ui`) for
+  both packs' inboxes, and this pack points to it - never a second UI here.
   <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
 
 ## Conventions

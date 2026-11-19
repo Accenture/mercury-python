@@ -155,7 +155,15 @@
 
 ### Changed
 
-1. **`web.crawl` accepts a relative `include`.** A prefix that does not start with `/` now matches anywhere in a link's path,
+1. **The agent-question page separates what waits from the history (Eric, 2026-11-19).** A sticky header carries the
+   person's name and the count of open cards (also in the tab's title); *Waiting for you* lists the cases with an open
+   card - a wait to decide or an advice to read - newest activity first; *History* is a scrollable panel with the closed
+   cases, newest first, that keeps its scroll position while new cards arrive, so the whole inbox stays in reach without
+   pushing the open work away. The page is one vanilla HTML file still, byte-identical in the Node.js twin. Its successor,
+   a small React app, is on the Node.js pack's backlog (Eric: one app to maintain in one place, mercury-nodejs
+   `extensions/agent-question`); this pack will point to it and keep the vanilla page as the fallback.
+
+2. **`web.crawl` accepts a relative `include`.** A prefix that does not start with `/` now matches anywhere in a link's path,
    since a model names a section as `guides/` as often as `/guides/`: the live drive of the Playground's `site-notes` graph
    showed a crawl returning the start page alone because the model's `include` was relative. The README's Event-over-HTTP
    example lists one route per entry - the engines' map takes no comma-separated list.
