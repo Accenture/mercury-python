@@ -1006,6 +1006,7 @@ STYLE = (
     "textarea,input[type=text]{width:100%;box-sizing:border-box;margin:.2rem 0}button{padding:.4rem 1rem;border-radius:6px;"
     "border:1px solid #556;background:#fff;cursor:pointer}button.primary{background:#1f2a44;color:#fff}"
     ".outcome{font-size:.85rem;color:#334;margin-top:.4rem}.empty{color:#667;padding:2rem;text-align:center}"
+    "header{position:sticky;top:0;z-index:2}.section{display:flex;align-items:center;gap:.5rem;font-size:.95rem;color:#445;margin:1.2rem 0 .4rem}.count{background:#e0a800;color:#222;border-radius:999px;padding:0 .5rem;font-size:.8rem;min-width:1.2rem;text-align:center}.count:empty{display:none}#history-section .count{background:#dde;color:#334}.panel{max-height:45vh;overflow-y:auto;border:1px solid #dde;border-radius:10px;background:#fafbfc;padding:0 .8rem}.panel .case{margin:.6rem 0}"
 )
 
 SCRIPT = r"""
@@ -1054,17 +1055,29 @@ function card(r) {
   }
   return body + '</div>';
 }
+function caseHtml(list) {
+  list.sort((a, b) => a.seq - b.seq);
+  const first = list[0];
+  return '<section class="case"><h2>' + esc(first.description) + '</h2><div class="meta">' + esc(first.graph_id) + ' · ' + esc(first.correlation_id) + '</div>' + list.map(card).join('') + '</section>';
+}
 function render() {
-  const main = document.getElementById('cases');
-  if (!rows.size) { main.innerHTML = '<div class="empty">Nothing waits for you.</div>'; return; }
+  // what waits for the person first - every case with an open card - and the closed cases in the history panel,
+  // newest activity first on both sides; the panel keeps its scroll position across updates
+  const waiting = document.getElementById('cases'), history = document.getElementById('history');
   const groups = new Map();
   for (const r of rows.values()) { const key = r.graph_id + '\u0000' + r.correlation_id; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(r); }
-  const ordered = [...groups.entries()].sort((a, b) => Math.max(...b[1].map(r => r.seq)) - Math.max(...a[1].map(r => r.seq)));
-  main.innerHTML = ordered.map(([key, list]) => {
-    list.sort((a, b) => a.seq - b.seq);
-    const first = list[0];
-    return '<section class="case"><h2>' + esc(first.description) + '</h2><div class="meta">' + esc(first.graph_id) + ' · ' + esc(first.correlation_id) + '</div>' + list.map(card).join('') + '</section>';
-  }).join('');
+  const newest = (list) => Math.max(...list.map(r => r.seq));
+  const ordered = [...groups.values()].sort((a, b) => newest(b) - newest(a));
+  const open = ordered.filter(list => list.some(r => r.state === 'open'));
+  const closed = ordered.filter(list => !list.some(r => r.state === 'open'));
+  const openCards = open.reduce((n, list) => n + list.filter(r => r.state === 'open').length, 0);
+  document.getElementById('waiting-count').textContent = openCards ? String(openCards) : '';
+  document.getElementById('history-count').textContent = closed.length ? String(closed.length) : '';
+  document.title = (openCards ? '(' + openCards + ') ' : '') + TITLE;
+  waiting.innerHTML = open.length ? open.map(caseHtml).join('') : '<div class="empty">Nothing waits for you.</div>';
+  const keep = history.scrollTop;
+  history.innerHTML = closed.length ? closed.map(caseHtml).join('') : '<div class="empty">Nothing yet.</div>';
+  history.scrollTop = keep;
 }
 document.getElementById('cases').addEventListener('click', async (ev) => {
   const seen = ev.target.closest('button[data-seen]');
@@ -1102,8 +1115,12 @@ def page(title: str) -> str:
         f"<title>{html.escape(title)}</title>\n<style>{STYLE}</style>\n</head>\n<body>\n"
         f"<header><h1>{html.escape(title)}</h1><label class=\"meta\">your name <input id=\"name\" type=\"text\" "
         "placeholder=\"as the model will see it\"></label><span id=\"status\">connecting...</span></header>\n"
-        "<main id=\"cases\"><div class=\"empty\">Loading...</div></main>\n"
-        f"<script>const LIST = {json.dumps(LIST_PATH)}; const EVENTS = {json.dumps(EVENTS_PATH)};{SCRIPT}</script>\n"
+        "<main><section id=\"waiting-section\"><h2 class=\"section\">Waiting for you <span id=\"waiting-count\" "
+        "class=\"count\"></span></h2><div id=\"cases\"><div class=\"empty\">Loading...</div></div></section>\n"
+        "<section id=\"history-section\"><h2 class=\"section\">History <span id=\"history-count\" class=\"count\"></span>"
+        "</h2><div id=\"history\" class=\"panel\"><div class=\"empty\">Loading...</div></div></section></main>\n"
+        f"<script>const LIST = {json.dumps(LIST_PATH)}; const EVENTS = {json.dumps(EVENTS_PATH)}; "
+        f"const TITLE = {json.dumps(title)};{SCRIPT}</script>\n"
         "</body>\n</html>\n"
     )
 
