@@ -1,0 +1,61 @@
+# The agent-question app's configuration (the engines' "resources" convention).
+# mercury-serve (and a direct `python agent_question.py`) loads resources/application.yml from the
+# resources folder next to the application file (this one), never from the working directory.
+# Any key can be overridden at run time with the engines' -D syntax, e.g.:
+#   mercury-serve extensions/agent-question/agent_question.py -Dquestion.inbox=postgres
+
+application.name: 'agent-question'
+info.app.description: 'Mercury Composable agent-question app: the store-and-forward inbox of a person an agent asks'
+
+rest.server.port: 8092
+
+# text (default) | json (pretty-printed) | compact (single-line JSONL)
+log.format: text
+log.level: INFO
+
+# Actuator /health dependencies - the health function reports the inbox, its rows by state and the auth mode.
+mandatory.health.dependencies: 'question.health'
+
+# Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
+show.env.variables: 'LOG_LEVEL'
+show.application.properties: 'application.name, rest.server.port, question.inbox, question.auth'
+
+# --- the inbox ----------------------------------------------------------------------------------
+#
+# memory (development and tests: a restart forgets every card) | postgres (a deployment: the schema is
+# schema/postgres.sql, applied once; pip install 'mercury-composable[postgres]'). The connection keys follow the
+# LLM helper's transcript audit store; the credential is a reference, resolved from the environment and never logged.
+question.inbox: memory
+question.inbox.postgres.host: '${POSTGRES_HOST:127.0.0.1}'
+question.inbox.postgres.port: '${POSTGRES_PORT:5432}'
+question.inbox.postgres.database: '${POSTGRES_DB:mercury}'
+question.inbox.postgres.username: '${POSTGRES_USER:mercury}'
+question.inbox.postgres.password: '${POSTGRES_PASSWORD:}'
+question.inbox.postgres.ssl: true
+# the connect timeout and the server-side bound on a statement
+question.inbox.postgres.timeout.ms: 5000
+# how often open waits past their expiry are marked expired when no device is asking
+question.sweep: 30s
+
+# --- the person's side --------------------------------------------------------------------------
+#
+# Who may use the page and the stream: none (development - no sign-in; the page offers a name field), proxy (the
+# installation's SSO - a trusted header set by the gateway names the person), oauth2 (an OAuth 2.0 access token
+# validated against the issuer's published keys; pip install 'mercury-composable[ask]').
+question.auth: none
+question.auth.header: x-forwarded-user
+question.auth.oauth2.issuer: '${QUESTION_OIDC_ISSUER:}'
+question.auth.oauth2.audience: '${QUESTION_OIDC_AUDIENCE:}'
+question.auth.oauth2.jwks-url: '${QUESTION_OIDC_JWKS_URL:}'
+# the bearer this app presents to the main flow's reply endpoint when it invokes a link on a person's behalf
+# (ask.reply.auth.token in the ask-person extension); empty in development
+question.reply.token: '${ASK_REPLY_TOKEN:}'
+# how long the reply endpoint may take to answer a decision
+question.reply.timeout: 10s
+question.page.title: 'Agent questions'
+
+# OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin.
+otel.forwarding: false
+otel.exporter.otlp.endpoint: '${OTLP_API_ENDPOINT:http://localhost:4318/v1/traces}'
+otel.exporter.otlp.headers: '${OTLP_AUTH_HEADER} ${OTLP_TOKEN}'
+otel.service.name: '${OTLP_SERVICE_NAME:agent-question}'
