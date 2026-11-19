@@ -94,7 +94,7 @@ def _case(section: str, name: str) -> dict[str, Any]:
 
 
 def test_the_vector_file_is_the_shared_contract() -> None:
-    assert VECTORS["contract"] == "agent-question" and VECTORS["version"] == 1
+    assert VECTORS["contract"] == "agent-question" and VECTORS["version"] == 2
     for section in ("row_cases", "outcome_cases", "click_cases", "transition_cases"):
         assert VECTORS[section], section
 
@@ -256,6 +256,7 @@ class FakeReply:
 
     def __init__(self) -> None:
         self.posts: list[dict[str, Any]] = []
+        self.raced: dict[str, bool] = {}
 
     async def reply(self, request: web.Request) -> web.Response:
         body = await request.json()
@@ -263,6 +264,15 @@ class FakeReply:
         ticket = body.get("ticket")
         if ticket == "t-expired":
             return web.json_response({"type": "expired", "message": "Ticket expired"}, status=410)
+        if ticket in ("t-race-slow", "t-race-fast"):
+            # two devices on one card: the engine resumes at most once - the first post is accepted, the next gets
+            # nothing-waiting; with t-race-slow the acceptance takes longer than the refusal, so the 410 lands first
+            if self.raced.get(ticket):
+                return web.json_response({"type": "nothing-waiting", "run": "fresh"}, status=410)
+            self.raced[ticket] = True
+            if ticket == "t-race-slow":
+                await asyncio.sleep(0.5)
+            return web.json_response({"type": "answer", "turn": 3, "run": "resume", "message": "Issued."})
         if ticket == "t-refused":
             return web.json_response({"type": "approval", "turn": 2, "error": "not a call waiting for approval",
                                       "calls": CALLS})
@@ -416,6 +426,42 @@ async def test_a_decision_is_forwarded_recorded_and_broadcast(
     aq._wakeups.unsubscribe(queue)
 
 
+async def test_two_devices_on_one_card_the_first_accepted_decision_stands(
+    configure: Callable[[dict[str, Any]], Any], reply_endpoint: tuple[FakeReply, str], host: str
+) -> None:
+    """Both clicks pass the open check and reach the engine; whichever order the outcomes land in, the row ends
+    answered by the device the engine accepted, and the other device gets the row as it stands with its own 410."""
+    _, base = reply_endpoint
+    configure(BASE)
+    decisions = [{"id": "toolu_01A", "approved": True}]
+
+    async def click(http: aiohttp.ClientSession, row_id: int, who: str) -> tuple[int, dict[str, Any]]:
+        async with http.post(f"{host}/questions/{row_id}/decide",
+                             json={"decisions": decisions, "decided_by": who}) as response:
+            return response.status, await response.json()
+
+    async with aiohttp.ClientSession() as http:
+        # the acceptance lands last: the losing device's 410 turned the row expired for a moment, then the acceptance won
+        slow = await _take(wait_event(ticket="t-race-slow", base=base, correlation_id="race-1"))
+        first, second = await asyncio.gather(click(http, slow.id, "device-1"), click(http, slow.id, "device-2"))
+        assert first[0] == 200 and first[1]["row"]["state"] == "answered"
+        assert first[1]["row"]["answered_by"] == "device-1" and first[1]["outcome"]["status"] == 200
+        assert second[0] == 200 and second[1]["row"]["state"] == "expired" and second[1]["outcome"]["status"] == 410
+        stored = await aq.inbox().get(slow.id)
+        assert stored is not None and stored.state == "answered" and stored.answered_by == "device-1"
+        # the acceptance lands first: the 410 that follows changes nothing, and the loser sees who decided
+        fast = await _take(wait_event(ticket="t-race-fast", base=base, correlation_id="race-2"))
+        first, second = await asyncio.gather(click(http, fast.id, "device-1"), click(http, fast.id, "device-2"))
+        assert first[1]["row"]["state"] == "answered" and first[1]["row"]["answered_by"] == "device-1"
+        assert second[0] == 200 and second[1]["outcome"]["status"] == 410
+        assert second[1]["row"]["state"] == "answered" and second[1]["row"]["answered_by"] == "device-1"
+        stored = await aq.inbox().get(fast.id)
+        assert stored is not None and stored.state == "answered" and stored.answered_by == "device-1"
+        # after the fact, the app itself refuses without an engine call
+        async with http.post(f"{host}/questions/{fast.id}/decide", json={"decisions": decisions}) as response:
+            assert response.status == 409 and "device-1" in (await response.json())["message"]
+
+
 async def test_open_waits_past_their_expiry_are_marked_expired(
     configure: Callable[[dict[str, Any]], Any], host: str
 ) -> None:
@@ -520,7 +566,7 @@ async def test_the_postgres_inbox_runs_the_statements_and_maps_the_records() -> 
     await box.decided(7, [{"id": "toolu_01A", "approved": True}], "operator-17", "answered", {"status": 200, "body": {}}, now)
     sql, params = pool.log[-1]
     assert sql == aq.SQL_DECIDED and params == ("answered", '[{"id":"toolu_01A","approved":true}]', '{"status":200,"body":{}}',
-                                                 "operator-17", now, now, 7)
+                                                 "operator-17", now, now, 7, "answered")
     await box.seen(8, now)
     assert pool.log[-1] == (aq.SQL_SEEN, (now, 8))
     await box.expire(now)

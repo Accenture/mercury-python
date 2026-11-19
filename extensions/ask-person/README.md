@@ -95,7 +95,8 @@ engine; a malformed one or another version is a 400, one no key signs a 403.
   renders as expired; an engine that has moved on shows its reply.
 - `POST /ask/reply` takes `{"ticket": "...", "decisions": [...], "decided_by": "..."}`: `{id, approved, note?}` for a
   tool call, `{id, answer}` for a question - the shapes the loop accepts. Each tool call's note is prefixed
-  `[<who> at <time>]`, so the audit store carries who decided without a new field; an answer travels unchanged. The
+  `[<who> at <time>]`; the audit store carries it when the note reaches the model, which the loop does for a refused
+  call - an approved call's decision stays on the channel's record and in this log; an answer travels unchanged. The
   engine's status and JSON body come back as they are; a graph that does not answer or answers outside the contract is a
   502 `{"type": "error", "message": ...}`; an expired ticket is a 410 `{"type": "expired"}`.
 - **Who may answer** (`ask.reply.auth`): `none` in development - no sign-in, `decided_by` is taken as given or the

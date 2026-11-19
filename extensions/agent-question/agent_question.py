@@ -428,6 +428,8 @@ class MemoryInbox:
         row = self._rows.get(row_id)
         if row is None:
             return None
+        if row.state != "open" and state != "answered":
+            return row  # decided first by another device: a later nothing-waiting never overwrites it
         row = replace(row, seq=self._bump(), state=state, decisions=decisions, outcome=outcome,
                       answered_by=who, answered_at=now, updated_at=now)
         self._rows[row_id] = row
@@ -484,7 +486,7 @@ SQL_SINCE = f"SELECT {COLUMNS} FROM question_inbox WHERE seq > %s ORDER BY seq L
 SQL_DECIDED = (
     "UPDATE question_inbox SET seq = nextval('question_inbox_seq'), state = %s, decisions = %s::jsonb, "
     "outcome = %s::jsonb, answered_by = %s, answered_at = %s::timestamptz, updated_at = %s::timestamptz "
-    f"WHERE id = %s RETURNING {COLUMNS}"
+    f"WHERE id = %s AND (state = 'open' OR %s::text = 'answered') RETURNING {COLUMNS}"
 )
 SQL_SEEN = (
     "UPDATE question_inbox SET seq = nextval('question_inbox_seq'), state = 'seen', updated_at = %s::timestamptz "
@@ -583,7 +585,9 @@ class PostgresInbox:
 
     async def decided(self, row_id: int, decisions: list[dict[str, Any]], who: str, state: str,
                       outcome: dict[str, Any], now: str) -> Row | None:
-        return await self._one(SQL_DECIDED, (state, _compact(decisions), _compact(outcome), who, now, now, row_id))
+        row = await self._one(SQL_DECIDED, (state, _compact(decisions), _compact(outcome), who, now, now, row_id, state))
+        # no row: the guard kept a row another device decided first (or the row is gone) - answer with it as stored
+        return row if row is not None else await self.get(row_id)
 
     async def seen(self, row_id: int, now: str) -> Row | None:
         return await self._one(SQL_SEEN, (now, row_id))
@@ -910,7 +914,8 @@ async def _forward(url: str, body: dict[str, Any], settings: Settings) -> tuple[
 async def decide(request: web.Request) -> web.Response:
     """``POST /questions/{id}/decide`` with ``{decisions, decided_by?}``: the click, automated - the decisions
     go to the link's reply endpoint under this app's bearer, the outcome lands on the row, every device is
-    told, and the invoker gets the row with the outcome."""
+    told, and the invoker gets the row with the outcome. The first accepted decision stands: an acceptance always
+    wins the row, and a nothing-waiting that lands after one never overwrites it."""
     settings = current_settings()
     try:
         body = await request.json()
@@ -952,6 +957,12 @@ async def decide(request: web.Request) -> web.Response:
     updated = await inbox().decided(row_id, [dict(d) for d in decisions], identity.who, state, outcome, now)
     if updated is None:
         return _error(404, f"row {row_id} is not in the inbox")
+    if updated.answered_by != identity.who or updated.answered_at != now:
+        # two devices on one card: the other one's decision was accepted while this one was in flight, so the engine
+        # answered nothing-waiting here and the row stands as the first decision left it - this device sees who
+        log.info("Row %d: %s's decision met a row %s by %s - the row stands", row_id, identity.who, updated.state,
+                 updated.answered_by)
+        return web.json_response({"row": updated.public(), "outcome": outcome})
     _wakeups.publish([updated])
     log.info("Row %d decided by %s via %s - %s -> %s", row_id, identity.who, identity.via, outcome["status"], state)
     return web.json_response({"row": updated.public(), "outcome": outcome})
