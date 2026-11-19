@@ -55,7 +55,8 @@
   `bedrock` = `anthropic[bedrock]` >=1,<2 (the AWS Bedrock backend, PR #43), `redis` = `redis` >=5,<9 (the transcript
   store, PR #47), `postgres` = `psycopg[binary,pool]` >=3.2,<4 (the transcript audit store, 2026-11-17), and for the
   built-in agent tools (`extensions/agent-tools`): `graph` = `neo4j` >=6,<7 (the knowledge-graph tools over Bolt) and
-  `documents` = `pypdf` >=6,<7 + `python-docx` >=1.1,<2 (`file.extract`), both 2026-11-17
+  `documents` = `pypdf` >=6,<7 + `python-docx` >=1.1,<2 (`file.extract`), both 2026-11-17, and for the ask-a-person
+  main flow (`extensions/ask-person`): `ask` = `PyJWT[crypto]` >=2.9,<3 (the reply page's `oauth2` mode), 2026-11-19
   <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-03 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
@@ -238,6 +239,26 @@
   the sweep; #62 added a server-side `statement_timeout` from `.timeout.ms`, because a paused database stalls a pooled
   statement where a stopped one fails it.
   <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 1 | tier: working | origin: 2026-11-17-080036 -->
+
+- **Ask a person, the main flow: the pack carries an agent loop's wait to a person and brings the decision back, knowing
+  no channel and keeping no store (RFC-0014 in mercury-composable, build plan step 1; Eric's concept and rulings R1-R8 of
+  2026-11-19; built here 2026-11-19).** `extensions/ask-person/ask_person.py` serves `person.ask`: the graph's hold path
+  calls it before `graph.suspend` with the graph id, a description, the correlation id, the turn, the waiting calls as the
+  loop returned them and the suspension's ttl; the function issues a signed, stateless ticket (`v1.<payload>.<mac>`,
+  HMAC-SHA256 over the canonical JSON of `{g, c, t, k, e}`, a previous key verifying after a rotation), builds the resume
+  link `<ask.reply.url>/ask/<ticket>` and sends the whole message as one event to every route in `ask.channels` - the
+  agent-question app's intake, a chat poster, a mail sender, a topic publisher - best effort, a failure logged by type and
+  never failing the hold; `kind: advice` is a notification with no ticket and no link. The link opens the wait on the
+  pack's reply page (`GET /ask/{ticket}`, read from the engine by the reference graph's re-advice, never resuming); only
+  `POST /ask/reply` with `{ticket, decisions}` resumes, through the `ask.graphs` allowlist (graph id to engine entry,
+  never an address a message told it), with `[who at time]` prefixed to each tool call's note so the audit store carries
+  who decided. Identity is `ask.reply.auth`: `none` in development, `proxy` (the gateway's trusted header) or `oauth2`
+  (PyJWT against the issuer's keys), and a channel app's bearer with `decided_by`. The host gained `Platform.add_routes`
+  for an extension's own pages and streams. Pinned by `tests/vectors/ask-person-vectors.json` (72 cases), shared with the
+  Node twin, and 100 tests. **How to apply:** the engine waits and the pack delivers and collects - never make a tool wait
+  for a person; a new channel is a route in `ask.channels`, never code here; a reply path is always the link; the
+  agent-question app (step 3) is a separate application that receives the event and automates the click.
+  <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-054804 -->
 
 ## Conventions
 

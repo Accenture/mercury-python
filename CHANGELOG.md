@@ -83,6 +83,30 @@
    through the binding's own probe and compares the digests (GitHub's when `GITHUB_MCP_TOKEN` is set, in both modes), so
    a recipe that rots fails by name.
 
+5. **Ask a person, the main flow (RFC-0014 in mercury-composable, build plan step 1).**
+   `extensions/ask-person/ask_person.py` serves `person.ask`, the composable function a graph's hold path calls before
+   it suspends for a person: the message names the graph (`graph_id`, `description`, `node`), the transaction
+   (`correlation_id`, `turn`), the waiting `calls` as the loop returned them and the suspension's `ttl`; the function
+   issues a signed, stateless ticket (`v1.<payload>.<mac>`, the canonical payload and its HMAC-SHA256 under
+   `ask.ticket.key`, a previous key verifying after a rotation), builds the resume link and sends the whole message as
+   one event to every route in `ask.channels` - the agent-question app's intake, a chat poster, a mail sender, a topic
+   publisher - knowing nothing of what a route does with it; a channel that fails is logged by type and never fails the
+   hold. A third kind, `advice`, is a notification with no decision (a status update of a long run, an acknowledgement
+   after a response): no ticket, no link. The resume link opens the wait on the process's reply page, `GET
+   /ask/{ticket}`, read from the engine by the reference graph's re-advice and never resuming - link unfurlers click
+   links; `POST /ask/reply` with `{ticket, decisions}` - a person's browser, or a channel app under its bearer with
+   `decided_by` - verifies the ticket, maps the graph id to the engine's entry through the `ask.graphs` allowlist (never
+   to an address a message told it), prefixes who decided and when to each tool call's note, sends the resume (`{turn,
+   decisions}` with the correlation id) and returns the engine's outcome; an expired ticket is a 410 without a call to
+   the engine. Who may answer is `ask.reply.auth`: `none` in development, `proxy` (the gateway's trusted header, the
+   installation's SSO) or `oauth2` (an access token validated against the issuer's published keys; the new `ask` extra
+   adds PyJWT). The host gains `Platform.add_routes`, the hook an extension mounts its own pages and streams with, after
+   the host's paths and before the catch-all. Pinned by `tests/vectors/ask-person-vectors.json` (72 cases: the ticket
+   issued, verified, tampered, expired and rotated; the message validated and the event built; the re-advice and the
+   resume requests; the outcomes), shared byte for byte with the Node twin, and `tests/test_ask_person.py` (the function
+   on the bus with channels that take, refuse and miss the event; the page and the endpoint against a fake engine; the
+   three auth modes with a signed token; the hook). **Upgrade note:** none - `add_routes` is additive.
+
 ### Fixed
 
 1. **A direct `python extensions/mcp-binding/mcp_binding.py` now connects its servers.** The binding attached its boot

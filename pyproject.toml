@@ -58,6 +58,9 @@ mcp = ["mcp>=2,<3"]
 graph = ["neo4j>=6,<7"]
 # file.extract of the agent tools - PDF and Word documents to text; without it the tool does not register
 documents = ["pypdf>=6,<7", "python-docx>=1.1,<2"]
+# the OAuth 2.0 mode of the ask-a-person reply page (extensions/ask-person, ask.reply.auth: oauth2) - PyJWT
+# validates an access token against the issuer's published keys; the open and the proxy modes need no extra
+ask = ["PyJWT[crypto]>=2.9,<3"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
@@ -69,6 +72,7 @@ dev = [
     "neo4j>=6,<7",
     "pypdf>=6,<7",
     "python-docx>=1.1,<2",
+    "PyJWT[crypto]>=2.9,<3",
     # the store's compare-and-set is a Lua script; the [lua] extra runs it in the fake
     "fakeredis[lua]>=2.26",
 ]

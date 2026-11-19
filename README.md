@@ -231,6 +231,10 @@ transcript lives in the store the helper is configured with. The built-in agent 
 `extensions/agent-tools/` are the essential tools such a loop names in its catalog - files inside one
 workspace, the web inside an allowlist of sites, a clock - each a composable function whose sandbox is
 deployment configuration, never an argument of a call.
+The ask-a-person main flow in `extensions/ask-person/` carries such a loop's wait for a person to the
+installation's channels and brings the decision back through a resume link, knowing no channel and keeping
+no store; the agent-question app, a store-and-forward channel for an occasionally connected device, is a
+separate application on the same package.
 
 ## Development
 

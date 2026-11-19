@@ -36,7 +36,7 @@ import contextlib
 import re
 import secrets
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, NamedTuple
 
 from aiohttp import web
@@ -70,6 +70,8 @@ EVENT_API_SERVICE = "event.api.service"
 HTTP_REQUEST = "http.request"
 EDGE_PATH = "POST /api/event"
 TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
+# an extension's route mounter: it receives the host's application and adds its own routes
+RouteMounter = Callable[[web.Application], None]
 
 log = get_logger("mercury.server")
 
@@ -416,12 +418,20 @@ class EventApiServer:
                 with contextlib.suppress(ConnectionError):
                     await response.write(b": ping\n\n")
 
-    def create_app(self) -> web.Application:
+    def create_app(self, routes: Iterable[RouteMounter] = ()) -> web.Application:
+        """The Event API application: ``POST /api/event``, the actuator paths, then the routes
+        of the extensions given (``Platform.add_routes``) and, last, the catch-all that answers
+        the engines' error shape - so the host's paths always win and an extension's path wins
+        over the catch-all."""
         app = web.Application(client_max_size=16 * 1024 * 1024)
         app.router.add_post("/api/event", self.handle_event)
         # the engines' landing page + actuator endpoints (see actuator.py)
         for path in ("/", "/info", "/info/routes", "/env", "/health", "/livenessprobe"):
             app.router.add_get(path, self.actuator.handle)
+        # an extension's own routes - a reply page, a stream a browser holds - registered
+        # after the host's and before the catch-all
+        for mount in routes:
+            mount(app)
         # any other path or method answers the engines' error shape, not
         # aiohttp's default text page (exact routes above win - they are
         # registered first)
@@ -436,6 +446,7 @@ class Platform:
         self.registry = registry or default_registry
         self._startup: list[Callable[[], Awaitable[None]]] = []
         self._cleanup: list[Callable[[], Awaitable[None]]] = []
+        self._routes: list[RouteMounter] = []
 
     def on_startup(self, callback: Callable[[], Awaitable[None]]) -> None:
         """Run an async callback inside the server's event loop before the first request is
@@ -448,6 +459,14 @@ class Platform:
         """Run an async callback when the application shuts down, after the last request."""
         self._cleanup.append(callback)
 
+    def add_routes(self, mount: RouteMounter) -> None:
+        """Mount an extension's own HTTP routes on the host - a page a person opens, a stream a
+        browser holds - in the same process and port as ``/api/event``, under the same logging
+        and shutdown. ``mount`` receives the aiohttp application before the host listens and
+        adds its routes; the host's paths (``/api/event``, the actuator) stay the host's, and an
+        extension's path wins over the catch-all that answers the engines' error shape."""
+        self._routes.append(mount)
+
     def create_app(self) -> web.Application:
         """The Event API application with this platform's startup and cleanup callbacks
         attached, and the opt-in OpenTelemetry forwarder activated on its extension route;
@@ -456,7 +475,7 @@ class Platform:
         # the opt-in OpenTelemetry forwarder registers on the extension route
         # before the route list is announced; its HTTP client closes with the app
         exporter = otel.activate(config, self.registry)
-        app = EventApiServer(self.registry).create_app()
+        app = EventApiServer(self.registry).create_app(self._routes)
         for callback in self._startup:
             app.on_startup.append(_lifecycle(callback))
         for callback in self._cleanup:
