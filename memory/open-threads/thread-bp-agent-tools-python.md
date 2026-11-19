@@ -41,4 +41,4 @@
   plus its skill inventory `files.list`), the Node twin (step 3), the Playground graphs and the recipes (steps 4-5, in the
   engine repo). RFC-0012 is done and promoted (ADR-0035, mercury-composable #643).
   → serves: vision-mercury-python
-  <!-- id: bp-agent-tools-python | created: 2026-11-17 | last_used: 2026-11-18 | uses: 1 | tier: working | origin: 2026-11-17-094509 -->
+  <!-- id: bp-agent-tools-python | created: 2026-11-17 | last_used: 2026-11-18 | uses: 5 | tier: working | origin: 2026-11-17-094509 -->

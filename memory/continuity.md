@@ -22,13 +22,17 @@
   Python member of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function host + thin client,
   repurposed August 2026 (legacy language pack in tagged releases v1.11.39–v2.5.0).
 - **last_enabled:** 2026-08-22
-- **last_review:** 2026-11-13 | through 2026-11-13-030139.md (on command — 5 sessions since 2026-11-03-010131, not yet due;
-  `refresh-metadata` refreshed 3 footers, tier changes 2 (`conv-resources-next-to-the-application-file` and
-  `llm-helper-bedrock-iam` → archive-candidate); archived 1 faded fact `decision-consumer-fork-system-agents` (25 sessions;
-  step 6: the one window commit on its paths, `5fddcdc`, renamed the helper's path in `system/AGENTS.md` and relied on
-  nothing the fact states) + swept 1 completed thread `ot-consumer-surface` (25) → 2026-Q4; one stale statement corrected
-  ([[pack-catch-up-4-12-25]]: the Java number is 4.12.30); invariants not due (3 of 40); stalled none; contradictions none;
-  live facts 24 → 22. Smoke test not run.)
+- **last_review:** 2026-11-19 | through 2026-11-19-060911.md (cadence — 18 sessions since 2026-11-13-030139; `refresh-metadata`
+  refreshed 19 footers, tier changes 13; archived no fact - the two the count called faded are declaration gaps, re-affirmed
+  ([[otel-forwarder-python]]: the trace-lineage session 2026-11-14-115310 reasoned from the forwarder's kind rule;
+  [[conv-resources-next-to-the-application-file]]: the ask-person build 2026-11-19-054804 placed and loaded the extension's
+  `resources` next to its file); swept 5 completed threads (contradiction-transcript-store-stateless 22,
+  contradiction-vision-versioning-java-number 23, llm-helper-bedrock-iam 27, otel-forwarder-lockstep 35,
+  reverify-invariants-20261103 21) → 2026-Q4; invariants not due (21 of 40); stalled none (bp-publish-interop-gate 34 of 40);
+  contradictions none; live facts 30 → 25. Smoke test not run.)
+  Prior: 2026-11-13 | through 2026-11-13-030139.md (on command — 5 sessions since 2026-11-03-010131, not yet due; 3 footers
+  refreshed, 2 tier changes; archived 1 faded fact `decision-consumer-fork-system-agents` (25) + swept 1 thread
+  `ot-consumer-surface` (25) → 2026-Q4; one stale statement corrected; invariants not due (3 of 40); live facts 24 → 22)
   Prior: 2026-11-03 | through 2026-11-03-010131.md (cadence — archived 1 faded + 1 superseded fact, swept 5 threads;
   invariants DUE → [[reverify-invariants-20261103]]; one Contradiction raised)
   Prior: 2026-09-23 | through 2026-09-23-004552.md (cadence — archived 1 faded fact `decision-polyglot-reboot` + swept 3
@@ -46,7 +50,7 @@
 - Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.30
   (PyPI 2026-11-16; the catch-up to the engines' 4.12.30 with the agent loop's pack half), wheel from
   `src/mercury_composable`
-  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-11-03 | uses: 7 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-11-16 | uses: 8 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`), `ruff` >=0.9, and
   the helper's backends for its tests (`anthropic[bedrock]`, `redis`, `fakeredis[lua]` >=2.26);
@@ -57,7 +61,7 @@
   built-in agent tools (`extensions/agent-tools`): `graph` = `neo4j` >=6,<7 (the knowledge-graph tools over Bolt) and
   `documents` = `pypdf` >=6,<7 + `python-docx` >=1.1,<2 (`file.extract`), both 2026-11-17, and for the ask-a-person
   main flow (`extensions/ask-person`): `ask` = `PyJWT[crypto]` >=2.9,<3 (the reply page's `oauth2` mode), 2026-11-19
-  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-03 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-19 | uses: 8 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
 
@@ -106,7 +110,7 @@
   **Kind rule since 2026-09-22 (PR #36 MERGED, `cbf1f7f6`):** SERVER iff the record's `service` is `http.request` — an
   engine edge's round-trip record — and every function execution is INTERNAL; a record's `from` no longer decides the kind
   (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
-  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-10-02 | uses: 3 | tier: archive-candidate | origin: 2026-09-22-164128 -->
+  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-11-19 | uses: 4 | tier: active | origin: 2026-09-22-164128 -->
 
 - **The LLM helper is a dedicated function host on the Anthropic SDK: the engines stay LLM-free, the AI node is a bounded
   function, and one contract is proven by a vector file shared with the Node pack (Eric's rulings, 2026-10-01; PR #38, merge
@@ -148,7 +152,7 @@
   in the helper's store (`llm.transcript.store`: `memory` or `redis`), the loop holds `conversation` and `turn`, a stale or
   ended turn is a 409, the model is pinned at the first turn and no server-side fallback is sent; a second shared vector
   file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
-  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-03 | uses: 6 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-17 | uses: 7 | tier: archive-candidate | origin: 2026-10-02-001146 -->
 
 - **The MCP binding serves one composable route per allowlisted MCP tool, and the server cannot change a tool under the
   graph (RFC-0011 / ADR-0033 step 4; built 2026-11-14, Python first).** `extensions/mcp-binding/mcp_binding.py` on the
@@ -187,7 +191,7 @@
   Node twin. **How to apply:** a new tool is a `bind` line, a few-line `@preload` function, a catalog row on the graph and an
   Event-over-HTTP entry; a schema change is a digest re-reviewed next to the function; a new server is a server-file entry;
   never a route in a YAML file and never engine code.
-  <!-- id: mcp-binding-function-per-tool | created: 2026-11-16 | last_used: 2026-11-16 | uses: 1 | tier: working | origin: 2026-11-16-043838 | supersedes: mcp-binding-route-per-tool -->
+  <!-- id: mcp-binding-function-per-tool | created: 2026-11-16 | last_used: 2026-11-19 | uses: 5 | tier: active | origin: 2026-11-16-043838 | supersedes: mcp-binding-route-per-tool -->
 
 - **A traced call into the pack leaves the records a Java or Rust callee leaves, so a span lineage is continuous from an
   engine into the pack (2026-11-14; Eric's criterion: for OpenTelemetry to be certified, the span lineage ought to be
@@ -208,7 +212,7 @@
   record, never whether one exists - every traced execution leaves exactly one; before changing a host or client path, ask
   which side records it in the Java engine and mirror that side; a lineage check parses every record of the trace from every
   process and verifies each parent is a span some record owns.
-  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: working | origin: 2026-11-14-115310 -->
+  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: archive-candidate | origin: 2026-11-14-115310 -->
 
 - **The transcript audit store: every model turn recorded by a composable function behind a local event, off the
   turn's path, into PostgreSQL beside the working store (RFC-0012 in mercury-composable, Eric's rulings of 2026-11-17;
@@ -238,7 +242,7 @@
   `docs/test-reports/transcript-audit-live-drive.md`): every turn recorded off the turn's path, a stopped database repaired by
   the sweep; #62 added a server-side `statement_timeout` from `.timeout.ms`, because a paused database stalls a pooled
   statement where a stopped one fails it.
-  <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 1 | tier: working | origin: 2026-11-17-080036 -->
+  <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 5 | tier: active | origin: 2026-11-17-080036 -->
 
 - **Ask a person, the main flow: the pack carries an agent loop's wait to a person and brings the decision back, knowing
   no channel and keeping no store (RFC-0014 in mercury-composable, build plan step 1; Eric's concept and rulings R1-R8 of
@@ -270,11 +274,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-02 | uses: 6 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-19 | uses: 10 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-02 | uses: 5 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-17 | uses: 6 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 - **Each example app lives in a folder of its own, with a README and its own `resources/` (Eric, 2026-10-01; PR #38).**
   `examples/demo-app/` (the minimal polyglot app: `hello.python`, `hello.declarative`, `hello.chain`, `hello.sync.chain`,
   `hello.tokens`, the private `demo.suffix.helper` and `demo.health`) and `examples/llm-helper/`; run one as
@@ -284,7 +288,7 @@
   **2026-11-02 (Eric):** the LLM helper graduates from an example to an extension, `extensions/llm-helper/` (same folder
   shape: a README and its own `resources/`), so `examples/` holds the demo app; merged as #46 (`13cf394`, 2026-11-03),
   and the Node pack followed the same day (mercury-nodejs #114, `62958b5`).
-  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-03 | uses: 4 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-17 | uses: 6 | tier: active | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
   ran (`python app.py`) - and the working directory is never searched (Eric's rule, 2026-10-14; PR #45 merge `a3c5a26`).** The engines' classpath
@@ -296,7 +300,7 @@
   `python llm_helper.py` from the repository root started unconfigured during the Bedrock drive ([[llm-helper-app]]); pinned by
   subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
-  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-10-14 | uses: 1 | tier: archive-candidate | origin: 2026-10-14-015420 -->
+  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-19 | uses: 2 | tier: active | origin: 2026-10-14-015420 -->
 
 - **The legacy language pack's releases v1.11.39 to v2.5.0 live here as tags and GitHub releases; their branches are gone
   (Eric, 2026-11-13).** Before the August 2026 repurposing this repository held the legacy Mercury language pack for
@@ -308,7 +312,7 @@
   `gh-pages`. Twins: mercury-composable `historical-releases-tags-and-pages`, mercury
   `historical-releases-tags-and-pages-rust`. **How to apply:** find a legacy release by its tag or release page, never a
   branch; a release published after the fact passes `--latest=false`.
-  <!-- id: historical-releases-tags-and-pages-python | created: 2026-11-13 | last_used: 2026-11-13 | uses: 1 | tier: working | origin: 2026-11-13-025101 -->
+  <!-- id: historical-releases-tags-and-pages-python | created: 2026-11-13 | last_used: 2026-11-13 | uses: 1 | tier: archive-candidate | origin: 2026-11-13-025101 -->
 
 ## Open Threads
 

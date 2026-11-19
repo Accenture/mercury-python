@@ -17,3 +17,8 @@
 - thread-primitive-event-bus — Primitive in-process event bus — single dispatch pipeline (FIFO + `instances` — faded — 2026-Q4.md
 - decision-consumer-fork-system-agents — Dedicated consumer surface (PR #23, merged `a12c56b6`, 2026-09-01): root `AGENTS.md`'s — faded — 2026-Q4.md
 - ot-consumer-surface — Dedicated consumer AI surface: `system/AGENTS.md` (version-matched guide index, — completed thread swept (older than archive_window) — 2026-Q4.md
+- contradiction-transcript-store-stateless — Contradiction: the LLM helper's transcript store against `stateless-functions-contract` -… — faded — 2026-Q4.md
+- contradiction-vision-versioning-java-number — Contradiction: the Vision's versioning clause against the packs' Java-number convention -… — faded — 2026-Q4.md
+- llm-helper-bedrock-iam — AWS Bedrock through IAM as the LLM helper's second backend. CLOSED 2026-10-14. Built in PR… — faded — 2026-Q4.md
+- otel-forwarder-lockstep — OpenTelemetry forwarder lock-step and the v4.12.15 milestone — CLOSED 2026-09-23: v4.12.15… — faded — 2026-Q4.md
+- reverify-invariants-20261103 — Re-verify invariants - the first, COMPLETE 2026-11-03 (Eric: "Confirm all"). `scope-wrappe… — faded — 2026-Q4.md

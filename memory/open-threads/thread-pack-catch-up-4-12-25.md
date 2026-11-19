@@ -6,4 +6,4 @@
   and a registry publication are two acts; a 404 minutes after "published" means the publish did not run - verify each.
   Origin: 2026-10-14-015420; the record in 2026-11-16-090518.md.
   → serves: vision-mercury-python
-  <!-- id: pack-catch-up-4-12-25 | created: 2026-10-14 | last_used: 2026-11-13 | uses: 6 | tier: working | origin: 2026-10-14-015420 -->
+  <!-- id: pack-catch-up-4-12-25 | created: 2026-10-14 | last_used: 2026-11-16 | uses: 11 | tier: archive-candidate | origin: 2026-10-14-015420 -->
