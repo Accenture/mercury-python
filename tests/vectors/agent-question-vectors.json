@@ -1,7 +1,7 @@
 {
   "contract": "agent-question",
-  "version": 1,
-  "description": "The agent-question app's shared vectors (RFC-0014, build plan step 3): the pure half of extensions/agent-question, run by mercury-python and mercury-nodejs against the same file. row_cases pin the row a message event becomes (every field a replay carries; the upsert key of a wait; an advice has none) or the exact 400 that refuses the event. outcome_cases pin the state a decision's outcome leaves: the engine accepted it (answered), nothing was waiting (expired), a refusal or an endpoint that did not answer (open). click_cases pin the request the automated click sends - the link's own base plus /ask/reply, the ticket, the decisions and the person as decided_by. transition_cases pin the reference inbox on a scripted sequence - takes, a decision, a seen, an expiry sweep, two replays - as the rows each step leaves and the final rows, ids and change sequence included: a wait upserts on (graph_id, correlation_id, turn), an advice appends, every write bumps the sequence a replay reads from. No HTTP is exchanged by these cases; the routes are tested by each pack in-process.",
+  "version": 2,
+  "description": "The agent-question app's shared vectors (RFC-0014, build plan step 3): the pure half of extensions/agent-question, run by mercury-python and mercury-nodejs against the same file. row_cases pin the row a message event becomes (every field a replay carries; the upsert key of a wait; an advice has none) or the exact 400 that refuses the event. outcome_cases pin the state a decision's outcome leaves: the engine accepted it (answered), nothing was waiting (expired), a refusal or an endpoint that did not answer (open). click_cases pin the request the automated click sends - the link's own base plus /ask/reply, the ticket, the decisions and the person as decided_by. transition_cases pin the reference inbox on a scripted sequence - takes, a decision, a seen, an expiry sweep, two replays - as the rows each step leaves and the final rows, ids and change sequence included: a wait upserts on (graph_id, correlation_id, turn), an advice appends, every write bumps the sequence a replay reads from. Version 2 (the live drive of step 5) adds the rule of two devices on one card: a decision's write applies when the row is still open or when the engine accepted the decision (answered), so an acceptance always wins the row and a nothing-waiting that lands after one never overwrites it - the losing device gets the row as it stands. No HTTP is exchanged by these cases; the routes are tested by each pack in-process.",
   "row_cases": [
     {
       "name": "an approval",
@@ -1040,6 +1040,158 @@
           "updated_at": "2026-11-19T09:41:00.000Z",
           "answered_by": null,
           "outcome": null
+        }
+      ]
+    },
+    {
+      "name": "two devices on one card - the first accepted decision stands",
+      "steps": [
+        {
+          "op": "take",
+          "event": {
+            "kind": "approval",
+            "graph_id": "order-assistant",
+            "description": "Customer-support assistant: a refund waits for a supervisor",
+            "correlation_id": "order-1004-case",
+            "turn": 2,
+            "node": "assist",
+            "summary": "A refund waits for the supervisor's decision",
+            "calls": [
+              {
+                "id": "toolu_01A",
+                "name": "issue_refund",
+                "route": "demo.refund.issue",
+                "wait": true,
+                "input": {
+                  "order_id": "ORD-1004",
+                  "amount": 240.0,
+                  "reason": "Shipment lost in transit"
+                }
+              }
+            ],
+            "ttl": "2d",
+            "requested_at": "2026-11-19T10:00:00.000Z",
+            "expires_at": "2026-11-21T10:00:00.000Z",
+            "ticket": "v1.two.mac",
+            "link": "https://ask.example.test/ask/v1.two.mac"
+          },
+          "now": "2026-11-19T10:00:00.200Z"
+        },
+        {
+          "op": "decided",
+          "id": 1,
+          "decisions": [
+            {
+              "id": "toolu_01A",
+              "approved": true,
+              "note": "from device-2"
+            }
+          ],
+          "who": "device-2",
+          "status": 410,
+          "body": {
+            "type": "nothing-waiting",
+            "run": "fresh"
+          },
+          "now": "2026-11-19T10:00:01.000Z",
+          "note": "two devices clicked at once; the engine took the other one's decision, so this one got nothing-waiting, and it lands first: the open row turns expired for a moment"
+        },
+        {
+          "op": "decided",
+          "id": 1,
+          "decisions": [
+            {
+              "id": "toolu_01A",
+              "approved": true,
+              "note": "from device-1"
+            }
+          ],
+          "who": "device-1",
+          "status": 200,
+          "body": {
+            "type": "answer",
+            "turn": 3
+          },
+          "now": "2026-11-19T10:00:02.000Z",
+          "note": "the accepted decision always wins the row"
+        },
+        {
+          "op": "decided",
+          "id": 1,
+          "decisions": [
+            {
+              "id": "toolu_01A",
+              "approved": false
+            }
+          ],
+          "who": "device-3",
+          "status": 410,
+          "body": {
+            "type": "nothing-waiting",
+            "run": "fresh"
+          },
+          "now": "2026-11-19T10:00:03.000Z",
+          "note": "a nothing-waiting after the acceptance changes nothing: the row stands as device-1 left it and the sequence does not move"
+        },
+        {
+          "op": "since",
+          "seq": 0,
+          "limit": 10
+        }
+      ],
+      "results": [
+        {
+          "id": 1,
+          "seq": 1,
+          "state": "open",
+          "ticket": "v1.two.mac"
+        },
+        {
+          "id": 1,
+          "seq": 2,
+          "state": "expired",
+          "answered_by": "device-2"
+        },
+        {
+          "id": 1,
+          "seq": 3,
+          "state": "answered",
+          "answered_by": "device-1"
+        },
+        {
+          "id": 1,
+          "seq": 3,
+          "state": "answered",
+          "answered_by": "device-1"
+        },
+        {
+          "ids": [
+            1
+          ],
+          "seqs": [
+            3
+          ]
+        }
+      ],
+      "final": [
+        {
+          "id": 1,
+          "seq": 3,
+          "kind": "approval",
+          "state": "answered",
+          "ticket": "v1.two.mac",
+          "turn": 2,
+          "requested_at": "2026-11-19T10:00:00.000Z",
+          "expires_at": "2026-11-21T10:00:00.000Z",
+          "updated_at": "2026-11-19T10:00:02.000Z",
+          "answered_by": "device-1",
+          "outcome": {
+            "status": 200,
+            "body": {
+              "type": "answer",
+              "turn": 3
+            }
+          }
         }
       ]
     }

@@ -21,7 +21,9 @@ application is one of those routes. It is a standalone application on the packag
   (`expired`); a refused decision or an endpoint that did not answer leaves it `open` with the outcome shown. An
   advice is `open` until the person marks it `seen`. Open waits past their expiry are marked `expired` by a sweeper
   and before every replay. The engine stays the authority: a second device on the same card gets `nothing waiting`,
-  and the row records the first. Rows are never deleted here; `schema/purge.sql` is the installation's.
+  and the row records the first: an acceptance always wins the row, and a `nothing waiting` that lands after one
+  never overwrites it (the live drive of 2026-11-19). Rows are never deleted here; `schema/purge.sql` is the
+  installation's.
 
 The Node.js twin (mercury-nodejs `extensions/agent-question`) serves the same route, the same page and the same
 schema, pinned by the same vector file.

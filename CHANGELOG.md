@@ -138,7 +138,17 @@
 
 ### Fixed
 
-1. **A direct `python extensions/mcp-binding/mcp_binding.py` now connects its servers.** The binding attached its boot
+1. **The agent-question app keeps the first accepted decision when two devices decide one card at the same moment**
+   (RFC-0014 step 5, the live drive of 2026-11-19). Both clicks pass the open check and reach the engine, which resumes at
+   most once; the device that lost got `nothing waiting`, and the row took whichever outcome landed last - so a late 410
+   could overwrite the accepted decision and its operator. A decision's write now applies when the row is still open or
+   when the engine accepted the decision (`state = 'answered'`), in the memory inbox and in `SQL_DECIDED` alike; a
+   refused write answers the losing device with the row as it stands, so it sees who decided, and nothing is broadcast
+   for it. The shared vectors are version 2 with the two-devices transition case (`tests/vectors/agent-question-vectors.json`,
+   31 cases); a race test with a scripted reply endpoint pins both orderings. **Upgrade note:** none - the schema is
+   unchanged.
+
+2. **A direct `python extensions/mcp-binding/mcp_binding.py` now connects its servers.** The binding attached its boot
    and shutdown hooks to the platform only when loaded by `mercury-serve`; run directly, the Event API started with no
    server connected and every bound route answered 503. Both entry points attach the hooks now, so a bad server file
    stops the direct run by name as it stops the served one.

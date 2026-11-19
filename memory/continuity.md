@@ -275,10 +275,16 @@
   `POST /questions/{id}/decide` to the link's own base under the app's bearer with `decided_by`, and `seen` for an
   advice; states open, answered, expired, seen; a sweeper expires waits past their expiry. Identity `question.auth`:
   `none`, `proxy`, `oauth2`. Pinned by `tests/vectors/agent-question-vectors.json` (30 cases) and 48 tests; the Node
-  twin follows. **How to apply:** the app is one channel among equals - a chat, mail or a topic adapter takes the same
+  twin follows. **Driven live 2026-11-19 (RFC-0014 step 5, mercury-composable `docs/test-reports/ask-a-person-live-drive.md`):**
+  the chain held on every scenario; one defect fixed here - two devices deciding one card at the same moment both reach
+  the engine (it resumes at most once), and the row took whichever outcome landed last, so a late `nothing waiting` could
+  overwrite the accepted decision: a decision's write now applies when the row is still open or when the engine accepted
+  it (`answered` always wins), the losing device gets the row as it stands, vectors version 2 (31 cases). **How to apply:**
+  the app is one channel among equals - a chat, mail or a topic adapter takes the same
   event and keeps its own buffer; the app never talks to the engine, only to the reply endpoint the link names; a row is
   never deleted by the app; a new card state is a change to `state_after` and the schema's check constraint in both
-  packs.
+  packs; a wait decided elsewhere stays open on a card until a device tries it (410 → expired) or it expires - the
+  acknowledgement advice beside it tells the person.
   <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
 
 ## Conventions
