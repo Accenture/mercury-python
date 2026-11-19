@@ -1,0 +1,1683 @@
+{
+  "contract": "ask-person",
+  "version": 1,
+  "description": "The ask-a-person main flow's shared vectors (RFC-0014, build plan step 1): the pure half of extensions/ask-person, run by mercury-python and mercury-nodejs against the same file. ticket_cases pin the ticket a payload and a key produce (v1.<payload>.<mac>: the canonical JSON of the payload - keys sorted, no spaces, Unicode kept - and its HMAC-SHA256, both base64url without padding). verify_cases pin how a ticket is read with a list of keys (the current key first, then the previous one) at a given time: the payload, or the exact status and message that refuse it (400 malformed or another version, 403 no key signs it, 410 expired). message_cases pin the message a hold node sends - validated in a fixed order - and the event the channels receive, with requested_at given so the ticket, the link and expires_at are deterministic; or the exact 400 that refuses it. readvice_cases and reply_cases pin the requests the reply page and endpoint send to the engine's entry (the allowlist by graph id, the correlation id header, the turn, the decisions with who decided and when prefixed to each tool call's note; a question's answer unchanged), or the exact refusal. outcome_cases pin what the invoker gets back from the engine's status and body. No HTTP is exchanged by these cases; the transports are tested by each pack against a fake engine.",
+  "ticket_cases": [
+    {
+      "name": "an approval's ticket",
+      "key": "test-key-current",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI"
+    },
+    {
+      "name": "a question's ticket",
+      "key": "test-key-current",
+      "payload": {
+        "g": "plan-assistant",
+        "c": "release-42",
+        "t": 4,
+        "k": "question",
+        "e": 1795252324
+      },
+      "ticket": "v1.eyJjIjoicmVsZWFzZS00MiIsImUiOjE3OTUyNTIzMjQsImciOiJwbGFuLWFzc2lzdGFudCIsImsiOiJxdWVzdGlvbiIsInQiOjR9.KdxDFLDufRA2qzMmGnIOHLR7E-OzVZOwV3QN_xIUClI"
+    },
+    {
+      "name": "the previous key signs the same payload differently",
+      "key": "test-key-previous",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.1dBqSpPEoYLAr0-Z0olG0Cq06yibD_1_F8QaeQ3DPqc"
+    },
+    {
+      "name": "Unicode in the correlation id is kept, not escaped",
+      "key": "test-key-current",
+      "payload": {
+        "g": "order-assistant",
+        "c": "Fall-Nr. 1002 – Rückerstattung",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "ticket": "v1.eyJjIjoiRmFsbC1Oci4gMTAwMiDigJMgUsO8Y2tlcnN0YXR0dW5nIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.8MSkDCfvRpvCkX7a6ZnFdfVdf9PRRmVIfmyY1CfxOKM"
+    }
+  ],
+  "verify_cases": [
+    {
+      "name": "a ticket signed with the current key",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+      "payload": {
+        "c": "order-1002-case",
+        "e": 1795252324,
+        "g": "order-assistant",
+        "k": "approval",
+        "t": 2
+      }
+    },
+    {
+      "name": "a ticket signed with the previous key still verifies after a rotation",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.1dBqSpPEoYLAr0-Z0olG0Cq06yibD_1_F8QaeQ3DPqc",
+      "payload": {
+        "c": "order-1002-case",
+        "e": 1795252324,
+        "g": "order-assistant",
+        "k": "approval",
+        "t": 2
+      }
+    },
+    {
+      "name": "a ticket signed with a key this process never had",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.H307uclErmAkZ8CEodNbncz5HHYp2dNUZM9DFHcJ_w8",
+      "status": 403,
+      "message": "Ticket signature is invalid"
+    },
+    {
+      "name": "a tampered payload fails the signature",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjAB.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+      "status": 403,
+      "message": "Ticket signature is invalid"
+    },
+    {
+      "name": "a tampered signature",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqAB",
+      "status": 403,
+      "message": "Ticket signature is invalid"
+    },
+    {
+      "name": "an expired ticket",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795348800,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+      "status": 410,
+      "message": "Ticket expired"
+    },
+    {
+      "name": "a ticket that expires this very second is still open",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795252324,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+      "payload": {
+        "c": "order-1002-case",
+        "e": 1795252324,
+        "g": "order-assistant",
+        "k": "approval",
+        "t": 2
+      }
+    },
+    {
+      "name": "two parts only",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9",
+      "status": 400,
+      "message": "Ticket is malformed"
+    },
+    {
+      "name": "an empty part",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1..h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+      "status": 400,
+      "message": "Ticket is malformed"
+    },
+    {
+      "name": "another version",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v2.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+      "status": 400,
+      "message": "Ticket version v2 is not supported"
+    },
+    {
+      "name": "not base64url",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.%%%.###",
+      "status": 400,
+      "message": "Ticket is malformed"
+    },
+    {
+      "name": "a signed payload that is not a wait's",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoieSIsImUiOjE3OTUyNTIzMjQsImciOiJ4IiwiayI6ImFkdmljZSIsInQiOjF9.pZ0IwrftyastYt3e0YXr9doheTEgiso0xEJolAE_QRM",
+      "status": 400,
+      "message": "Ticket is malformed"
+    },
+    {
+      "name": "Unicode payload round trip",
+      "keys": [
+        "test-key-current",
+        "test-key-previous"
+      ],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoiRmFsbC1Oci4gMTAwMiDigJMgUsO8Y2tlcnN0YXR0dW5nIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.8MSkDCfvRpvCkX7a6ZnFdfVdf9PRRmVIfmyY1CfxOKM",
+      "payload": {
+        "c": "Fall-Nr. 1002 – Rückerstattung",
+        "e": 1795252324,
+        "g": "order-assistant",
+        "k": "approval",
+        "t": 2
+      }
+    },
+    {
+      "name": "no keys configured",
+      "keys": [],
+      "now": 1795089600,
+      "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+      "status": 403,
+      "message": "Ticket signature is invalid"
+    }
+  ],
+  "message_cases": [
+    {
+      "name": "an approval",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "event": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z",
+        "expires_at": "2026-11-21T09:12:04.118Z",
+        "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+        "link": "https://ask.example.test/ask/v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI"
+      }
+    },
+    {
+      "name": "a question (ttl as whole seconds)",
+      "message": {
+        "kind": "question",
+        "graph_id": "plan-assistant",
+        "description": "Planning assistant: the owner picks a plan",
+        "correlation_id": "release-42",
+        "turn": 4,
+        "summary": "Which plan should the release follow? (A, B, C)",
+        "calls": [
+          {
+            "id": "toolu_02B",
+            "name": "ask_owner",
+            "ask": true,
+            "wait": true,
+            "input": {
+              "question": "Which plan should the release follow?",
+              "options": [
+                "A",
+                "B",
+                "C"
+              ]
+            }
+          }
+        ],
+        "ttl": 3600,
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "event": {
+        "kind": "question",
+        "graph_id": "plan-assistant",
+        "description": "Planning assistant: the owner picks a plan",
+        "correlation_id": "release-42",
+        "turn": 4,
+        "summary": "Which plan should the release follow? (A, B, C)",
+        "calls": [
+          {
+            "id": "toolu_02B",
+            "name": "ask_owner",
+            "ask": true,
+            "wait": true,
+            "input": {
+              "question": "Which plan should the release follow?",
+              "options": [
+                "A",
+                "B",
+                "C"
+              ]
+            }
+          }
+        ],
+        "ttl": 3600,
+        "requested_at": "2026-11-19T09:12:04.118Z",
+        "expires_at": "2026-11-19T10:12:04.118Z",
+        "ticket": "v1.eyJjIjoicmVsZWFzZS00MiIsImUiOjE3OTUwODMxMjQsImciOiJwbGFuLWFzc2lzdGFudCIsImsiOiJxdWVzdGlvbiIsInQiOjR9.yZC3ozsEy46UIquX4_vu7VWETFPpqF-GKlUFXh8AkG0",
+        "link": "https://ask.example.test/ask/v1.eyJjIjoicmVsZWFzZS00MiIsImUiOjE3OTUwODMxMjQsImciOiJwbGFuLWFzc2lzdGFudCIsImsiOiJxdWVzdGlvbiIsInQiOjR9.yZC3ozsEy46UIquX4_vu7VWETFPpqF-GKlUFXh8AkG0"
+      }
+    },
+    {
+      "name": "an advice (no ticket, no link)",
+      "message": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 3,
+        "node": "acknowledge",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": "The next question, if any, is expected within two minutes.",
+        "requested_at": "2026-11-19T09:40:12.004Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "event": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 3,
+        "node": "acknowledge",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": "The next question, if any, is expected within two minutes.",
+        "requested_at": "2026-11-19T09:40:12.004Z"
+      }
+    },
+    {
+      "name": "an advice without a turn",
+      "message": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": "The next question, if any, is expected within two minutes.",
+        "requested_at": "2026-11-19T09:40:12.004Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "event": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": "The next question, if any, is expected within two minutes.",
+        "requested_at": "2026-11-19T09:40:12.004Z"
+      }
+    },
+    {
+      "name": "a reply url with a trailing slash",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test/",
+      "event": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z",
+        "expires_at": "2026-11-21T09:12:04.118Z",
+        "ticket": "v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI",
+        "link": "https://ask.example.test/ask/v1.eyJjIjoib3JkZXItMTAwMi1jYXNlIiwiZSI6MTc5NTI1MjMyNCwiZyI6Im9yZGVyLWFzc2lzdGFudCIsImsiOiJhcHByb3ZhbCIsInQiOjJ9.h-dFg4w2pMRjCIhuvs0Brrvl8ZECVTk0Tb5zlwLZqyI"
+      }
+    },
+    {
+      "name": "not a map",
+      "message": [
+        "kind"
+      ],
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "person.ask takes a map"
+    },
+    {
+      "name": "kind missing",
+      "message": {
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "kind must be one of approval, question, advice"
+    },
+    {
+      "name": "kind unknown",
+      "message": {
+        "kind": "notice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "kind must be one of approval, question, advice"
+    },
+    {
+      "name": "graph_id missing",
+      "message": {
+        "kind": "approval",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "graph_id is required"
+    },
+    {
+      "name": "graph_id blank",
+      "message": {
+        "kind": "approval",
+        "graph_id": "  ",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "graph_id is required"
+    },
+    {
+      "name": "description not text",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": 7,
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "description must be text"
+    },
+    {
+      "name": "correlation_id missing",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "correlation_id is required"
+    },
+    {
+      "name": "summary missing",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "summary is required"
+    },
+    {
+      "name": "node not text",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": [
+          "assist"
+        ],
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "node must be text"
+    },
+    {
+      "name": "requested_at not a time",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "yesterday"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "requested_at must be an ISO-8601 time"
+    },
+    {
+      "name": "turn missing for an approval",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "turn is required for an approval or a question"
+    },
+    {
+      "name": "turn negative",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": -1,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "turn must be a whole number >= 0"
+    },
+    {
+      "name": "turn a boolean",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": true,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "turn must be a whole number >= 0"
+    },
+    {
+      "name": "calls empty",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "calls must be a non-empty list of the waiting calls, each with an id"
+    },
+    {
+      "name": "a call without an id",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "name": "issue_refund"
+          }
+        ],
+        "ttl": "2d",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "calls must be a non-empty list of the waiting calls, each with an id"
+    },
+    {
+      "name": "ttl missing",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "ttl is required for an approval or a question"
+    },
+    {
+      "name": "ttl not a duration",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": "soon",
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "ttl must be a duration such as 30m, 12h or 2d (seconds, s, m, h, d) > 0"
+    },
+    {
+      "name": "ttl zero",
+      "message": {
+        "kind": "approval",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 2,
+        "node": "assist",
+        "summary": "issue_refund for ORD-1002, 174.00 USD: 'Shipment lost in transit'",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ],
+        "ttl": 0,
+        "requested_at": "2026-11-19T09:12:04.118Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "ttl must be a duration such as 30m, 12h or 2d (seconds, s, m, h, d) > 0"
+    },
+    {
+      "name": "an advice with calls",
+      "message": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 3,
+        "node": "acknowledge",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": "The next question, if any, is expected within two minutes.",
+        "requested_at": "2026-11-19T09:40:12.004Z",
+        "calls": [
+          {
+            "id": "toolu_01A",
+            "name": "issue_refund",
+            "route": "demo.refund.issue",
+            "wait": true,
+            "input": {
+              "order_id": "ORD-1002",
+              "amount": 174.0,
+              "reason": "Shipment lost in transit"
+            }
+          }
+        ]
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "an advice carries no calls and no ttl"
+    },
+    {
+      "name": "an advice with a ttl",
+      "message": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 3,
+        "node": "acknowledge",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": "The next question, if any, is expected within two minutes.",
+        "requested_at": "2026-11-19T09:40:12.004Z",
+        "ttl": "1d"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "an advice carries no calls and no ttl"
+    },
+    {
+      "name": "an advice with a negative turn",
+      "message": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": -2,
+        "node": "acknowledge",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": "The next question, if any, is expected within two minutes.",
+        "requested_at": "2026-11-19T09:40:12.004Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "turn must be a whole number >= 0"
+    },
+    {
+      "name": "details not text on an advice",
+      "message": {
+        "kind": "advice",
+        "graph_id": "order-assistant",
+        "description": "Customer-support assistant: a refund waits for a supervisor",
+        "correlation_id": "order-1002-case",
+        "turn": 3,
+        "node": "acknowledge",
+        "summary": "Your decision was received; the assistant is issuing the refund",
+        "details": {
+          "text": "x"
+        },
+        "requested_at": "2026-11-19T09:40:12.004Z"
+      },
+      "key": "test-key-current",
+      "reply_url": "https://ask.example.test",
+      "status": 400,
+      "error": "details must be text"
+    }
+  ],
+  "readvice_cases": [
+    {
+      "name": "the re-advice of an approval",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "request": {
+        "url": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "headers": {
+          "x-correlation-id": "order-1002-case"
+        },
+        "body": {
+          "turn": 2
+        }
+      }
+    },
+    {
+      "name": "a graph that is not in the allowlist",
+      "payload": {
+        "g": "other-graph",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 404,
+      "error": "graph other-graph is not configured for replies"
+    }
+  ],
+  "reply_cases": [
+    {
+      "name": "an approval with a note",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": true,
+          "note": "Carrier confirmed the loss"
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "request": {
+        "url": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "headers": {
+          "x-correlation-id": "order-1002-case"
+        },
+        "body": {
+          "turn": 2,
+          "decisions": [
+            {
+              "id": "toolu_01A",
+              "approved": true,
+              "note": "[operator-17 at 2026-11-19T10:00:00.000Z] Carrier confirmed the loss"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a refusal without a note",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": false
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "request": {
+        "url": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "headers": {
+          "x-correlation-id": "order-1002-case"
+        },
+        "body": {
+          "turn": 2,
+          "decisions": [
+            {
+              "id": "toolu_01A",
+              "approved": false,
+              "note": "[operator-17 at 2026-11-19T10:00:00.000Z]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a refusal with an empty note",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": false,
+          "note": ""
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "request": {
+        "url": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "headers": {
+          "x-correlation-id": "order-1002-case"
+        },
+        "body": {
+          "turn": 2,
+          "decisions": [
+            {
+              "id": "toolu_01A",
+              "approved": false,
+              "note": "[operator-17 at 2026-11-19T10:00:00.000Z]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a question's answer travels unchanged",
+      "payload": {
+        "g": "plan-assistant",
+        "c": "release-42",
+        "t": 4,
+        "k": "question",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_02B",
+          "answer": "B"
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "request": {
+        "url": "http://127.0.0.1:8085/api/graph/plan-assistant",
+        "headers": {
+          "x-correlation-id": "release-42"
+        },
+        "body": {
+          "turn": 4,
+          "decisions": [
+            {
+              "id": "toolu_02B",
+              "answer": "B"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a question's answer may be any JSON value",
+      "payload": {
+        "g": "plan-assistant",
+        "c": "release-42",
+        "t": 4,
+        "k": "question",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_02B",
+          "answer": {
+            "plan": "B",
+            "why": "cheaper"
+          }
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "request": {
+        "url": "http://127.0.0.1:8085/api/graph/plan-assistant",
+        "headers": {
+          "x-correlation-id": "release-42"
+        },
+        "body": {
+          "turn": 4,
+          "decisions": [
+            {
+              "id": "toolu_02B",
+              "answer": {
+                "plan": "B",
+                "why": "cheaper"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a turn with a tool call and a question",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": true
+        },
+        {
+          "id": "toolu_02B",
+          "answer": "A"
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "request": {
+        "url": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "headers": {
+          "x-correlation-id": "order-1002-case"
+        },
+        "body": {
+          "turn": 2,
+          "decisions": [
+            {
+              "id": "toolu_01A",
+              "approved": true,
+              "note": "[operator-17 at 2026-11-19T10:00:00.000Z]"
+            },
+            {
+              "id": "toolu_02B",
+              "answer": "A"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "decisions empty",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "decisions must be a non-empty list, one per waiting call"
+    },
+    {
+      "name": "decisions not a list",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": {
+        "id": "toolu_01A",
+        "approved": true
+      },
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "decisions must be a non-empty list, one per waiting call"
+    },
+    {
+      "name": "a decision without an id",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "approved": true
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "each decision needs the id of its call"
+    },
+    {
+      "name": "a decision with approved and answer",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": true,
+          "answer": "x"
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "each decision carries approved (with an optional note) or answer, not both"
+    },
+    {
+      "name": "a decision with neither",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "note": "x"
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "each decision carries approved (with an optional note) or answer"
+    },
+    {
+      "name": "approved not a boolean",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": "yes"
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "approved must be true or false"
+    },
+    {
+      "name": "note not text",
+      "payload": {
+        "g": "order-assistant",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": true,
+          "note": 5
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "note must be text"
+    },
+    {
+      "name": "an answer with a note",
+      "payload": {
+        "g": "plan-assistant",
+        "c": "release-42",
+        "t": 4,
+        "k": "question",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_02B",
+          "answer": "B",
+          "note": "x"
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 400,
+      "error": "a question's decision carries an answer and no note"
+    },
+    {
+      "name": "a graph that is not in the allowlist",
+      "payload": {
+        "g": "other-graph",
+        "c": "order-1002-case",
+        "t": 2,
+        "k": "approval",
+        "e": 1795252324
+      },
+      "decisions": [
+        {
+          "id": "toolu_01A",
+          "approved": true
+        }
+      ],
+      "who": "operator-17",
+      "at": "2026-11-19T10:00:00.000Z",
+      "graphs": {
+        "order-assistant": "http://127.0.0.1:8085/api/graph/order-assistant",
+        "plan-assistant": "http://127.0.0.1:8085/api/graph/plan-assistant"
+      },
+      "status": 404,
+      "error": "graph other-graph is not configured for replies"
+    }
+  ],
+  "outcome_cases": [
+    {
+      "name": "the graph answered",
+      "engine": {
+        "status": 200,
+        "body": "{\"type\": \"answer\", \"turn\": 3, \"run\": \"resume\", \"message\": \"Your refund has been issued.\"}",
+        "error": null
+      },
+      "status": 200,
+      "body": {
+        "type": "answer",
+        "turn": 3,
+        "run": "resume",
+        "message": "Your refund has been issued."
+      }
+    },
+    {
+      "name": "the model asked again",
+      "engine": {
+        "status": 200,
+        "body": "{\"type\": \"approval\", \"turn\": 4, \"calls\": []}",
+        "error": null
+      },
+      "status": 200,
+      "body": {
+        "type": "approval",
+        "turn": 4,
+        "calls": []
+      }
+    },
+    {
+      "name": "nothing waiting (the gate)",
+      "engine": {
+        "status": 410,
+        "body": "{\"type\": \"nothing-waiting\"}",
+        "error": null
+      },
+      "status": 410,
+      "body": {
+        "type": "nothing-waiting"
+      }
+    },
+    {
+      "name": "the graph refused the decisions",
+      "engine": {
+        "status": 400,
+        "body": "{\"type\": \"error\", \"message\": \"unknown call id\"}",
+        "error": null
+      },
+      "status": 400,
+      "body": {
+        "type": "error",
+        "message": "unknown call id"
+      }
+    },
+    {
+      "name": "the graph failed",
+      "engine": {
+        "status": 500,
+        "body": "{\"type\": \"error\", \"message\": \"boom\"}",
+        "error": null
+      },
+      "status": 500,
+      "body": {
+        "type": "error",
+        "message": "boom"
+      }
+    },
+    {
+      "name": "the graph answered text",
+      "engine": {
+        "status": 200,
+        "body": "OK",
+        "error": null
+      },
+      "status": 502,
+      "body": {
+        "type": "error",
+        "message": "the graph answered outside the contract"
+      }
+    },
+    {
+      "name": "the graph answered a JSON list",
+      "engine": {
+        "status": 200,
+        "body": "[1,2]",
+        "error": null
+      },
+      "status": 502,
+      "body": {
+        "type": "error",
+        "message": "the graph answered outside the contract"
+      }
+    },
+    {
+      "name": "the graph answered nothing",
+      "engine": {
+        "status": 200,
+        "body": "",
+        "error": null
+      },
+      "status": 502,
+      "body": {
+        "type": "error",
+        "message": "the graph answered outside the contract"
+      }
+    },
+    {
+      "name": "the graph did not answer",
+      "engine": {
+        "status": null,
+        "body": null,
+        "error": "ClientConnectorError"
+      },
+      "status": 502,
+      "body": {
+        "type": "error",
+        "message": "the graph did not answer - ClientConnectorError"
+      }
+    },
+    {
+      "name": "the graph timed out",
+      "engine": {
+        "status": null,
+        "body": null,
+        "error": "TimeoutError"
+      },
+      "status": 502,
+      "body": {
+        "type": "error",
+        "message": "the graph did not answer - TimeoutError"
+      }
+    }
+  ]
+}

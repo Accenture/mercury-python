@@ -1,0 +1,71 @@
+# Ask a person - the main flow's configuration (the engines' "resources" convention).
+# mercury-serve (and a direct `python ask_person.py`) loads resources/application.yml from the
+# resources folder next to the application file (this one), never from the working directory.
+# Any key can be overridden at run time with the engines' -D syntax, e.g.:
+#   mercury-serve extensions/ask-person/ask_person.py -Dask.ticket.key='${ASK_TICKET_KEY}'
+
+application.name: 'ask-person'
+info.app.description: 'Mercury Composable ask-a-person: the resume link, the message event and the reply page'
+
+rest.server.port: 8091
+
+# text (default) | json (pretty-printed) | compact (single-line JSONL)
+log.format: text
+log.level: INFO
+
+# Actuator /health dependencies - the health function reports the channels, the graphs and the auth mode.
+mandatory.health.dependencies: 'ask.health'
+
+# Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
+show.env.variables: 'LOG_LEVEL'
+show.application.properties: 'application.name, rest.server.port, ask.enabled, ask.channels, ask.reply.url, ask.reply.auth'
+
+# --- the main flow ------------------------------------------------------------------------------
+#
+# person.ask sends one message event, with the resume link, to every route listed here - the
+# agent-question app's intake, a chat poster, a mail sender, a topic publisher - and knows nothing
+# of what a route does with it. A route of this process is reached locally; a route of another
+# process is reached over Event-over-HTTP at the endpoint listed under ask.channel.endpoints.
+ask.enabled: true
+ask.channels: []
+# - agent.question.inbox
+ask.channel.endpoints: []
+# - route: agent.question.inbox
+#   url: http://127.0.0.1:8092/api/event
+# how long one channel may take; a slow or failed channel is logged by type and never fails the hold
+ask.channel.timeout: 5s
+
+# The ticket: a signed, stateless address of the wait (HMAC-SHA256). The key is a reference,
+# resolved from the environment and never logged; the previous key verifies the tickets issued
+# before a rotation.
+ask.ticket.key: '${ASK_TICKET_KEY:}'
+ask.ticket.previous-key: '${ASK_TICKET_PREVIOUS_KEY:}'
+
+# The resume link: <ask.reply.url>/ask/<ticket>, the public base a person's device reaches.
+ask.reply.url: '${ASK_REPLY_URL:http://127.0.0.1:8091}'
+# Who may answer: none (development - no sign-in), proxy (the installation's SSO - a trusted header
+# set by the gateway names the person), oauth2 (an OAuth 2.0 access token, validated against the
+# issuer's published keys; pip install 'mercury-composable[ask]').
+ask.reply.auth: none
+ask.reply.auth.header: x-forwarded-user
+ask.reply.auth.oauth2.issuer: '${ASK_OIDC_ISSUER:}'
+ask.reply.auth.oauth2.audience: '${ASK_OIDC_AUDIENCE:}'
+ask.reply.auth.oauth2.jwks-url: '${ASK_OIDC_JWKS_URL:}'
+# the bearer a channel app presents when it invokes the link on a person's behalf (decided_by)
+ask.reply.auth.token: '${ASK_REPLY_TOKEN:}'
+
+# The allowlist: the graphs a reply may resume, each with the engine entry the resume is sent to.
+# The reply endpoint never posts to an address a message told it.
+ask.graphs: []
+# - id: order-assistant
+#   entry: http://127.0.0.1:8085/api/graph/order-assistant
+# - id: plan-assistant
+#   entry: http://127.0.0.1:8085/api/graph/plan-assistant
+# how long the engine may take to answer a re-advice or a resume (the Playground allows 60 seconds)
+ask.engine.timeout: 60s
+
+# OpenTelemetry forwarder (opt-in) - the engines' opentelemetry-forwarder twin.
+otel.forwarding: false
+otel.exporter.otlp.endpoint: '${OTLP_API_ENDPOINT:http://localhost:4318/v1/traces}'
+otel.exporter.otlp.headers: '${OTLP_AUTH_HEADER} ${OTLP_TOKEN}'
+otel.service.name: '${OTLP_SERVICE_NAME:ask-person}'
