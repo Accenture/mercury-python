@@ -27,9 +27,10 @@ application is one of those routes. It is a standalone application on the packag
   never overwrites it (the live drive of 2026-11-19). Rows are never deleted here; `schema/purge.sql` is the
   installation's.
 
-A richer person's side - a small React app over the same three endpoints and the same stream - is planned in the
-Node.js pack only, so there is one app to maintain in one place (Eric, 2026-11-19): use it from mercury-nodejs
-`extensions/agent-question` against this app's inbox when it lands; the vanilla page here stays as the fallback.
+This app is the backend - the inbox, the endpoints, the stream; the page is its vanilla front-end. The front-end that
+will replace it, a small React app pointed at either pack's backend, is built and maintained in the Node.js pack only, so
+there is one app to maintain in one place (Eric, 2026-11-19): use it from mercury-nodejs `extensions/agent-question`
+against this backend when it lands; the vanilla page here stays as the fallback.
 
 The Node.js twin (mercury-nodejs `extensions/agent-question`) serves the same route, the same page and the same
 schema, pinned by the same vector file.

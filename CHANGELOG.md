@@ -159,9 +159,11 @@
    person's name and the count of open cards (also in the tab's title); *Waiting for you* lists the cases with an open
    card - a wait to decide or an advice to read - newest activity first; *History* is a scrollable panel with the closed
    cases, newest first, that keeps its scroll position while new cards arrive, so the whole inbox stays in reach without
-   pushing the open work away. The page is one vanilla HTML file still, byte-identical in the Node.js twin. Its successor,
-   a small React app, is on the Node.js pack's backlog (Eric: one app to maintain in one place, mercury-nodejs
-   `extensions/agent-question`); this pack will point to it and keep the vanilla page as the fallback.
+   pushing the open work away. The page is one vanilla HTML file still, byte-identical in the Node.js twin. The
+   agent-question app of each pack is the backend - the inbox, the endpoints, the stream - and the front-end that will
+   replace this page, a small React app pointed at either backend, is on the Node.js pack's backlog (Eric: one front-end
+   to maintain in one place, mercury-nodejs `extensions/agent-question`); this pack points to it and keeps the vanilla
+   page as the fallback.
 
 2. **`web.crawl` accepts a relative `include`.** A prefix that does not start with `/` now matches anywhere in a link's path,
    since a model names a section as `guides/` as often as `/guides/`: the live drive of the Playground's `site-notes` graph
