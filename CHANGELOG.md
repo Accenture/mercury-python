@@ -107,6 +107,35 @@
    on the bus with channels that take, refuse and miss the event; the page and the endpoint against a fake engine; the
    three auth modes with a signed token; the hook). **Upgrade note:** none - `add_routes` is additive.
 
+6. **The agent-question app: a store-and-forward inbox for the person an agent asks (RFC-0014, build plan step 3).**
+   `extensions/agent-question/agent_question.py` is a standalone application on the package and the first channel of the
+   ask-a-person design, standing beside a chat, a mail server or a topic as one channel among equals; the main flow
+   (`person.ask`, step 1) knows nothing of it and sends it the message event like any route. `agent.question.inbox` is
+   the intake: a wait (an approval or a question) is upserted on `(graph_id, correlation_id, turn)`, so a re-advice for
+   the same turn updates the card rather than adding one, and an advice (a status update, an acknowledgement, an
+   outcome) is appended; the row is committed before any push. The person's side runs under the host through
+   `Platform.add_routes`: `GET /questions/app` is the page, `GET /questions?since=<seq>` the replay a reconnecting
+   device calls first - every row that changed since its cursor, with the cursor to continue from - and `GET
+   /questions/events` the stream a connected device holds, each event carrying a changed row and `Last-Event-ID` the
+   same cursor, so a browser's reconnect misses nothing. The person selects which card to answer, in any order; the
+   card's button automates the click: `POST /questions/{id}/decide` posts `{ticket, decisions, decided_by}` to the main
+   flow's reply endpoint - the link's own base, under this app's bearer (`question.reply.token`) - records the outcome
+   on the row and tells every connected device; a decision the engine accepted leaves the row `answered`, nothing
+   waiting leaves it `expired`, a refusal or an endpoint that did not answer leaves it `open` with the outcome shown.
+   `POST /questions/{id}/seen` marks an advice read. Open waits past their expiry are marked `expired` by a sweeper
+   (`question.sweep`, 30 s) and before every replay. The inbox is memory (development; a restart forgets) or PostgreSQL
+   (`question.inbox: postgres`, the `postgres` extra; `schema/postgres.sql` with the change sequence
+   `question_inbox_seq`, the partial unique index that makes waits upsert and advices append, `purge.sql` as the
+   installation's retention; `dev/schema-apply.sh` applies the schema to the helper's development database). Who may use
+   the page is `question.auth`: `none` in development (the page offers a name field), `proxy` (the gateway's trusted
+   header) or `oauth2` (an access token against the issuer's keys). Rows are never deleted by the app. Pinned by
+   `tests/vectors/agent-question-vectors.json` (30 cases: the row a message becomes, the state an outcome leaves, the
+   request the click sends, and the reference inbox on a scripted sequence with its ids and change sequence), shared
+   with the Node twin, and `tests/test_agent_question.py` (48 tests: the intake on the bus, the replay and the stream
+   with keep-alives, a decision forwarded to a fake reply endpoint and broadcast, an advice seen, expiry, the proxy
+   mode, the PostgreSQL statements on a recording fake, the hooks and the boot; a live PostgreSQL gated on
+   `AGENT_QUESTION_TEST_URL`). **Upgrade note:** none - a new application; the main flow lists it in `ask.channels`.
+
 ### Fixed
 
 1. **A direct `python extensions/mcp-binding/mcp_binding.py` now connects its servers.** The binding attached its boot

@@ -264,6 +264,23 @@
   agent-question app (step 3) is a separate application that receives the event and automates the click.
   <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-054804 -->
 
+- **The agent-question app is the first channel of RFC-0014: a store-and-forward inbox for the person an agent asks,
+  a standalone application on the package that the main flow knows nothing of (build plan step 3; built here
+  2026-11-19).** `extensions/agent-question/agent_question.py` serves `agent.question.inbox`: a wait (an approval or
+  a question) is upserted on `(graph_id, correlation_id, turn)` and an advice appended, in memory or in PostgreSQL
+  (`question.inbox: postgres`, the audit store's connection keys, `schema/postgres.sql` with the change sequence
+  `question_inbox_seq` and the partial unique index; `purge.sql` the installation's retention). The person's side runs
+  under the host through `Platform.add_routes`: the page, the replay `GET /questions?since=<seq>` a reconnecting device
+  calls first, the stream `GET /questions/events` whose `Last-Event-ID` is the same cursor, the automated click
+  `POST /questions/{id}/decide` to the link's own base under the app's bearer with `decided_by`, and `seen` for an
+  advice; states open, answered, expired, seen; a sweeper expires waits past their expiry. Identity `question.auth`:
+  `none`, `proxy`, `oauth2`. Pinned by `tests/vectors/agent-question-vectors.json` (30 cases) and 48 tests; the Node
+  twin follows. **How to apply:** the app is one channel among equals - a chat, mail or a topic adapter takes the same
+  event and keeps its own buffer; the app never talks to the engine, only to the reply endpoint the link names; a row is
+  never deleted by the app; a new card state is a change to `state_after` and the schema's check constraint in both
+  packs.
+  <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
+
 ## Conventions
 
 - **Quality gates (adopted 2026-08-23, Eric's IDE review round): ruff + basedpyright +
