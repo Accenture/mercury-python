@@ -262,7 +262,7 @@
   Node twin, and 100 tests. **How to apply:** the engine waits and the pack delivers and collects - never make a tool wait
   for a person; a new channel is a route in `ask.channels`, never code here; a reply path is always the link; the
   agent-question app (step 3) is a separate application that receives the event and automates the click.
-  **Round 4 (Eric's sprint of 2026-11-20; PR #74):** the main flow keeps the question record - the main flow records
+  **Round 4 (Eric's sprint of 2026-11-20; PR #74, MERGED 2026-11-20):** the main flow keeps the question record - the main flow records
   and the channels deliver. `question.audit`, a private function of this process registered at boot with
   `ask.audit.instances` workers behind local requests, writes every wait and advice `person.ask` sends (before the
   channels are told) and every answer the reply endpoint brings back (the stamped decisions, who decided, when, the
