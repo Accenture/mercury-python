@@ -312,6 +312,9 @@
   and the sweeper are gone; identity `none` or `oauth2` (`proxy` removed). Vectors version 3 (`intake_cases`,
   `click_cases`, `feed_cases`). **How to apply (amended):** this app never writes the record - a new fact of a row is
   the recorder's and the schema's; a new read for the UI is an endpoint here, in both packs and in the vectors.
+  **2026-11-20 (PR #76):** the generated page is gone - `GET /questions/app` retired; the React UI's bundle (mercury-nodejs
+  `extensions/agent-question-ui`, #141) is committed in `resources/public` and served at `/` by the host
+  ([[static-content-resources-public]]), the engines' actuator endpoints beside it for Kubernetes probes (Eric).
   <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
 
 - **The host serves static web content from `resources/public` next to the application file - the engines' `public`
