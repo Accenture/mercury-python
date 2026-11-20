@@ -262,6 +262,18 @@
   Node twin, and 100 tests. **How to apply:** the engine waits and the pack delivers and collects - never make a tool wait
   for a person; a new channel is a route in `ask.channels`, never code here; a reply path is always the link; the
   agent-question app (step 3) is a separate application that receives the event and automates the click.
+  **Round 4 (Eric's sprint of 2026-11-20; PR #74):** the main flow keeps the question record - the main flow records
+  and the channels deliver. `question.audit`, a private function of this process registered at boot with
+  `ask.audit.instances` workers behind local requests, writes every wait and advice `person.ask` sends (before the
+  channels are told) and every answer the reply endpoint brings back (the stamped decisions, who decided, when, the
+  engine's outcome) to the `question` table of the audit database, order-independently: a wait upserts on its key unless
+  an older message lands late, an advice appends with no state, the first accepted answer stands; a sweeper expires
+  open waits. The contract `QuestionStore` is published - PostgreSQL out of the box (`ask.audit: postgres`,
+  `schema/postgres.sql` version 2), memory for the tests (the default, with a boot warning), another database by the
+  contract. Identity is `none` or `oauth2` - `proxy` removed, the field's installations use 3-legged SSO and OAuth 2.0
+  access tokens - and the reply page signs the person in by Authorization Code with PKCE (a shell, `GET /ask/config`,
+  the wait read from `GET /ask/{ticket}/wait`). **How to apply (amended):** "keeping no store" means no state of the
+  wait - the record is an audit log, never consulted to render a wait; the agent-question app reads it.
   <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-054804 -->
 
 - **The agent-question app is the first channel of RFC-0014: a store-and-forward inbox for the person an agent asks,
