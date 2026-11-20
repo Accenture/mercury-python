@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -949,6 +949,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#static-content-the-engines-public-folder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static content — the engines' public folder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#kubernetes-wiring" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1574,6 +1585,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#static-content-the-engines-public-folder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static content — the engines' public folder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#kubernetes-wiring" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1698,7 +1720,7 @@ produced a span. The keys are listed in the <a href="../configuration-reference/
 <tbody>
 <tr>
 <td><code>GET /</code></td>
-<td>minimal index page linking the endpoints below</td>
+<td>the static folder's <code>index.html</code>, else a minimal index page linking the endpoints below</td>
 </tr>
 <tr>
 <td><code>GET /info</code></td>
@@ -1739,6 +1761,21 @@ non-200 reply marks the dependency down):</p>
 </code></pre></div>
 <p>Optional dependencies never change the overall status; mandatory ones decide
 <code>UP</code>/<code>DOWN</code>, and the most recent outcome drives <code>/livenessprobe</code>.</p>
+<h2 id="static-content-the-engines-public-folder">Static content — the engines' <code>public</code> folder<a class="headerlink" href="#static-content-the-engines-public-folder" title="Permanent link">&para;</a></h2>
+<p>The host serves the files of <code>static.html.folder</code> for any <code>GET</code> or <code>HEAD</code> that no host path,
+extension route or function claims — the Java engine's key, with the Rust engine's location as
+its default: <code>resources/public</code> next to the application file, under the resources rule above (a
+relative value is under the application file's folder, never the working directory; <code>file:</code>
+prefixes an absolute path as in the Java engine; an empty value turns the service off). A folder
+is served as its <code>index.html</code>, so <code>resources/public/index.html</code> replaces the landing page at <code>/</code>
+while <code>/info</code>, <code>/health</code> and the other host paths stay the host's. The content type follows the
+engines' table by extension — <code>text/javascript</code>, <code>text/css</code>, <code>image/svg+xml</code>, the fonts and images
+a bundle ships — and is <code>application/octet-stream</code> otherwise; every file carries an ETag and
+answers <code>If-None-Match</code> with 304, and HTML is served <code>Cache-Control: no-cache</code>, so a redeployed
+page is revalidated while hashed assets stay cached. Never found, in the engines' error shape: a
+hidden entry (a segment starting with <code>.</code>, so <code>..</code> too), a symbolic link that leaves the folder,
+anything that is not a regular file. Not ported from the Java engine: the static-content filter,
+the <code>no-cache-pages</code> list and the <code>mime.types</code> section.</p>
 <h2 id="kubernetes-wiring">Kubernetes wiring<a class="headerlink" href="#kubernetes-wiring" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">livenessProbe</span><span class="p">:</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/livenessprobe</span><span class="p p-Indicator">,</span><span class="nt"> port</span><span class="p">:</span><span class="w"> </span><span class="nv">8086</span><span class="w"> </span><span class="p p-Indicator">}</span>

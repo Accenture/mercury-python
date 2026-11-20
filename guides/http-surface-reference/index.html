@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -1281,6 +1281,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#static-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static content
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#error-signature-host-level" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1496,6 +1507,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#static-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static content
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#error-signature-host-level" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1587,7 +1609,7 @@ charset=utf-8</code> (the engines' default-serializer presentation).</p>
 <tr>
 <td><code>GET /</code></td>
 <td><code>text/html</code></td>
-<td>minimal index page linking the endpoints</td>
+<td>the static folder's <code>index.html</code>, else a minimal index page linking the endpoints</td>
 </tr>
 <tr>
 <td><code>GET /info</code></td>
@@ -1624,6 +1646,14 @@ reports <code>status_code: 404</code> with <code>Please check - Route X not foun
   uuid (the Java reference engine's format).</li>
 <li><code>up_time</code> — the engines' rendering (<code>59 seconds</code>, <code>1 minute 1 second</code>, …).</li>
 </ul>
+<h2 id="static-content">Static content<a class="headerlink" href="#static-content" title="Permanent link">&para;</a></h2>
+<p>A <code>GET</code> or <code>HEAD</code> of any other path is answered with the file it names inside <code>static.html.folder</code>
+(<code>resources/public</code> next to the application file by default; <code>index.html</code> for a folder) when there
+is one: the content type by extension from the engines' table, an <code>ETag</code> (<code>If-None-Match</code> answers
+304 with no body) and, for HTML, <code>Cache-Control: no-cache</code>. A path that names nothing — including a
+hidden entry, a link out of the folder or a folder without an index page — falls through to the
+error signature below. See the
+<a href="../config-logging-actuators/#static-content-the-engines-public-folder">guide</a>.</p>
 <h2 id="error-signature-host-level">Error signature (host-level)<a class="headerlink" href="#error-signature-host-level" title="Permanent link">&para;</a></h2>
 <p>Unknown paths and non-GET methods on known paths answer the engines' shape —
 pretty-printed JSON:</p>
