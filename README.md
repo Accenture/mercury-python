@@ -138,6 +138,7 @@ The same conventions as the engines, so a polyglot installation stays uniform:
 | `rest.server.port` | Event API port | `8085` |
 | `log.format` | `text`, `json` (pretty-printed) or `compact` (single-line JSONL) | `text` |
 | `log.level` | log level (`LOG_LEVEL` env var wins) | `INFO` |
+| `static.html.folder` | the folder of static web content the host serves (HTML, CSS, JS, images), relative to the application file | `resources/public` |
 
 Configuration lives in the `resources` folder next to the application file, mirroring the
 engines' classpath resources: `resources/application.yml` (or `.yaml` / `.properties`) beside
@@ -167,7 +168,7 @@ Kubernetes probes and dashboards treat a Python app exactly like a Java or Rust 
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /` | minimal index page linking the endpoints below |
+| `GET /` | the static folder's `index.html`, else a minimal index page linking the endpoints below |
 | `GET /info` | app identity, runtime, origin id, start time, uptime |
 | `GET /info/routes` | registered routes split by visibility, with instance counts |
 | `GET /env` | selected environment variables and configuration parameters |
@@ -195,6 +196,21 @@ unknown paths answer the engines' error shape
 
 Kubernetes wiring: point `livenessProbe` at `/livenessprobe` and `readinessProbe` at
 `/health`.
+
+## Static content
+
+The host serves the files of `static.html.folder` — the Java engine's key, with the Rust engine's
+location as its default, `resources/public` next to the application file — for any `GET` or `HEAD`
+that no host path, extension route or function claims, so an application can ship a web front-end
+beside its functions the way the engines' Playground does. A folder is served as its `index.html`,
+so `resources/public/index.html` replaces the landing page at `/`. The content type follows the
+engines' table by extension (`text/javascript`, `text/css`, `image/svg+xml`, fonts and images;
+`application/octet-stream` otherwise); every file carries an ETag and answers `If-None-Match` with
+304, and HTML is served `Cache-Control: no-cache`, so a redeployed page is revalidated while hashed
+assets stay cached. A hidden entry, a `..` segment, a symbolic link that leaves the folder or
+anything that is not a regular file is not found, in the engines' error shape. A relative value of
+the key is under the application file's folder, never the working directory; `file:` prefixes an
+absolute path as in the Java engine; an empty value turns the service off.
 
 ## Wire compatibility
 

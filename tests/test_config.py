@@ -161,3 +161,16 @@ def test_env_substitution_with_default(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("PEER_PORT", "9090")
     assert config.get("peer.url") == "http://127.0.0.1:9090/api/event"
     assert config.get("missing") is None  # unresolved whole-value ref -> None
+
+
+def test_the_application_folder_is_known(tmp_path: Path):
+    app_dir = tmp_path / "app"
+    write(str(app_dir / "resources" / "application.yml"), "application:\n  name: 'demo-app'\n")
+    assert AppConfig(argv=[], app_dir=str(app_dir)).app_dir == str(app_dir)
+    # an explicit file keeps the application folder it was given - the static content folder
+    # resolves under it, the companions beside the file
+    other = tmp_path / "conf" / "other.yml"
+    write(str(other), "application:\n  name: 'other'\n")
+    config = AppConfig(str(other), argv=[], app_dir=str(app_dir))
+    assert config.app_dir == str(app_dir)
+    assert config.resources_dir == str(tmp_path / "conf")

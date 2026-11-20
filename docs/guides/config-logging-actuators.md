@@ -111,7 +111,7 @@ The host serves the engines' endpoints on the same port as `/api/event`:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /` | minimal index page linking the endpoints below |
+| `GET /` | the static folder's `index.html`, else a minimal index page linking the endpoints below |
 | `GET /info` | app identity, runtime, origin id, start time, uptime |
 | `GET /info/routes` | registered routes split by visibility, with instance counts |
 | `GET /env` | selected environment variables and configuration parameters (opt-in lists) |
@@ -140,6 +140,23 @@ async def health_check(headers: dict[str, str], _body: Body):
 
 Optional dependencies never change the overall status; mandatory ones decide
 `UP`/`DOWN`, and the most recent outcome drives `/livenessprobe`.
+
+## Static content — the engines' `public` folder
+
+The host serves the files of `static.html.folder` for any `GET` or `HEAD` that no host path,
+extension route or function claims — the Java engine's key, with the Rust engine's location as
+its default: `resources/public` next to the application file, under the resources rule above (a
+relative value is under the application file's folder, never the working directory; `file:`
+prefixes an absolute path as in the Java engine; an empty value turns the service off). A folder
+is served as its `index.html`, so `resources/public/index.html` replaces the landing page at `/`
+while `/info`, `/health` and the other host paths stay the host's. The content type follows the
+engines' table by extension — `text/javascript`, `text/css`, `image/svg+xml`, the fonts and images
+a bundle ships — and is `application/octet-stream` otherwise; every file carries an ETag and
+answers `If-None-Match` with 304, and HTML is served `Cache-Control: no-cache`, so a redeployed
+page is revalidated while hashed assets stay cached. Never found, in the engines' error shape: a
+hidden entry (a segment starting with `.`, so `..` too), a symbolic link that leaves the folder,
+anything that is not a regular file. Not ported from the Java engine: the static-content filter,
+the `no-cache-pages` list and the `mime.types` section.
 
 ## Kubernetes wiring
 

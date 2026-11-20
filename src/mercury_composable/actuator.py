@@ -63,8 +63,8 @@ INFO_TIMEOUT_MS = 3000  # engine value for the advisory type=info lookup
 HEALTH_TIMEOUT_MS = 10000  # engine value for the type=health probe
 UNHEALTHY = "Unhealthy. Please check '/health' endpoint."
 
-# The engines' minimal landing page (platform-core public/index.html style);
-# the wrappers embed it - no static file service by design.
+# The engines' minimal landing page (platform-core public/index.html style), embedded: served
+# at / unless the static content folder (static_content.py) has an index.html of its own.
 INDEX_HTML = """<!DOCTYPE html>
 <html>
 <body>
