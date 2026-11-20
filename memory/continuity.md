@@ -292,6 +292,24 @@
   second front-end here.
   <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
 
+- **The host serves static web content from `resources/public` next to the application file - the engines' `public`
+  folder (Eric, 2026-11-20; PR #73, the Node twin mercury-nodejs #138).** `static.html.folder` is honoured as the Java
+  engine's key with the Rust engine's location as its default, under the resources rule
+  ([[conv-resources-next-to-the-application-file]]): a GET or HEAD that no host path, extension route or function claims
+  is answered with the file it names, `index.html` for a folder (so a folder's `index.html` replaces the embedded
+  landing page at `/`), the content type from the engines' table by extension, an ETag with 304 on `If-None-Match`,
+  `Cache-Control: no-cache` for HTML; a hidden segment, a link out of the folder or anything that is not a regular file
+  is not found, in the engines' error shape; `file:` prefixes an absolute path, an empty value turns the service off;
+  `AppConfig.app_dir` names the application file's folder. Withdraws the 2026-08-24 note that the wrappers serve no
+  static files (session 2026-08-24-015208): a pack application now ships a web front-end beside its functions as the
+  engines' Playground does - the first is the agent-question app's React UI, built in the Node pack and deployed into
+  both packs' `resources/public`, served by each backend from its own origin, so no CORS ([[bp-question-record-and-ui]]).
+  Not ported: the Java engine's static-content filter, its `no-cache-pages` list and its `mime.types` section.
+  **How to apply:** a web bundle goes into `resources/public` next to the application file and nothing else is
+  configured; a host path or an extension route always wins over a file of the same name; a relative folder is never
+  the working directory's.
+  <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-075621 -->
+
 ## Conventions
 
 - **Quality gates (adopted 2026-08-23, Eric's IDE review round): ruff + basedpyright +
