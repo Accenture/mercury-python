@@ -1,33 +1,33 @@
 """
 The agent-question app - the first channel of RFC-0014 (the engines' ``draft-design-specs/ask-a-person-channel.md``,
-Part II): a store-and-forward inbox for a person whose device is not always connected, standing beside a chat, a
-mail server or a topic as one channel among equals. The main flow (``person.ask`` in ``extensions/ask-person``)
-knows nothing of it: it sends one message event with the resume link to the routes it is configured with, and this
-application is one of those routes.
+Part II) and, since round 4 of the paper (section 21.3), the backend of the React UI maintained in the Node.js pack:
+a reader of the question record the main flow keeps in the audit database, a feed of its changes for a person's
+device, and the automated click that answers a wait. The main flow (``person.ask`` in ``extensions/ask-person``)
+knows nothing of it: it records every message and answer itself, then sends the message event to the routes it is
+configured with, and this application is one of those routes.
 
 - ``agent.question.inbox`` is the intake, a composable function reached over Event-over-HTTP like any peer function.
-  A wait (``kind`` ``approval`` or ``question``) is upserted on ``(graph_id, correlation_id, turn)`` - a re-advice for
-  the same turn updates the card rather than adding one - and an advice (a status update, an acknowledgement, an
-  outcome) is appended, since those accumulate. Write first: the row is committed before any push to a browser.
-- The browser side runs under the pack's host (``Platform.add_routes``): ``GET /questions/app`` is the page,
-  ``GET /questions?since=<seq>`` the replay a reconnecting device calls first - every row that changed since its
-  cursor, waits and advices alike - and ``GET /questions/events`` the stream a connected device holds, each event
-  naming a row and carrying it; ``Last-Event-ID`` is the same cursor, so a browser's reconnect misses nothing. The
-  person selects which card to answer; the card's button automates the click: ``POST /questions/{id}/decide`` posts
-  ``{ticket, decisions, decided_by}`` to the main flow's reply endpoint - the link's own base, under this app's
-  bearer - records the outcome on the row and tells every connected device. ``POST /questions/{id}/seen`` marks an
-  advice read.
-- The inbox is PostgreSQL (``question.inbox: postgres``, the ``postgres`` extra, ``schema/postgres.sql``) or, for
-  development and tests, memory. The engine stays the authority on an answer: a second device on the same card gets
-  ``nothing waiting`` from the engine, and the row records the first. Rows are never deleted here; ``schema/purge.sql``
-  is the installation's. Who may use the page is ``question.auth``: ``none`` in development, ``proxy`` (the
-  installation's SSO, a trusted header set by the gateway) or ``oauth2`` (an access token validated against the
-  issuer's published keys).
+  It writes nothing: the record is the recorder's (``question.audit`` in the ask-person process). It checks the event
+  and wakes the feed, so a connected device sees the row the moment it is recorded.
+- The browser side runs under the pack's host (``Platform.add_routes``). ``GET /questions/config`` tells the UI how to
+  sign in; ``GET /questions?since=<seq>`` is the replay a reconnecting device calls first - every row that changed
+  since its cursor, oldest change first; ``GET /questions?before=<seq>&limit=<n>`` the history's older page, newest
+  first, for an infinite scroll; ``GET /questions/events`` the stream a connected device holds, each event a changed
+  row, ``Last-Event-ID`` the same cursor. ``GET /transcripts`` and ``GET /transcripts/{conversation}`` browse the
+  transcript audit store the LLM helper writes beside the record. The person selects which card to answer; the card's
+  button automates the click: ``POST /questions/{id}/decide`` posts ``{ticket, decisions, decided_by}`` to the main
+  flow's reply endpoint - the link's own base, under this app's bearer - and the answer lands on the row through the
+  recorder; the feed carries the change to every device.
+- The store this app reads is PostgreSQL (``question.store: postgres``, the ``postgres`` extra, the audit database the
+  main flow and the LLM helper write) or, for the tests, memory - nothing writes a memory store at run time. The
+  feed polls the record's change sequence (``question.poll``) and the intake wakes it. Who may use the UI is
+  ``question.auth``: ``none`` in development, ``oauth2`` (an OAuth 2.0 access token validated against the issuer's
+  published keys; the UI obtains one by Authorization Code with PKCE from the issuer named by ``/questions/config``).
 
-Run:  mercury-serve extensions/agent-question/agent_question.py
+Run:  mercury-serve extensions/agent-question/agent_question.py -Dquestion.store=postgres -Dquestion.store.postgres.ssl=false
 
-The pure half - the row a message becomes, the state an outcome leaves, the request the click sends, the inbox's
-transitions - is pinned by ``tests/vectors/agent-question-vectors.json``, shared byte for byte with the Node.js twin.
+The pure half - the event the intake accepts, the request the click sends, the pages the feed and the history read -
+is pinned by ``tests/vectors/agent-question-vectors.json``, shared byte for byte with the Node.js twin.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ import json
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
@@ -72,31 +72,38 @@ INTAKE_ROUTE = "agent.question.inbox"
 HEALTH_ROUTE = "question.health"
 KINDS = ("approval", "question", "advice")
 WAIT_KINDS = ("approval", "question")
-STATES = ("open", "answered", "expired", "seen")
+# a wait's states; an advice has none (None) - whether a person read it is the device's business
+STATES = ("open", "answered", "expired")
 PAGE_PATH = "/questions/app"
 LIST_PATH = "/questions"
 EVENTS_PATH = "/questions/events"
+CONFIG_PATH = "/questions/config"
 DECIDE_PATH = "/questions/{id}/decide"
-SEEN_PATH = "/questions/{id}/seen"
-AUTH_MODES = ("none", "proxy", "oauth2")
+TRANSCRIPTS_PATH = "/transcripts"
+TRANSCRIPT_PATH = "/transcripts/{conversation}"
+AUTH_MODES = ("none", "oauth2")
 JWT_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512")
 LIST_LIMIT = 200
 LIST_LIMIT_MAX = 1000
+TRANSCRIPTS_LIMIT = 50
+TRANSCRIPTS_LIMIT_MAX = 200
+CONVERSATION_ID = re.compile(r"^[0-9a-f]{32}$")
 
 # configuration keys
-INBOX = "question.inbox"
-POSTGRES_PREFIX = "question.inbox.postgres."
-SWEEP = "question.sweep"
+STORE = "question.store"
+POSTGRES_PREFIX = "question.store.postgres."
+POLL = "question.poll"
 AUTH = "question.auth"
-AUTH_HEADER = "question.auth.header"
 OAUTH2_ISSUER = "question.auth.oauth2.issuer"
 OAUTH2_AUDIENCE = "question.auth.oauth2.audience"
 OAUTH2_JWKS_URL = "question.auth.oauth2.jwks-url"
+OAUTH2_CLIENT_ID = "question.auth.oauth2.client-id"
+OAUTH2_SCOPES = "question.auth.oauth2.scopes"
 REPLY_TOKEN = "question.reply.token"
 REPLY_TIMEOUT = "question.reply.timeout"
 PAGE_TITLE = "question.page.title"
 
-MISSING_POSTGRES = "question.inbox is postgres but psycopg is not installed - pip install 'mercury-composable[postgres]'"
+MISSING_POSTGRES = "question.store is postgres but psycopg is not installed - pip install 'mercury-composable[postgres]'"
 DURATION = re.compile(r"^(\d+)\s*(ms|s|m|h|d)?$")
 UNIT_MS = {"ms": 1, "s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 
@@ -145,15 +152,16 @@ def parse_iso(text: str) -> datetime | None:
 
 @dataclass(frozen=True)
 class Settings:
-    inbox: str
+    store: str
     postgres: dict[str, Any]
     postgres_timeout_s: float
-    sweep_ms: int
+    poll_ms: int
     auth: str
-    auth_header: str
     oauth2_issuer: str
     oauth2_audience: str
     oauth2_jwks_url: str
+    oauth2_client_id: str
+    oauth2_scopes: str
     reply_token: str
     reply_timeout_ms: int
     page_title: str
@@ -182,22 +190,23 @@ def _whole_ms(config: AppConfig, key: str, default: int) -> int:
 
 
 def load_settings(config: AppConfig) -> Settings:
-    inbox = _text(config, INBOX, "memory").lower()
-    if inbox not in ("memory", "postgres"):
-        raise QuestionError(f"{INBOX} must be memory or postgres")
+    store = _text(config, STORE, "memory").lower()
+    if store not in ("memory", "postgres"):
+        raise QuestionError(f"{STORE} must be memory or postgres")
     auth = _text(config, AUTH, "none").lower()
     if auth not in AUTH_MODES:
         raise QuestionError(f"{AUTH} must be one of {', '.join(AUTH_MODES)}")
-    auth_header = _text(config, AUTH_HEADER, "x-forwarded-user").lower()
-    if auth == "proxy" and not auth_header:
-        raise QuestionError(f"{AUTH_HEADER} names the header the gateway sets - it must not be empty")
     issuer = _text(config, OAUTH2_ISSUER).rstrip("/")
     jwks_url = _text(config, OAUTH2_JWKS_URL)
+    client_id = _text(config, OAUTH2_CLIENT_ID)
     if auth == "oauth2":
         if jwt is None:
             raise QuestionError(f"{AUTH} is oauth2 but PyJWT is not installed - pip install 'mercury-composable[ask]'")
         if not issuer and not jwks_url:
             raise QuestionError(f"{AUTH} is oauth2 - set {OAUTH2_ISSUER} or {OAUTH2_JWKS_URL}")
+        if not issuer or not client_id:
+            log.warning("%s is oauth2 without %s and %s - the UI cannot sign a person in; a token obtained elsewhere "
+                        "still works", AUTH, OAUTH2_ISSUER, OAUTH2_CLIENT_ID)
     timeout_ms = _whole_ms(config, POSTGRES_PREFIX + "timeout.ms", 5000)
     port_text = _text(config, POSTGRES_PREFIX + "port", "5432")
     if not port_text.isdigit() or int(port_text) <= 0:
@@ -214,15 +223,16 @@ def load_settings(config: AppConfig) -> Settings:
         "options": f"-c statement_timeout={timeout_ms}",
     }
     return Settings(
-        inbox=inbox,
+        store=store,
         postgres={key: value for key, value in postgres.items() if value is not None},
         postgres_timeout_s=timeout_ms / 1000,
-        sweep_ms=_timeout(config, SWEEP, "30s"),
+        poll_ms=_timeout(config, POLL, "1s"),
         auth=auth,
-        auth_header=auth_header,
         oauth2_issuer=issuer,
         oauth2_audience=_text(config, OAUTH2_AUDIENCE),
         oauth2_jwks_url=jwks_url,
+        oauth2_client_id=client_id,
+        oauth2_scopes=_text(config, OAUTH2_SCOPES, "openid profile email"),
         reply_token=_text(config, REPLY_TOKEN),
         reply_timeout_ms=_timeout(config, REPLY_TIMEOUT, "10s"),
         page_title=_text(config, PAGE_TITLE, "Agent questions"),
@@ -247,6 +257,8 @@ def current_settings() -> Settings:
 
 @dataclass(frozen=True)
 class Row:
+    """A row of the question record, as the main flow's recorder writes it (extensions/ask-person)."""
+
     id: int
     seq: int
     kind: str
@@ -259,7 +271,7 @@ class Row:
     summary: str
     details: str | None
     message: dict[str, Any]
-    state: str
+    state: str | None
     requested_at: str
     expires_at: str | None
     updated_at: str
@@ -269,7 +281,7 @@ class Row:
     outcome: dict[str, Any] | None = None
 
     def public(self) -> dict[str, Any]:
-        """The row as the page and the replay carry it."""
+        """The row as the UI, the replay and the stream carry it."""
         return {
             "id": self.id, "seq": self.seq, "kind": self.kind, "graph_id": self.graph_id,
             "correlation_id": self.correlation_id, "turn": self.turn, "ticket": self.ticket, "link": self.link,
@@ -281,7 +293,7 @@ class Row:
 
 
 def validate_event(event: Any) -> dict[str, Any]:
-    """The message event the main flow sends, checked for what a row stores - or an AppException(400)."""
+    """The message event the main flow sends, checked for what a channel needs - or an AppException(400)."""
     if not isinstance(event, Mapping):
         raise AppException(400, "the inbox takes the message event as a map")
     kind = event.get("kind")
@@ -309,50 +321,6 @@ def validate_event(event: Any) -> dict[str, Any]:
     return dict(event)
 
 
-def wait_key(event: Mapping[str, Any]) -> tuple[str, str, int] | None:
-    """The key a wait upserts on; an advice has none and appends."""
-    if event.get("kind") not in WAIT_KINDS:
-        return None
-    return str(event["graph_id"]), str(event["correlation_id"]), int(event["turn"])
-
-
-def row_fields(event: Mapping[str, Any], now: str) -> dict[str, Any]:
-    """What a row takes from a message event: every wait starts open with its ticket, link and expiry; an
-    advice starts open with no ticket, no link and no expiry, and is marked seen by the person."""
-    wait = event["kind"] in WAIT_KINDS
-    return {
-        "kind": event["kind"],
-        "graph_id": event["graph_id"],
-        "correlation_id": event["correlation_id"],
-        "turn": event.get("turn"),
-        "ticket": event.get("ticket") if wait else None,
-        "link": event.get("link") if wait else None,
-        "description": event["description"],
-        "summary": event["summary"],
-        "details": event.get("details"),
-        "message": dict(event),
-        "state": "open",
-        "requested_at": event.get("requested_at") or now,
-        "expires_at": event.get("expires_at") if wait else None,
-        "updated_at": now,
-        "answered_at": None,
-        "answered_by": None,
-        "decisions": None,
-        "outcome": None,
-    }
-
-
-def state_after(status: int | None, body: Any) -> str:
-    """The state a decision's outcome leaves: the engine accepted it (answered), nothing was waiting
-    (expired), or the decision was refused or the engine could not be reached (the wait stays open)."""
-    kind = body.get("type") if isinstance(body, Mapping) else None
-    if status == 410 or kind == "nothing-waiting":
-        return "expired"
-    if status is not None and 200 <= status < 300 and not (isinstance(body, Mapping) and body.get("error")):
-        return "answered"
-    return "open"
-
-
 def reply_request(link: str, ticket: str, decisions: Sequence[Mapping[str, Any]], who: str) -> tuple[str, dict[str, Any]]:
     """The click, automated: the reply endpoint is the link's own base, the body is what a person's browser
     would post, with the person named for the app's bearer."""
@@ -362,35 +330,60 @@ def reply_request(link: str, ticket: str, decisions: Sequence[Mapping[str, Any]]
     return f"{base}/ask/reply", {"ticket": ticket, "decisions": [dict(d) for d in decisions], "decided_by": who}
 
 
-# --- the inboxes ------------------------------------------------------------------------------
+def page_since(rows: Sequence[Row], since: int, limit: int) -> dict[str, Any]:
+    """The replay's page: the rows whose sequence passed the cursor, oldest change first, and the cursor to
+    continue from."""
+    changed = sorted((row for row in rows if row.seq > since), key=lambda row: row.seq)[:limit]
+    return {"rows": [row.public() for row in changed], "next": max([since] + [row.seq for row in changed]),
+            "more": len(changed) >= limit}
 
 
-class Inbox(Protocol):
+def page_before(rows: Sequence[Row], before: int | None, limit: int) -> dict[str, Any]:
+    """The history's page: the rows whose sequence is before the cursor (every row when there is none), newest
+    change first, and the cursor of the older page (the smallest sequence shown; None when nothing was)."""
+    older = sorted((row for row in rows if before is None or row.seq < before), key=lambda row: -row.seq)[:limit]
+    return {"rows": [row.public() for row in older], "next": min((row.seq for row in older), default=None),
+            "more": len(older) >= limit}
+
+
+# --- the readers ------------------------------------------------------------------------------
+#
+# The app reads the question record the main flow writes and the transcript audit store the LLM helper writes,
+# both in the audit database, under a reader's role; it writes nothing. The contract below is what another
+# database implements; the memory reader carries its semantics for the tests.
+
+
+class Reader(Protocol):
     name: str
 
     async def open(self) -> None: ...
     async def close(self) -> None: ...
-    async def take(self, event: Mapping[str, Any], now: str) -> Row: ...
     async def get(self, row_id: int) -> Row | None: ...
     async def since(self, seq: int, limit: int) -> list[Row]: ...
-    async def decided(self, row_id: int, decisions: list[dict[str, Any]], who: str, state: str,
-                      outcome: dict[str, Any], now: str) -> Row | None: ...
-    async def seen(self, row_id: int, now: str) -> Row | None: ...
-    async def expire(self, now: str) -> list[Row]: ...
+    async def before(self, seq: int | None, limit: int) -> list[Row]: ...
+    async def latest(self) -> int:
+        """The newest change sequence (0 when the record is empty): where the feed starts following."""
+        ...
     async def counts(self) -> dict[str, int]: ...
+    async def conversations(self, before: str | None, limit: int, correlation_id: str | None,
+                            graph_id: str | None) -> list[dict[str, Any]]:
+        """The transcript audit store's conversation rows, newest first, before an instant when given."""
+        ...
+    async def conversation(self, conversation: str) -> dict[str, Any] | None:
+        """One conversation row with its turns in order, or None."""
+        ...
 
 
-class MemoryInbox:
-    """The reference semantics in one process: ids and a change sequence assigned here, a wait upserted on
-    its key, an advice appended, every change bumping the sequence a replay reads from."""
+class MemoryReader:
+    """The reader's semantics in one process, for the tests: rows and conversations put here by the test
+    stand for what the recorder and the helper would have written."""
 
     name = "memory"
 
     def __init__(self) -> None:
         self._rows: dict[int, Row] = {}
-        self._keys: dict[tuple[str, str, int], int] = {}
-        self._next_id = 0
-        self._seq = 0
+        self._conversations: dict[str, dict[str, Any]] = {}
+        self._turns: dict[str, list[dict[str, Any]]] = {}
 
     async def open(self) -> None:
         return None
@@ -398,105 +391,74 @@ class MemoryInbox:
     async def close(self) -> None:
         return None
 
-    def _bump(self) -> int:
-        self._seq += 1
-        return self._seq
-
-    async def take(self, event: Mapping[str, Any], now: str) -> Row:
-        fields = row_fields(event, now)
-        key = wait_key(event)
-        existing = self._rows.get(self._keys[key]) if key is not None and key in self._keys else None
-        if existing is not None:
-            row = replace(existing, seq=self._bump(), **fields)
-        else:
-            self._next_id += 1
-            row = Row(id=self._next_id, seq=self._bump(), **fields)
-            if key is not None:
-                self._keys[key] = row.id
+    def put(self, row: Row) -> Row:
         self._rows[row.id] = row
         return row
+
+    def put_conversation(self, conversation: Mapping[str, Any], turns: Sequence[Mapping[str, Any]]) -> None:
+        key = str(conversation["conversation"])
+        self._conversations[key] = dict(conversation)
+        self._turns[key] = [dict(turn) for turn in turns]
 
     async def get(self, row_id: int) -> Row | None:
         return self._rows.get(row_id)
 
     async def since(self, seq: int, limit: int) -> list[Row]:
-        rows = sorted((r for r in self._rows.values() if r.seq > seq), key=lambda r: r.seq)
-        return rows[:limit]
+        return sorted((r for r in self._rows.values() if r.seq > seq), key=lambda r: r.seq)[:limit]
 
-    async def decided(self, row_id: int, decisions: list[dict[str, Any]], who: str, state: str,
-                      outcome: dict[str, Any], now: str) -> Row | None:
-        row = self._rows.get(row_id)
-        if row is None:
-            return None
-        if row.state != "open" and state != "answered":
-            return row  # decided first by another device: a later nothing-waiting never overwrites it
-        row = replace(row, seq=self._bump(), state=state, decisions=decisions, outcome=outcome,
-                      answered_by=who, answered_at=now, updated_at=now)
-        self._rows[row_id] = row
-        return row
+    async def before(self, seq: int | None, limit: int) -> list[Row]:
+        return sorted((r for r in self._rows.values() if seq is None or r.seq < seq), key=lambda r: -r.seq)[:limit]
 
-    async def seen(self, row_id: int, now: str) -> Row | None:
-        row = self._rows.get(row_id)
-        if row is None:
-            return None
-        row = replace(row, seq=self._bump(), state="seen", updated_at=now)
-        self._rows[row_id] = row
-        return row
-
-    async def expire(self, now: str) -> list[Row]:
-        changed: list[Row] = []
-        for row in list(self._rows.values()):
-            if row.state == "open" and row.kind in WAIT_KINDS and row.expires_at and row.expires_at < now:
-                row = replace(row, seq=self._bump(), state="expired", updated_at=now)
-                self._rows[row.id] = row
-                changed.append(row)
-        return changed
+    async def latest(self) -> int:
+        return max((r.seq for r in self._rows.values()), default=0)
 
     async def counts(self) -> dict[str, int]:
         result: dict[str, int] = {}
         for row in self._rows.values():
-            result[row.state] = result.get(row.state, 0) + 1
+            label = row.state or row.kind
+            result[label] = result.get(label, 0) + 1
         return result
 
+    async def conversations(self, before: str | None, limit: int, correlation_id: str | None,
+                            graph_id: str | None) -> list[dict[str, Any]]:
+        rows = [
+            {key: value for key, value in c.items() if key not in ("system", "tools")}
+            for c in self._conversations.values()
+            if (before is None or str(c["started_at"]) < before)
+            and (correlation_id is None or c.get("correlation_id") == correlation_id)
+            and (graph_id is None or c.get("graph_id") == graph_id)
+        ]
+        return sorted(rows, key=lambda c: str(c["started_at"]), reverse=True)[:limit]
 
-# the statements the reference inbox runs, with psycopg's placeholders. JSON travels as compact text cast
-# to jsonb and stamps as text cast to timestamptz, so the Node.js twin runs the same statements.
+    async def conversation(self, conversation: str) -> dict[str, Any] | None:
+        held = self._conversations.get(conversation)
+        if held is None:
+            return None
+        return {"conversation": dict(held), "turns": [dict(t) for t in self._turns.get(conversation, [])]}
+
+
+# the statements the reference reader runs, with psycopg's placeholders - selects only, on the question record
+# (extensions/ask-person/schema/postgres.sql) and the transcript audit tables (extensions/llm-helper/schema/postgres.sql)
 COLUMNS = ("id, seq, ticket, graph_id, correlation_id, turn, kind, description, summary, details, message, link, "
            "state, requested_at, expires_at, updated_at, answered_at, answered_by, decisions, outcome")
-SQL_UPSERT_WAIT = (
-    "INSERT INTO question_inbox (seq, ticket, graph_id, correlation_id, turn, kind, description, summary, details, "
-    "message, link, state, requested_at, expires_at, updated_at) "
-    "VALUES (nextval('question_inbox_seq'), %s, %s, %s, %s, %s, %s, %s, NULL, %s::jsonb, %s, 'open', "
-    "%s::timestamptz, %s::timestamptz, %s::timestamptz) "
-    "ON CONFLICT (graph_id, correlation_id, turn) WHERE kind <> 'advice' DO UPDATE SET "
-    "seq = nextval('question_inbox_seq'), ticket = EXCLUDED.ticket, description = EXCLUDED.description, "
-    "summary = EXCLUDED.summary, details = NULL, message = EXCLUDED.message, link = EXCLUDED.link, state = 'open', "
-    "requested_at = EXCLUDED.requested_at, expires_at = EXCLUDED.expires_at, updated_at = EXCLUDED.updated_at, "
-    "answered_at = NULL, answered_by = NULL, decisions = NULL, outcome = NULL "
-    f"RETURNING {COLUMNS}"
+SQL_GET = f"SELECT {COLUMNS} FROM question WHERE id = %s"
+SQL_SINCE = f"SELECT {COLUMNS} FROM question WHERE seq > %s ORDER BY seq LIMIT %s"
+SQL_BEFORE = f"SELECT {COLUMNS} FROM question WHERE %s::bigint IS NULL OR seq < %s::bigint ORDER BY seq DESC LIMIT %s"
+SQL_LATEST = "SELECT COALESCE(max(seq), 0) FROM question"
+SQL_COUNTS = "SELECT COALESCE(state, kind) AS label, count(*) FROM question GROUP BY COALESCE(state, kind)"
+CONVERSATION_COLUMNS = ("conversation, correlation_id, graph_id, node, model, status, turns, started_at, updated_at, "
+                        "ended_at, expires_at, input_tokens, output_tokens, cache_creation_input_tokens, "
+                        "cache_read_input_tokens")
+SQL_CONVERSATIONS = (
+    f"SELECT {CONVERSATION_COLUMNS} FROM transcript "
+    "WHERE (%s::timestamptz IS NULL OR started_at < %s::timestamptz) AND (%s::text IS NULL OR correlation_id = %s::text) "
+    "AND (%s::text IS NULL OR graph_id = %s::text) ORDER BY started_at DESC LIMIT %s"
 )
-SQL_INSERT_ADVICE = (
-    "INSERT INTO question_inbox (seq, ticket, graph_id, correlation_id, turn, kind, description, summary, details, "
-    "message, link, state, requested_at, expires_at, updated_at) "
-    "VALUES (nextval('question_inbox_seq'), NULL, %s, %s, %s, 'advice', %s, %s, %s, %s::jsonb, NULL, 'open', "
-    f"%s::timestamptz, NULL, %s::timestamptz) RETURNING {COLUMNS}"
-)
-SQL_GET = f"SELECT {COLUMNS} FROM question_inbox WHERE id = %s"
-SQL_SINCE = f"SELECT {COLUMNS} FROM question_inbox WHERE seq > %s ORDER BY seq LIMIT %s"
-SQL_DECIDED = (
-    "UPDATE question_inbox SET seq = nextval('question_inbox_seq'), state = %s, decisions = %s::jsonb, "
-    "outcome = %s::jsonb, answered_by = %s, answered_at = %s::timestamptz, updated_at = %s::timestamptz "
-    f"WHERE id = %s AND (state = 'open' OR %s::text = 'answered') RETURNING {COLUMNS}"
-)
-SQL_SEEN = (
-    "UPDATE question_inbox SET seq = nextval('question_inbox_seq'), state = 'seen', updated_at = %s::timestamptz "
-    f"WHERE id = %s AND kind = 'advice' RETURNING {COLUMNS}"
-)
-SQL_EXPIRE = (
-    "UPDATE question_inbox SET seq = nextval('question_inbox_seq'), state = 'expired', updated_at = %s::timestamptz "
-    f"WHERE state = 'open' AND kind <> 'advice' AND expires_at < %s::timestamptz RETURNING {COLUMNS}"
-)
-SQL_COUNTS = "SELECT state, count(*) FROM question_inbox GROUP BY state"
+SQL_CONVERSATION = f"SELECT {CONVERSATION_COLUMNS}, system, tools FROM transcript WHERE conversation = %s"
+TURN_COLUMNS = ("turn, trace_id, trace_path, correlation_id, started_at, ended_at, stop_reason, status, request_id, "
+                "input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, request, response, "
+                "calls")
+SQL_TURNS = f"SELECT {TURN_COLUMNS} FROM transcript_turn WHERE conversation = %s ORDER BY turn"
 
 
 def _compact(value: Any) -> str:
@@ -504,7 +466,7 @@ def _compact(value: Any) -> str:
 
 
 def _stamp(value: Any) -> str | None:
-    """A stamp as the row carries it: ISO-8601 UTC with milliseconds, from the driver's datetime or a text."""
+    """A stamp as a row carries it: ISO-8601 UTC with milliseconds, from the driver's datetime or a text."""
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -526,15 +488,50 @@ def row_from_record(record: Sequence[Any]) -> Row:
     return Row(
         id=int(row_id), seq=int(seq), kind=str(kind), graph_id=str(graph_id), correlation_id=str(correlation_id),
         turn=None if turn is None else int(turn), ticket=ticket, link=link, description=str(description),
-        summary=str(summary), details=details, message=_json(message) or {}, state=str(state),
-        requested_at=_stamp(requested_at) or "", expires_at=_stamp(expires_at), updated_at=_stamp(updated_at) or "",
-        answered_at=_stamp(answered_at), answered_by=answered_by, decisions=_json(decisions), outcome=_json(outcome),
+        summary=str(summary), details=details, message=_json(message) or {},
+        state=None if state is None else str(state), requested_at=_stamp(requested_at) or "",
+        expires_at=_stamp(expires_at), updated_at=_stamp(updated_at) or "", answered_at=_stamp(answered_at),
+        answered_by=answered_by, decisions=_json(decisions), outcome=_json(outcome),
     )  # fmt: skip
 
 
-class PostgresInbox:
-    """The reference inbox: psycopg 3 over an asynchronous connection pool (the ``postgres`` extra). The
-    application inserts, selects and updates one table and nothing else (schema/postgres.sql); people read."""
+def conversation_from_record(record: Sequence[Any]) -> dict[str, Any]:
+    """A conversation row of the transcript audit store, as the UI shows it (the snapshot columns when selected)."""
+    names = [name.strip() for name in CONVERSATION_COLUMNS.split(",")]
+    if len(record) > len(names):
+        names += ["system", "tools"]
+    result: dict[str, Any] = {}
+    for name, value in zip(names, record, strict=False):
+        if name in ("started_at", "updated_at", "ended_at", "expires_at"):
+            result[name] = _stamp(value)
+        elif name in ("turns", "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
+            result[name] = int(value or 0)
+        elif name == "tools":
+            result[name] = _json(value)
+        else:
+            result[name] = value if value is None else str(value)
+    return result
+
+
+def turn_from_record(record: Sequence[Any]) -> dict[str, Any]:
+    """A turn row of the transcript audit store: the facts, and the request and response as the model exchanged them."""
+    names = [name.strip() for name in TURN_COLUMNS.split(",")]
+    result: dict[str, Any] = {}
+    for name, value in zip(names, record, strict=False):
+        if name in ("started_at", "ended_at"):
+            result[name] = _stamp(value)
+        elif name in ("turn", "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
+            result[name] = int(value or 0)
+        elif name in ("request", "response", "calls"):
+            result[name] = _json(value)
+        else:
+            result[name] = value if value is None else str(value)
+    return result
+
+
+class PostgresReader:
+    """The reference reader: psycopg 3 over an asynchronous connection pool (the ``postgres`` extra), selects
+    only - a reader role suffices."""
 
     name = "postgres"
 
@@ -548,69 +545,51 @@ class PostgresInbox:
     async def close(self) -> None:
         await self._pool.close()
 
-    async def _one(self, sql: str, params: tuple[Any, ...]) -> Row | None:
+    async def _records(self, sql: str, params: tuple[Any, ...]) -> list[tuple[Any, ...]]:
         async with self._pool.connection() as connection:
             cursor = await connection.execute(sql, params)
-            records = await cursor.fetchall()
-        return row_from_record(records[0]) if records else None
-
-    async def _many(self, sql: str, params: tuple[Any, ...]) -> list[Row]:
-        async with self._pool.connection() as connection:
-            cursor = await connection.execute(sql, params)
-            records = await cursor.fetchall()
-        return [row_from_record(record) for record in records]
-
-    async def take(self, event: Mapping[str, Any], now: str) -> Row:
-        fields = row_fields(event, now)
-        if wait_key(event) is not None:
-            row = await self._one(SQL_UPSERT_WAIT, (
-                fields["ticket"], fields["graph_id"], fields["correlation_id"], fields["turn"], fields["kind"],
-                fields["description"], fields["summary"], _compact(fields["message"]), fields["link"],
-                fields["requested_at"], fields["expires_at"], now,
-            ))
-        else:
-            row = await self._one(SQL_INSERT_ADVICE, (
-                fields["graph_id"], fields["correlation_id"], fields["turn"], fields["description"],
-                fields["summary"], fields["details"], _compact(fields["message"]), fields["requested_at"], now,
-            ))
-        if row is None:  # pragma: no cover - RETURNING always yields the row
-            raise AppException(500, "the inbox returned no row")
-        return row
+            return list(await cursor.fetchall())
 
     async def get(self, row_id: int) -> Row | None:
-        return await self._one(SQL_GET, (row_id,))
+        records = await self._records(SQL_GET, (row_id,))
+        return row_from_record(records[0]) if records else None
 
     async def since(self, seq: int, limit: int) -> list[Row]:
-        return await self._many(SQL_SINCE, (seq, limit))
+        return [row_from_record(record) for record in await self._records(SQL_SINCE, (seq, limit))]
 
-    async def decided(self, row_id: int, decisions: list[dict[str, Any]], who: str, state: str,
-                      outcome: dict[str, Any], now: str) -> Row | None:
-        row = await self._one(SQL_DECIDED, (state, _compact(decisions), _compact(outcome), who, now, now, row_id, state))
-        # no row: the guard kept a row another device decided first (or the row is gone) - answer with it as stored
-        return row if row is not None else await self.get(row_id)
+    async def before(self, seq: int | None, limit: int) -> list[Row]:
+        return [row_from_record(record) for record in await self._records(SQL_BEFORE, (seq, seq, limit))]
 
-    async def seen(self, row_id: int, now: str) -> Row | None:
-        return await self._one(SQL_SEEN, (now, row_id))
-
-    async def expire(self, now: str) -> list[Row]:
-        return await self._many(SQL_EXPIRE, (now, now))
+    async def latest(self) -> int:
+        records = await self._records(SQL_LATEST, ())
+        return int(records[0][0]) if records and records[0] and records[0][0] is not None else 0
 
     async def counts(self) -> dict[str, int]:
-        async with self._pool.connection() as connection:
-            cursor = await connection.execute(SQL_COUNTS, ())
-            records = await cursor.fetchall()
-        return {str(state): int(count) for state, count in records}
+        return {str(label): int(count) for label, count in await self._records(SQL_COUNTS, ())}
+
+    async def conversations(self, before: str | None, limit: int, correlation_id: str | None,
+                            graph_id: str | None) -> list[dict[str, Any]]:
+        records = await self._records(SQL_CONVERSATIONS, (before, before, correlation_id, correlation_id, graph_id,
+                                                          graph_id, limit))
+        return [conversation_from_record(record) for record in records]
+
+    async def conversation(self, conversation: str) -> dict[str, Any] | None:
+        records = await self._records(SQL_CONVERSATION, (conversation,))
+        if not records:
+            return None
+        turns = await self._records(SQL_TURNS, (conversation,))
+        return {"conversation": conversation_from_record(records[0]), "turns": [turn_from_record(t) for t in turns]}
 
 
-def postgres_inbox(settings: Settings) -> PostgresInbox:
-    """The pool from the question.inbox.postgres.* keys; nothing connects until open()."""
+def postgres_reader(settings: Settings) -> PostgresReader:
+    """The pool from the question.store.postgres.* keys; nothing connects until open()."""
     if any(importlib.util.find_spec(name) is None for name in ("psycopg", "psycopg_pool")):
         raise QuestionError(MISSING_POSTGRES)
     from psycopg_pool import AsyncConnectionPool  # the [postgres] extra; checked above
 
     pool = AsyncConnectionPool(kwargs=dict(settings.postgres), min_size=1, max_size=4, open=False,
                                timeout=settings.postgres_timeout_s)
-    return PostgresInbox(pool, settings.postgres_timeout_s)
+    return PostgresReader(pool, settings.postgres_timeout_s)
 
 
 def failure(exc: BaseException) -> str:
@@ -621,7 +600,7 @@ def failure(exc: BaseException) -> str:
     return f"{name} sqlstate={state}" if state else name
 
 
-# --- the wake-ups -----------------------------------------------------------------------------
+# --- the wake-ups and the feed ----------------------------------------------------------------
 
 
 class Wakeups:
@@ -648,17 +627,67 @@ class Wakeups:
         return len(self._queues)
 
 
-_inbox: Inbox | None = None
+class Feed:
+    """The record's changes, read by their sequence and handed to the connected devices: a poll every
+    ``question.poll`` and a wake-up from the intake or a click, whichever comes first."""
+
+    def __init__(self) -> None:
+        self.cursor = 0
+        self._kick: asyncio.Event | None = None
+        self._task: asyncio.Task[None] | None = None
+
+    def kick(self) -> None:
+        if self._kick is not None:
+            self._kick.set()
+
+    async def poll_once(self) -> list[Row]:
+        """Read what changed since the cursor, tell every device, move the cursor; a store that cannot be read
+        is logged by type and the next poll retries."""
+        try:
+            rows = await reader().since(self.cursor, LIST_LIMIT_MAX)
+        except Exception as exc:  # noqa: BLE001 - the store may be down; the next poll retries
+            log.warning("The feed could not read the record - %s", failure(exc))
+            return []
+        if rows:
+            self.cursor = max(self.cursor, *(row.seq for row in rows))
+            _wakeups.publish(rows)
+        return rows
+
+    async def _run(self, poll_ms: int) -> None:
+        kick = self._kick = asyncio.Event()
+        while True:
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(kick.wait(), poll_ms / 1000)
+            kick.clear()
+            await self.poll_once()
+
+    def start(self, poll_ms: int) -> None:
+        if self._task is None:
+            self._task = asyncio.get_running_loop().create_task(self._run(poll_ms), name="question-feed")
+
+    async def stop(self) -> None:
+        task, self._task, self._kick = self._task, None, None
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    @property
+    def running(self) -> bool:
+        return self._task is not None and not self._task.done()
+
+
+_reader: Reader | None = None
 _wakeups = Wakeups()
+_feed = Feed()
 _http: aiohttp.ClientSession | None = None
-_sweeper: asyncio.Task[None] | None = None
 
 
-def inbox() -> Inbox:
-    global _inbox
-    if _inbox is None:
-        _inbox = MemoryInbox()
-    return _inbox
+def reader() -> Reader:
+    global _reader
+    if _reader is None:
+        _reader = MemoryReader()
+    return _reader
 
 
 def _session() -> aiohttp.ClientSession:
@@ -671,19 +700,14 @@ def _session() -> aiohttp.ClientSession:
 # --- the intake -------------------------------------------------------------------------------
 
 
-@preload(route=INTAKE_ROUTE, instances=1)
+@preload(route=INTAKE_ROUTE, instances=5)
 async def intake(_headers: dict[str, str], body: Body) -> Any:
-    """Take a message event from the main flow: a wait upserted, an advice appended, every connected device
-    told. One instance orders the writes of this process; the row is committed before the push."""
+    """Take a message event from the main flow: nothing to write - the recorder has the row - but every
+    connected device is told to look, so the card is on its screen the moment it is recorded."""
     event = validate_event(body)
-    try:
-        row = await inbox().take(event, iso_utc())
-    except Exception as exc:
-        log.warning("The inbox could not take a %s for %s - %s", event["kind"], event["graph_id"], failure(exc))
-        raise AppException(503, "the inbox is not available") from exc
-    _wakeups.publish([row])
-    log.info("Inbox took %s %d for %s turn %s (seq %d)", row.kind, row.id, row.graph_id, row.turn, row.seq)
-    return {"stored": True, "id": row.id, "seq": row.seq, "state": row.state}
+    _feed.kick()
+    log.info("Intake took %s for %s turn %s - the feed looks", event["kind"], event["graph_id"], event.get("turn"))
+    return {"accepted": True, "kind": event["kind"], "graph_id": event["graph_id"], "turn": event.get("turn")}
 
 
 @preload(route=HEALTH_ROUTE, instances=5, private=True)
@@ -691,12 +715,12 @@ async def question_health(headers: dict[str, str], _body: Body) -> Any:
     settings = current_settings()
     if headers.get("type") == "info":
         try:
-            counts = await inbox().counts()
+            counts = await reader().counts()
         except Exception as exc:  # noqa: BLE001 - health reports a store it cannot read by type
             counts = {"error": failure(exc)}
         return {
-            "service": INTAKE_ROUTE, "href": "http://127.0.0.1", "inbox": inbox().name, "rows": counts,
-            "connected": _wakeups.connected, "auth": settings.auth,
+            "service": INTAKE_ROUTE, "href": "http://127.0.0.1", "store": reader().name, "rows": counts,
+            "feed": _feed.cursor, "connected": _wakeups.connected, "auth": settings.auth,
         }  # fmt: skip
     return "agent.question.inbox is running fine"
 
@@ -785,15 +809,10 @@ def _oauth2(settings: Settings) -> OAuth2Verifier:
 
 
 async def identify(request: web.Request, settings: Settings, claimed: str | None) -> Identity:
-    """Who is at the page: nobody is asked in development (a name the page offers is taken as given), the
-    gateway's trusted header under the installation's SSO, or a validated access token."""
+    """Who is at the UI: nobody is asked in development (a name the page offers is taken as given), or a
+    validated access token - the UI obtains one by Authorization Code with PKCE."""
     if settings.auth == "none":
         return Identity(claimed or "anonymous", "none")
-    if settings.auth == "proxy":
-        who = request.headers.get(settings.auth_header, "").strip()
-        if not who:
-            raise ReplyError(401, f"sign-in required - the {settings.auth_header} header names the person")
-        return Identity(who, "proxy")
     bearer = _bearer(request)
     if not bearer:
         raise ReplyError(401, "sign-in required - a bearer access token")
@@ -811,41 +830,60 @@ def _error(status: int, message: str) -> web.Response:
     return web.json_response({"type": "error", "message": message}, status=status)
 
 
-async def _expire_now() -> None:
-    """Open waits past their expiry become expired, and every device is told - run before a replay and by
-    the sweeper, so a card never says open after the engine stopped waiting."""
-    try:
-        changed = await inbox().expire(iso_utc())
-    except Exception as exc:  # noqa: BLE001 - a store that cannot be read is logged by type; the replay still answers
-        log.warning("The inbox could not expire its waits - %s", failure(exc))
-        return
-    if changed:
-        _wakeups.publish(changed)
+def ui_config(settings: Settings) -> dict[str, Any]:
+    """What the UI needs before it signs in: the auth mode, the title and, under oauth2, the issuer, the public
+    client id, the scopes and the audience - no secret, since a public client has none."""
+    config: dict[str, Any] = {"auth": settings.auth, "title": settings.page_title}
+    if settings.auth == "oauth2":
+        config["oauth2"] = {
+            "issuer": settings.oauth2_issuer, "client_id": settings.oauth2_client_id,
+            "scopes": settings.oauth2_scopes, "audience": settings.oauth2_audience,
+        }  # fmt: skip
+    return config
+
+
+async def show_config(_request: web.Request) -> web.Response:
+    """``GET /questions/config``: the UI's sign-in configuration - open, it holds no secret."""
+    return web.json_response(ui_config(current_settings()))
+
+
+def _whole(text: str | None, default: int) -> int:
+    if text is None or text == "":
+        return default
+    if not text.isdigit():
+        raise ValueError(text)
+    return int(text)
 
 
 async def list_rows(request: web.Request) -> web.Response:
     """``GET /questions?since=<seq>&limit=<n>``: every row that changed since the cursor, oldest change first,
-    and the cursor to continue from - the replay a reconnecting device calls before it listens."""
+    and the cursor to continue from - the replay a reconnecting device calls before it listens.
+    ``GET /questions?before=<seq>&limit=<n>``: the history's older page, newest change first, and the cursor of
+    the page before it - the infinite scroll."""
     settings = current_settings()
     try:
         await identify(request, settings, None)
     except ReplyError as exc:
         return _error(exc.status, exc.message)
+    before: int | None = None
+    since = 0
     try:
-        since = int(request.query.get("since", "0"))
-        limit = min(LIST_LIMIT_MAX, max(1, int(request.query.get("limit", str(LIST_LIMIT)))))
+        limit = min(LIST_LIMIT_MAX, max(1, _whole(request.query.get("limit"), LIST_LIMIT)))
+        if "before" in request.query:
+            before = _whole(request.query.get("before"), 0) if request.query.get("before") else None
+        else:
+            since = _whole(request.query.get("since"), 0)
     except ValueError:
-        return _error(400, "since and limit must be whole numbers")
-    await _expire_now()
+        return _error(400, "since, before and limit must be whole numbers")
     try:
-        rows = await inbox().since(since, limit)
+        if "before" in request.query:
+            older = await reader().before(before, limit)
+            return web.json_response(page_before(older, None, limit) | {"before": before})
+        rows = await reader().since(since, limit)
     except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
-        log.warning("The inbox could not list - %s", failure(exc))
-        return _error(503, "the inbox is not available")
-    return web.json_response({
-        "since": since, "rows": [row.public() for row in rows],
-        "next": max([since] + [row.seq for row in rows]), "more": len(rows) >= limit,
-    })  # fmt: skip
+        log.warning("The record could not be read - %s", failure(exc))
+        return _error(503, "the question record is not available")
+    return web.json_response(page_since(rows, since, limit) | {"since": since})
 
 
 def _frame(row: Row) -> bytes:
@@ -854,7 +892,7 @@ def _frame(row: Row) -> bytes:
 
 async def events(request: web.Request) -> web.StreamResponse:
     """``GET /questions/events``: the stream a connected device holds. Rows since ``Last-Event-ID`` (or
-    ``since``) first, then every change as it happens; keep-alive comments while nothing changes."""
+    ``since``) first, then every change the feed finds; keep-alive comments while nothing changes."""
     settings = current_settings()
     try:
         await identify(request, settings, None)
@@ -872,8 +910,7 @@ async def events(request: web.Request) -> web.StreamResponse:
     queue = _wakeups.subscribe()
     ping_ms = keep_alive_ms()
     try:
-        await _expire_now()
-        for row in await inbox().since(since, LIST_LIMIT_MAX):
+        for row in await reader().since(since, LIST_LIMIT_MAX):
             await response.write(_frame(row))
             since = row.seq
         while True:
@@ -887,11 +924,62 @@ async def events(request: web.Request) -> web.StreamResponse:
                 since = row.seq
     except (ConnectionError, asyncio.CancelledError):
         pass
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read ends the stream; the device reconnects
+        log.warning("The stream could not read the record - %s", failure(exc))
     finally:
         _wakeups.unsubscribe(queue)
     with contextlib.suppress(ConnectionError):
         await response.write_eof()
     return response
+
+
+async def list_transcripts(request: web.Request) -> web.Response:
+    """``GET /transcripts?before=<iso>&limit=<n>&correlation_id=&graph_id=``: the transcript audit store's
+    conversations, newest first, and the instant to continue from."""
+    settings = current_settings()
+    try:
+        await identify(request, settings, None)
+    except ReplyError as exc:
+        return _error(exc.status, exc.message)
+    before = request.query.get("before") or None
+    if before is not None:
+        parsed = parse_iso(before)
+        if parsed is None:
+            return _error(400, "before must be an ISO-8601 time")
+        before = iso_utc(parsed)
+    try:
+        limit = min(TRANSCRIPTS_LIMIT_MAX, max(1, _whole(request.query.get("limit"), TRANSCRIPTS_LIMIT)))
+    except ValueError:
+        return _error(400, "limit must be a whole number")
+    try:
+        rows = await reader().conversations(before, limit, request.query.get("correlation_id") or None,
+                                            request.query.get("graph_id") or None)
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
+        log.warning("The transcripts could not be read - %s", failure(exc))
+        return _error(503, "the transcript audit store is not available")
+    oldest = rows[-1]["started_at"] if rows else None
+    return web.json_response({"conversations": rows, "next": oldest, "more": len(rows) >= limit})
+
+
+async def show_transcript(request: web.Request) -> web.Response:
+    """``GET /transcripts/{conversation}``: one conversation of the transcript audit store with its turns, as the
+    model exchanged them."""
+    settings = current_settings()
+    try:
+        await identify(request, settings, None)
+    except ReplyError as exc:
+        return _error(exc.status, exc.message)
+    conversation = request.match_info["conversation"]
+    if not CONVERSATION_ID.fullmatch(conversation):
+        return _error(400, "a conversation is 32 hexadecimal characters")
+    try:
+        found = await reader().conversation(conversation)
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
+        log.warning("The transcript could not be read - %s", failure(exc))
+        return _error(503, "the transcript audit store is not available")
+    if found is None:
+        return _error(404, f"conversation {conversation} is not in the audit store")
+    return web.json_response(found)
 
 
 async def _forward(url: str, body: dict[str, Any], settings: Settings) -> tuple[int | None, Any, str | None]:
@@ -913,9 +1001,9 @@ async def _forward(url: str, body: dict[str, Any], settings: Settings) -> tuple[
 
 async def decide(request: web.Request) -> web.Response:
     """``POST /questions/{id}/decide`` with ``{decisions, decided_by?}``: the click, automated - the decisions
-    go to the link's reply endpoint under this app's bearer, the outcome lands on the row, every device is
-    told, and the invoker gets the row with the outcome. The first accepted decision stands: an acceptance always
-    wins the row, and a nothing-waiting that lands after one never overwrites it."""
+    go to the link's reply endpoint under this app's bearer, the recorder behind that endpoint writes the answer
+    on the row, and the invoker gets the row as it then stands with the engine's outcome; the feed carries the
+    change to every device."""
     settings = current_settings()
     try:
         body = await request.json()
@@ -937,9 +1025,13 @@ async def decide(request: web.Request) -> web.Response:
         row_id = int(request.match_info["id"])
     except ValueError:
         return _error(400, "the row id must be a whole number")
-    row = await inbox().get(row_id)
+    try:
+        row = await reader().get(row_id)
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
+        log.warning("The record could not be read - %s", failure(exc))
+        return _error(503, "the question record is not available")
     if row is None:
-        return _error(404, f"row {row_id} is not in the inbox")
+        return _error(404, f"row {row_id} is not in the record")
     if row.kind not in WAIT_KINDS or not row.ticket or not row.link:
         return _error(409, f"row {row_id} is an advice - nothing to decide")
     if row.state != "open":
@@ -952,43 +1044,17 @@ async def decide(request: web.Request) -> web.Response:
     outcome: dict[str, Any] = {"status": status, "body": answer}
     if error:
         outcome = {"status": 502, "body": {"type": "error", "message": f"the reply endpoint did not answer - {error}"}}
-    state = state_after(outcome["status"], outcome["body"])
-    now = iso_utc()
-    updated = await inbox().decided(row_id, [dict(d) for d in decisions], identity.who, state, outcome, now)
-    if updated is None:
-        return _error(404, f"row {row_id} is not in the inbox")
-    if updated.answered_by != identity.who or updated.answered_at != now:
-        # two devices on one card: the other one's decision was accepted while this one was in flight, so the engine
-        # answered nothing-waiting here and the row stands as the first decision left it - this device sees who
-        log.info("Row %d: %s's decision met a row %s by %s - the row stands", row_id, identity.who, updated.state,
-                 updated.answered_by)
-        return web.json_response({"row": updated.public(), "outcome": outcome})
-    _wakeups.publish([updated])
-    log.info("Row %d decided by %s via %s - %s -> %s", row_id, identity.who, identity.via, outcome["status"], state)
-    return web.json_response({"row": updated.public(), "outcome": outcome})
-
-
-async def mark_seen(request: web.Request) -> web.Response:
-    """``POST /questions/{id}/seen``: an advice the person has read."""
-    settings = current_settings()
+    # the recorder behind the reply endpoint has written the answer by now: read the row as it stands and let
+    # the feed carry the change to every device
+    _feed.kick()
     try:
-        await identify(request, settings, None)
-    except ReplyError as exc:
-        return _error(exc.status, exc.message)
-    try:
-        row_id = int(request.match_info["id"])
-    except ValueError:
-        return _error(400, "the row id must be a whole number")
-    row = await inbox().get(row_id)
-    if row is None:
-        return _error(404, f"row {row_id} is not in the inbox")
-    if row.kind != "advice":
-        return _error(409, f"row {row_id} is a wait - decide it instead")
-    updated = await inbox().seen(row_id, iso_utc())
-    if updated is None:
-        return _error(404, f"row {row_id} is not in the inbox")
-    _wakeups.publish([updated])
-    return web.json_response({"row": updated.public()})
+        updated = await reader().get(row_id)
+    except Exception as exc:  # noqa: BLE001 - the decision reached the engine; the row is reported as last read
+        log.warning("The record could not be re-read after a decision - %s", failure(exc))
+        updated = None
+    shown = updated if updated is not None else row
+    log.info("Row %d decided by %s via %s - %s -> %s", row_id, identity.who, identity.via, outcome["status"], shown.state)
+    return web.json_response({"row": shown.public(), "outcome": outcome})
 
 
 STYLE = (
@@ -1000,7 +1066,7 @@ STYLE = (
     ".case h2{font-size:1rem;margin:0 0 .3rem}.meta{color:#667;font-size:.8rem}"
     ".card{border-top:1px solid #eee;padding:.7rem 0}.card.open{border-left:4px solid #e0a800;padding-left:.8rem}"
     ".card.answered{border-left:4px solid #2e9e5b;padding-left:.8rem;opacity:.85}"
-    ".card.expired{border-left:4px solid #999;padding-left:.8rem;opacity:.7}.card.seen{opacity:.6}"
+    ".card.expired{border-left:4px solid #999;padding-left:.8rem;opacity:.7}"
     ".card.advice{border-left:4px solid #3a7bd5;padding-left:.8rem}pre{background:#f3f3f3;border-radius:6px;"
     "padding:.5rem .7rem;overflow:auto;font-size:.8rem}fieldset{border:1px solid #ddd;border-radius:8px;margin:.5rem 0}"
     "textarea,input[type=text]{width:100%;box-sizing:border-box;margin:.2rem 0}button{padding:.4rem 1rem;border-radius:6px;"
@@ -1044,9 +1110,9 @@ function callForm(call, i) {
 }
 function card(r) {
   const when = esc((r.updated_at || '').replace('T', ' ').slice(0, 19));
-  let body = '<div class="card ' + esc(r.state) + ' ' + esc(r.kind) + '" data-row="' + r.id + '"><div><strong>' + esc(r.summary) + '</strong> <span class="meta">' + esc(r.kind) + (r.turn != null ? ' · turn ' + r.turn : '') + ' · ' + esc(r.state) + ' · ' + when + '</span></div>';
+  let body = '<div class="card ' + esc(r.state || '') + ' ' + esc(r.kind) + '" data-row="' + r.id + '"><div><strong>' + esc(r.summary) + '</strong> <span class="meta">' + esc(r.kind) + (r.turn != null ? ' · turn ' + r.turn : '') + (r.state ? ' · ' + esc(r.state) : '') + ' · ' + when + '</span></div>';
   if (r.details) body += '<p>' + esc(r.details) + '</p>';
-  if (r.kind === 'advice') { if (r.state === 'open') body += '<button data-seen="' + r.id + '">Seen</button>'; }
+  if (r.kind === 'advice') { /* an advice is a notice: nothing to decide */ }
   else if (r.state === 'open') {
     body += '<form data-decide="' + r.id + '">' + (r.calls || []).map(callForm).join('') + '<button class="primary" type="submit">Send the decision</button></form>';
     if (r.expires_at) body += '<div class="meta">expires ' + esc(r.expires_at.replace('T', ' ').slice(0, 19)) + '</div>';
@@ -1079,10 +1145,6 @@ function render() {
   history.innerHTML = closed.length ? closed.map(caseHtml).join('') : '<div class="empty">Nothing yet.</div>';
   history.scrollTop = keep;
 }
-document.getElementById('cases').addEventListener('click', async (ev) => {
-  const seen = ev.target.closest('button[data-seen]');
-  if (seen) { await fetch(LIST + '/' + seen.dataset.seen + '/seen', {method: 'POST', credentials: 'same-origin'}); }
-});
 document.getElementById('cases').addEventListener('submit', async (ev) => {
   const form = ev.target.closest('form[data-decide]'); if (!form) return;
   ev.preventDefault();
@@ -1109,6 +1171,8 @@ replay().then(listen);
 
 
 def page(title: str) -> str:
+    """The development page (``question.auth: none``): the React UI maintained in the Node.js pack replaces it,
+    served from this app's ``resources/public`` when deployed there."""
     return (
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
@@ -1136,54 +1200,47 @@ async def serve_page(request: web.Request) -> web.Response:
 
 def mount(app: web.Application) -> None:
     """The browser side on the host (``Platform.add_routes``)."""
+    app.router.add_get(CONFIG_PATH, show_config)
     app.router.add_get(PAGE_PATH, serve_page)
     app.router.add_get(EVENTS_PATH, events)
     app.router.add_get(LIST_PATH, list_rows)
+    app.router.add_get(TRANSCRIPTS_PATH, list_transcripts)
+    app.router.add_get(TRANSCRIPT_PATH, show_transcript)
     app.router.add_post(DECIDE_PATH, decide)
-    app.router.add_post(SEEN_PATH, mark_seen)
 
 
 # --- boot -------------------------------------------------------------------------------------
 
 
-async def _sweep(interval_ms: int) -> None:
-    """Expire the waits the engine stopped waiting for, so a card never says open past its expiry even
-    when no device is asking."""
-    while True:
-        await asyncio.sleep(interval_ms / 1000)
-        await _expire_now()
-
-
 async def boot() -> None:
-    """Load the settings and open the inbox inside the serving loop, before the first request; a
-    configuration the application cannot start with, or a database that does not answer, stops it by name."""
-    global _inbox, _sweeper
+    """Load the settings and open the reader inside the serving loop, before the first request; a configuration
+    the application cannot start with, or a database that does not answer, stops it by name. The feed starts
+    at the record's newest sequence and follows from there."""
+    global _reader
     settings = configure()
-    if settings.inbox == "postgres":
-        _inbox = postgres_inbox(settings)
+    if settings.store == "postgres":
+        _reader = postgres_reader(settings)
     else:
-        _inbox = MemoryInbox()
-        log.warning("The inbox is in memory - a restart forgets every card; set %s=postgres for a deployment", INBOX)
+        _reader = MemoryReader()
+        log.warning("The store is in memory - nothing is recorded there at run time; set %s=postgres to read the "
+                    "question record and the transcripts the main flow and the LLM helper write", STORE)
     try:
-        await _inbox.open()
+        await _reader.open()
+        _feed.cursor = await _reader.latest()
     except QuestionError:
         raise
     except Exception as exc:
-        raise QuestionError(f"the {settings.inbox} inbox could not open - {failure(exc)}") from exc
-    _sweeper = asyncio.get_running_loop().create_task(_sweep(settings.sweep_ms))
-    log.info("agent-question ready - inbox %s, page %s, stream %s, auth %s",
-             _inbox.name, PAGE_PATH, EVENTS_PATH, settings.auth)
+        raise QuestionError(f"the {settings.store} store could not open - {failure(exc)}") from exc
+    _feed.start(settings.poll_ms)
+    log.info("agent-question ready - store %s (feed from %d), page %s, stream %s, poll %d ms, auth %s",
+             _reader.name, _feed.cursor, PAGE_PATH, EVENTS_PATH, settings.poll_ms, settings.auth)
 
 
 async def shutdown() -> None:
-    global _http, _sweeper
-    if _sweeper is not None:
-        _sweeper.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await _sweeper
-        _sweeper = None
-    if _inbox is not None:
-        await _inbox.close()
+    global _http
+    await _feed.stop()
+    if _reader is not None:
+        await _reader.close()
     if _http is not None and not _http.closed:
         await _http.close()
     _http = None

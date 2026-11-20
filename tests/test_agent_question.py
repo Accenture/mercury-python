@@ -1,12 +1,12 @@
 """The agent-question app (extensions/agent-question/agent_question.py).
 
-The shared vectors first (tests/vectors/agent-question-vectors.json): the row a message event becomes, the
-state an outcome leaves, the request the automated click sends, and the reference inbox on a scripted
-sequence. Then the app in-process: the intake on the bus (a wait upserted, an advice appended, every
-connected device told), the replay and the stream over the host, a decision forwarded to a fake reply
-endpoint under the app's bearer with the outcome recorded and broadcast, an advice marked seen, open waits
-expiring, the proxy mode, the PostgreSQL inbox's statements on a recording fake of the pool, the boot's
-refusals by name, and - gated on AGENT_QUESTION_TEST_URL - the schema and the rows on a live PostgreSQL.
+The shared vectors first (tests/vectors/agent-question-vectors.json): the event the intake accepts or refuses, the
+request the automated click sends, the pages the replay and the history read. Then the app in-process as the reader of
+the question record the main flow keeps: the intake waking the feed, the replay and the history pages and the stream
+over the host, the transcripts browsed, a decision forwarded to a fake reply endpoint under the app's bearer and the
+row re-read as the recorder left it, the two auth modes with the UI's configuration, the PostgreSQL reader's statements
+on a recording fake of the pool, the boot's refusals by name, and - gated on AGENT_QUESTION_TEST_URL - the schemas and
+the rows on a live PostgreSQL.
 """
 
 from __future__ import annotations
@@ -16,16 +16,20 @@ import importlib.util
 import json
 import os
 import sys
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import aiohttp
+import jwt
 import pytest
 import pytest_asyncio
 from aiohttp import web
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from jwt.algorithms import RSAAlgorithm
 
 from mercury_composable import (
     FunctionRegistry,
@@ -39,7 +43,8 @@ from mercury_composable.server import EventApiServer
 
 _TESTS = Path(__file__).resolve().parent
 _MODULE = _TESTS.parent / "extensions" / "agent-question" / "agent_question.py"
-_SCHEMA = _TESTS.parent / "extensions" / "agent-question" / "schema"
+_RECORD_SCHEMA = _TESTS.parent / "extensions" / "ask-person" / "schema" / "postgres.sql"
+_TRANSCRIPT_SCHEMA = _TESTS.parent / "extensions" / "llm-helper" / "schema" / "postgres.sql"
 
 _spec = importlib.util.spec_from_file_location("agent_question_under_test", _MODULE)
 assert _spec is not None
@@ -52,10 +57,15 @@ _spec.loader.exec_module(aq)
 
 VECTORS: dict[str, Any] = json.loads((_TESTS / "vectors" / "agent-question-vectors.json").read_text("utf-8"))
 
+ISSUER = "https://issuer.example.test"
+AUDIENCE = "agent-question"
 CALLS = [
     {"id": "toolu_01A", "name": "issue_refund", "route": "demo.refund.issue", "wait": True,
      "input": {"order_id": "ORD-1002", "amount": 174.0, "reason": "Shipment lost in transit"}},
 ]
+CONVERSATION_A = "a" * 32
+CONVERSATION_B = "b" * 32
+CONVERSATION_C = "c" * 32
 
 
 def wait_event(ticket: str = "t-answer", base: str = "https://ask.example.test", **overrides: Any) -> dict[str, Any]:
@@ -82,6 +92,48 @@ def advice_event(**overrides: Any) -> dict[str, Any]:
     return event
 
 
+def make_row(event: dict[str, Any], row_id: int, seq: int, **overrides: Any) -> Any:
+    """A row as the main flow's recorder writes it, for the reader under test."""
+    wait = event["kind"] in aq.WAIT_KINDS
+    now = iso_utc()
+    fields: dict[str, Any] = {
+        "id": row_id, "seq": seq, "kind": event["kind"], "graph_id": event["graph_id"],
+        "correlation_id": event["correlation_id"], "turn": event.get("turn"),
+        "ticket": event.get("ticket") if wait else None, "link": event.get("link") if wait else None,
+        "description": event["description"], "summary": event["summary"], "details": event.get("details"),
+        "message": dict(event), "state": "open" if wait else None, "requested_at": event.get("requested_at") or now,
+        "expires_at": event.get("expires_at") if wait else None, "updated_at": now,
+    }  # fmt: skip
+    fields.update(overrides)
+    return aq.Row(**fields)
+
+
+def put(event: dict[str, Any], row_id: int, seq: int, **overrides: Any) -> Any:
+    return aq.reader().put(make_row(event, row_id, seq, **overrides))
+
+
+def conversation(key: str, started_at: str, correlation_id: str = "order-1002-case", graph_id: str = "order-assistant",
+                 status: str = "done") -> dict[str, Any]:
+    return {
+        "conversation": key, "correlation_id": correlation_id, "graph_id": graph_id, "node": "assist",
+        "model": "claude-haiku-4-5", "status": status, "turns": 2, "started_at": started_at, "updated_at": started_at,
+        "ended_at": started_at if status == "done" else None, "expires_at": "2027-11-19T09:00:00.000Z",
+        "input_tokens": 120, "output_tokens": 40, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
+        "system": "You are a careful assistant.", "tools": [{"name": "issue_refund"}],
+    }  # fmt: skip
+
+
+def turn(number: int, status: str = "done") -> dict[str, Any]:
+    return {
+        "turn": number, "trace_id": f"trace-{number}", "trace_path": "POST /api/graph/order-assistant",
+        "correlation_id": "order-1002-case", "started_at": "2026-11-19T09:00:00.000Z", "ended_at": "2026-11-19T09:00:01.000Z",
+        "stop_reason": "end_turn" if status == "done" else "tool_use", "status": status, "request_id": f"req-{number}",
+        "input_tokens": 60, "output_tokens": 20, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
+        "request": [{"role": "user", "content": "refund?"}], "response": [{"type": "text", "text": "Done."}],
+        "calls": None if status == "done" else [{"id": "toolu_01A", "name": "issue_refund", "input": {}}],
+    }  # fmt: skip
+
+
 def _names(section: str) -> list[str]:
     return [case["name"] for case in VECTORS[section]]
 
@@ -94,29 +146,21 @@ def _case(section: str, name: str) -> dict[str, Any]:
 
 
 def test_the_vector_file_is_the_shared_contract() -> None:
-    assert VECTORS["contract"] == "agent-question" and VECTORS["version"] == 2
-    for section in ("row_cases", "outcome_cases", "click_cases", "transition_cases"):
+    assert VECTORS["contract"] == "agent-question" and VECTORS["version"] == 3
+    for section in ("intake_cases", "click_cases", "feed_cases"):
         assert VECTORS[section], section
 
 
-@pytest.mark.parametrize("name", _names("row_cases"))
-def test_row_cases(name: str) -> None:
-    case = _case("row_cases", name)
-    if "row" in case:
+@pytest.mark.parametrize("name", _names("intake_cases"))
+def test_intake_cases(name: str) -> None:
+    case = _case("intake_cases", name)
+    if "accepted" in case:
         event = aq.validate_event(case["event"])
-        key = aq.wait_key(event)
-        assert (list(key) if key else None) == case["key"]
-        assert aq.row_fields(event, case["now"]) == case["row"]
+        assert {"accepted": True, "kind": event["kind"], "graph_id": event["graph_id"], "turn": event.get("turn")} == case["accepted"]
     else:
         with pytest.raises(aq.AppException) as refused:
             aq.validate_event(case["event"])
         assert (refused.value.status, refused.value.message) == (case["status"], case["error"])
-
-
-@pytest.mark.parametrize("name", _names("outcome_cases"))
-def test_outcome_cases(name: str) -> None:
-    case = _case("outcome_cases", name)
-    assert aq.state_after(case["status"], case["body"]) == case["state"]
 
 
 @pytest.mark.parametrize("name", _names("click_cases"))
@@ -130,48 +174,47 @@ def test_click_cases(name: str) -> None:
         assert (refused.value.status, refused.value.message) == (case["status"], case["error"])
 
 
-async def test_transition_cases_replay_on_the_reference_inbox() -> None:
-    for case in VECTORS["transition_cases"]:
-        box = aq.MemoryInbox()
-        results: list[dict[str, Any]] = []
-        for step in case["steps"]:
-            if step["op"] == "take":
-                row = await box.take(aq.validate_event(step["event"]), step["now"])
-                results.append({"id": row.id, "seq": row.seq, "state": row.state, "ticket": row.ticket})
-            elif step["op"] == "decided":
-                state = aq.state_after(step["status"], step["body"])
-                row = await box.decided(step["id"], step["decisions"], step["who"], state,
-                                        {"status": step["status"], "body": step["body"]}, step["now"])
-                results.append({"id": row.id, "seq": row.seq, "state": row.state, "answered_by": row.answered_by})
-            elif step["op"] == "seen":
-                row = await box.seen(step["id"], step["now"])
-                results.append({"id": row.id, "seq": row.seq, "state": row.state})
-            elif step["op"] == "expire":
-                changed = await box.expire(step["now"])
-                results.append({"expired": [{"id": r.id, "seq": r.seq} for r in changed]})
-            elif step["op"] == "since":
-                rows = await box.since(step["seq"], step["limit"])
-                results.append({"ids": [r.id for r in rows], "seqs": [r.seq for r in rows]})
-        assert results == case["results"], case["name"]
-        final = [
-            {"id": r.id, "seq": r.seq, "kind": r.kind, "state": r.state, "ticket": r.ticket, "turn": r.turn,
-             "requested_at": r.requested_at, "expires_at": r.expires_at, "updated_at": r.updated_at,
-             "answered_by": r.answered_by, "outcome": r.outcome}
-            for r in sorted(await box.since(0, 100), key=lambda r: r.id)
-        ]  # fmt: skip
-        assert final == case["final"], case["name"]
+def _feed_rows(specs: list[dict[str, Any]]) -> list[Any]:
+    return [
+        aq.Row(id=s["id"], seq=s["seq"], kind=s["kind"], graph_id="g", correlation_id=f"c-{s['id']}",
+               turn=2 if s["kind"] != "advice" else None, ticket=f"t-{s['id']}" if s["kind"] != "advice" else None,
+               link=None, description="d", summary="s", details=None, message={}, state=s["state"],
+               requested_at="2026-11-20T00:00:00.000Z", expires_at=None, updated_at="2026-11-20T00:00:00.000Z")
+        for s in specs
+    ]
 
 
-# --- configuration and the fresh inbox -------------------------------------------------------------
+async def test_feed_cases_page_the_rows_in_both_directions() -> None:
+    for case in VECTORS["feed_cases"]:
+        rows = _feed_rows(case["rows"])
+        reader = aq.MemoryReader()
+        for row in rows:
+            reader.put(row)
+        for query in case["queries"]:
+            if "before" in query:
+                page = aq.page_before(rows, query["before"], query["limit"])
+                read = await reader.before(query["before"], query["limit"])
+            else:
+                page = aq.page_since(rows, query["since"], query["limit"])
+                read = await reader.since(query["since"], query["limit"])
+            shown = {"ids": [r["id"] for r in page["rows"]], "seqs": [r["seq"] for r in page["rows"]],
+                     "next": page["next"], "more": page["more"]}
+            assert shown == {k: query[k] for k in ("ids", "seqs", "next", "more")}, (case["name"], query)
+            assert [r.id for r in read] == query["ids"], (case["name"], query)
+        assert await reader.latest() == max(s["seq"] for s in case["rows"])
+
+
+# --- configuration and the fresh reader ------------------------------------------------------------
 
 
 @pytest.fixture
 def configure() -> Iterator[Callable[[dict[str, Any]], Any]]:
-    """Set keys on the shared configuration, reload the settings and give the module a fresh memory inbox and
-    wake-ups; clear everything afterwards."""
+    """Set keys on the shared configuration, reload the settings and give the module a fresh memory reader, fresh
+    wake-ups and a fresh feed; clear everything afterwards."""
     touched: list[str] = []
-    aq._inbox = aq.MemoryInbox()
+    aq._reader = aq.MemoryReader()
     aq._wakeups = aq.Wakeups()
+    aq._feed = aq.Feed()
 
     def apply(values: dict[str, Any]) -> Any:
         for key, value in values.items():
@@ -183,22 +226,23 @@ def configure() -> Iterator[Callable[[dict[str, Any]], Any]]:
     for key in touched:
         app_config().set(key, None)
     aq._settings = None
-    aq._inbox = None
+    aq._reader = None
     aq._wakeups = aq.Wakeups()
+    aq._feed = aq.Feed()
 
 
-BASE: dict[str, Any] = {aq.INBOX: "memory", aq.AUTH: "none", aq.REPLY_TOKEN: "", "event.stream.keep.alive": "1s"}
+BASE: dict[str, Any] = {aq.STORE: "memory", aq.AUTH: "none", aq.REPLY_TOKEN: "", "event.stream.keep.alive": "1s"}
 
 
 @pytest.mark.parametrize(
     ("values", "names"),
     [
-        ({aq.INBOX: "redis"}, "question.inbox must be memory or postgres"),
-        ({aq.AUTH: "basic"}, "question.auth must be one of none, proxy, oauth2"),
-        ({aq.AUTH: "proxy", aq.AUTH_HEADER: ""}, "question.auth.header names the header"),
+        ({aq.STORE: "redis"}, "question.store must be memory or postgres"),
+        ({aq.AUTH: "basic"}, "question.auth must be one of none, oauth2"),
+        ({aq.AUTH: "proxy"}, "question.auth must be one of none, oauth2"),
         ({aq.AUTH: "oauth2"}, "set question.auth.oauth2.issuer or question.auth.oauth2.jwks-url"),
-        ({aq.POSTGRES_PREFIX + "port": "db"}, "question.inbox.postgres.port must be a port number"),
-        ({aq.SWEEP: "0"}, "question.sweep must be a duration"),
+        ({aq.POSTGRES_PREFIX + "port": "db"}, "question.store.postgres.port must be a port number"),
+        ({aq.POLL: "0"}, "question.poll must be a duration"),
     ],
 )
 def test_the_boot_fails_by_name(configure: Callable[[dict[str, Any]], Any], values: dict[str, Any], names: str) -> None:
@@ -209,41 +253,44 @@ def test_the_boot_fails_by_name(configure: Callable[[dict[str, Any]], Any], valu
 
 def test_the_postgres_settings_follow_the_audit_store(configure: Callable[[dict[str, Any]], Any]) -> None:
     settings = configure({
-        **BASE, aq.INBOX: "postgres", aq.POSTGRES_PREFIX + "host": "db.internal", aq.POSTGRES_PREFIX + "port": "6543",
-        aq.POSTGRES_PREFIX + "database": "agents", aq.POSTGRES_PREFIX + "username": "inbox",
+        **BASE, aq.STORE: "postgres", aq.POSTGRES_PREFIX + "host": "db.internal", aq.POSTGRES_PREFIX + "port": "6543",
+        aq.POSTGRES_PREFIX + "database": "agents", aq.POSTGRES_PREFIX + "username": "reader",
         aq.POSTGRES_PREFIX + "password": "s3", aq.POSTGRES_PREFIX + "ssl": "false", aq.POSTGRES_PREFIX + "timeout.ms": 2500,
+        aq.POLL: "250ms",
     })  # fmt: skip
     assert settings.postgres == {
-        "host": "db.internal", "port": 6543, "dbname": "agents", "user": "inbox", "password": "s3",
+        "host": "db.internal", "port": 6543, "dbname": "agents", "user": "reader", "password": "s3",
         "sslmode": "disable", "connect_timeout": 2, "options": "-c statement_timeout=2500",
     }  # fmt: skip
-    assert settings.postgres_timeout_s == 2.5 and settings.sweep_ms == 30_000 and settings.reply_timeout_ms == 10_000
+    assert settings.postgres_timeout_s == 2.5 and settings.poll_ms == 250 and settings.reply_timeout_ms == 10_000
+    assert settings.oauth2_scopes == "openid profile email"
 
 
-# --- the intake on the bus --------------------------------------------------------------------------
+# --- the intake and the feed ----------------------------------------------------------------------
 
 
-async def test_the_intake_upserts_a_wait_appends_an_advice_and_wakes_the_devices(
-    configure: Callable[[dict[str, Any]], Any],
-) -> None:
+async def test_the_intake_accepts_the_event_and_wakes_the_feed(configure: Callable[[dict[str, Any]], Any]) -> None:
     configure(BASE)
     queue = aq._wakeups.subscribe()
     office = PostOffice(registry=default_registry)
+    aq._feed.start(60_000)  # a poll an hour away: only the wake-up can make the feed look
     try:
-        first = await office.request(aq.INTAKE_ROUTE, wait_event(), timeout_ms=5000)
-        assert first.get_status() == 200, first.body
-        assert first.body == {"stored": True, "id": 1, "seq": 1, "state": "open"}
-        again = await office.request(aq.INTAKE_ROUTE, wait_event(ticket="t-second"), timeout_ms=5000)
-        assert again.body == {"stored": True, "id": 1, "seq": 2, "state": "open"}, "the same turn upserts the same row"
-        advice = await office.request(aq.INTAKE_ROUTE, advice_event(), timeout_ms=5000)
-        assert advice.body == {"stored": True, "id": 2, "seq": 3, "state": "open"}
+        put(wait_event(), 1, 1)  # the recorder wrote the row before the channel was told
+        reply = await office.request(aq.INTAKE_ROUTE, wait_event(), timeout_ms=5000)
+        assert reply.get_status() == 200, reply.body
+        assert reply.body == {"accepted": True, "kind": "approval", "graph_id": "order-assistant", "turn": 2}
+        woken = await asyncio.wait_for(queue.get(), 2)
+        assert woken.id == 1 and aq._feed.cursor == 1, "the intake's wake-up made the feed look at once"
         bad = await office.request(aq.INTAKE_ROUTE, {"kind": "notice"}, timeout_ms=5000)
         assert bad.get_status() == 400 and "kind must be one of" in str(bad.body)
-        rows = await aq.inbox().since(0, 10)
-        assert [(r.id, r.seq, r.kind, r.ticket) for r in rows] == [(1, 2, "approval", "t-second"), (2, 3, "advice", None)]
-        woken = [queue.get_nowait().seq for _ in range(3)]
-        assert woken == [1, 2, 3], "every change reaches a connected device"
+        advice = await office.request(aq.INTAKE_ROUTE, advice_event(), timeout_ms=5000)
+        assert advice.body == {"accepted": True, "kind": "advice", "graph_id": "order-assistant", "turn": 2}
+        assert queue.empty(), "nothing new in the record: the feed has nothing to tell"
+        put(advice_event(), 2, 2)
+        assert [r.id for r in await aq._feed.poll_once()] == [2]
+        assert (await asyncio.wait_for(queue.get(), 2)).kind == "advice"
     finally:
+        await aq._feed.stop()
         aq._wakeups.unsubscribe(queue)
         await default_registry.bus.close()
 
@@ -252,35 +299,34 @@ async def test_the_intake_upserts_a_wait_appends_an_advice_and_wakes_the_devices
 
 
 class FakeReply:
-    """The main flow's reply endpoint as the app sees it: scripted by ticket, recording every click."""
+    """The main flow's reply endpoint as the app sees it: scripted by ticket, recording every click, and letting a
+    test play the recorder behind it (on_post) before the outcome goes back."""
 
     def __init__(self) -> None:
         self.posts: list[dict[str, Any]] = []
-        self.raced: dict[str, bool] = {}
+        self.on_post: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+        self.jwks: dict[str, Any] = {"keys": []}
 
     async def reply(self, request: web.Request) -> web.Response:
         body = await request.json()
         self.posts.append({"body": body, "authorization": request.headers.get("authorization")})
+        if self.on_post is not None:
+            await self.on_post(body)
         ticket = body.get("ticket")
         if ticket == "t-expired":
-            return web.json_response({"type": "expired", "message": "Ticket expired"}, status=410)
-        if ticket in ("t-race-slow", "t-race-fast"):
-            # two devices on one card: the engine resumes at most once - the first post is accepted, the next gets
-            # nothing-waiting; with t-race-slow the acceptance takes longer than the refusal, so the 410 lands first
-            if self.raced.get(ticket):
-                return web.json_response({"type": "nothing-waiting", "run": "fresh"}, status=410)
-            self.raced[ticket] = True
-            if ticket == "t-race-slow":
-                await asyncio.sleep(0.5)
-            return web.json_response({"type": "answer", "turn": 3, "run": "resume", "message": "Issued."})
+            return web.json_response({"type": "nothing-waiting", "run": "fresh"}, status=410)
         if ticket == "t-refused":
             return web.json_response({"type": "approval", "turn": 2, "error": "not a call waiting for approval",
                                       "calls": CALLS})
         return web.json_response({"type": "answer", "turn": 3, "run": "resume", "message": "Your refund has been issued."})
 
+    async def keys(self, _request: web.Request) -> web.Response:
+        return web.json_response(self.jwks)
+
     def app(self) -> web.Application:
         app = web.Application()
         app.router.add_post("/ask/reply", self.reply)
+        app.router.add_get("/jwks", self.keys)
         return app
 
 
@@ -312,42 +358,50 @@ async def host() -> AsyncIterator[str]:
         await aq.shutdown()
 
 
-async def _take(event: dict[str, Any]) -> Any:
-    row = await aq.inbox().take(aq.validate_event(event), iso_utc())
-    aq._wakeups.publish([row])
-    return row
+async def get_json(url: str, headers: dict[str, str] | None = None) -> tuple[int, Any]:
+    async with aiohttp.ClientSession() as http, http.get(url, headers=headers) as response:
+        return response.status, await response.json(content_type=None)
 
 
-async def test_the_replay_lists_every_change_since_the_cursor(
+def seven_rows() -> None:
+    specs = [(1, 3, "approval", "answered"), (2, 2, "advice", None), (3, 5, "question", "open"), (4, 4, "approval", "expired"),
+             (5, 7, "approval", "open"), (6, 6, "advice", None), (7, 1, "approval", "answered")]
+    for row_id, seq, kind, state in specs:
+        event = advice_event(correlation_id=f"case-{row_id}") if kind == "advice" else wait_event(
+            ticket=f"t-{row_id}", correlation_id=f"case-{row_id}", kind=kind)
+        put(event, row_id, seq, state=state)
+
+
+async def test_the_replay_and_the_history_page_the_record(configure: Callable[[dict[str, Any]], Any], host: str) -> None:
+    configure(BASE)
+    seven_rows()
+    status, page = await get_json(f"{host}/questions?since=0")
+    assert status == 200
+    assert [r["id"] for r in page["rows"]] == [7, 2, 1, 4, 3, 6, 5] and page["next"] == 7 and page["more"] is False
+    assert page["rows"][2]["calls"] == CALLS and page["rows"][2]["ticket"] == "t-1" and page["rows"][1]["state"] is None
+    status, tail = await get_json(f"{host}/questions?since=5&limit=1")
+    assert [r["id"] for r in tail["rows"]] == [6] and tail["next"] == 6 and tail["more"] is True
+    status, newest = await get_json(f"{host}/questions?before=&limit=3")
+    assert status == 200
+    assert [r["id"] for r in newest["rows"]] == [5, 6, 3] and newest["next"] == 5 and newest["more"] is True
+    assert newest["before"] is None
+    status, older = await get_json(f"{host}/questions?before=5&limit=3")
+    assert [r["id"] for r in older["rows"]] == [4, 1, 2] and older["next"] == 2 and older["more"] is True
+    status, oldest = await get_json(f"{host}/questions?before=2&limit=3")
+    assert [r["id"] for r in oldest["rows"]] == [7] and oldest["next"] == 1 and oldest["more"] is False
+    assert (await get_json(f"{host}/questions?since=x"))[0] == 400
+    assert (await get_json(f"{host}/questions?before=x"))[0] == 400
+    async with aiohttp.ClientSession() as http, http.get(f"{host}/questions/app") as response:
+        text = await response.text()
+        assert response.status == 200 and "Agent questions" in text
+        assert 'id="history"' in text and "Waiting for you" in text and "data-seen" not in text
+
+
+async def test_the_stream_replays_then_follows_the_feed_with_keep_alives(
     configure: Callable[[dict[str, Any]], Any], host: str
 ) -> None:
     configure(BASE)
-    await _take(wait_event())
-    await _take(advice_event())
-    await _take(wait_event(ticket="t-plan", correlation_id="release-42", graph_id="plan-assistant", kind="question", turn=1))
-    async with aiohttp.ClientSession() as http:
-        async with http.get(f"{host}/questions?since=0") as response:
-            page = await response.json()
-            assert response.status == 200
-        assert [r["id"] for r in page["rows"]] == [1, 2, 3] and page["next"] == 3 and page["more"] is False
-        assert page["rows"][0]["calls"] == CALLS and page["rows"][0]["ticket"] == "t-answer"
-        assert page["rows"][1]["kind"] == "advice" and page["rows"][1]["details"].startswith("The assistant runs")
-        async with http.get(f"{host}/questions?since=2&limit=1") as response:
-            tail = await response.json()
-        assert [r["id"] for r in tail["rows"]] == [3] and tail["next"] == 3
-        async with http.get(f"{host}/questions?since=x") as response:
-            assert response.status == 400
-        async with http.get(f"{host}/questions/app") as response:
-            text = await response.text()
-            assert response.status == 200 and "Agent questions" in text
-            assert 'id="history"' in text and "Waiting for you" in text, "the page separates what waits from the history"
-
-
-async def test_the_stream_replays_then_follows_the_changes_with_keep_alives(
-    configure: Callable[[dict[str, Any]], Any], host: str
-) -> None:
-    configure(BASE)
-    await _take(wait_event())
+    put(wait_event(), 1, 1)
     async with aiohttp.ClientSession() as http, http.get(f"{host}/questions/events",
                                                           headers={"accept": "text/event-stream"}) as response:
         assert response.status == 200 and response.content_type == "text/event-stream"
@@ -368,7 +422,8 @@ async def test_the_stream_replays_then_follows_the_changes_with_keep_alives(
         assert json.loads(replayed[2][len("data: "):])["ticket"] == "t-answer"
         ping = await frame()
         assert ping == [": ping"], "a keep-alive while nothing changes"
-        await _take(advice_event())
+        put(advice_event(), 2, 2)
+        await aq._feed.poll_once()
         live = await frame()
         assert live[0] == "id: 2" and json.loads(live[2][len("data: "):])["kind"] == "advice"
     async with aiohttp.ClientSession() as http, http.get(f"{host}/questions/events",
@@ -377,14 +432,32 @@ async def test_the_stream_replays_then_follows_the_changes_with_keep_alives(
         assert first == "id: 2\n", "the reconnect resumes after the cursor the browser kept"
 
 
-async def test_a_decision_is_forwarded_recorded_and_broadcast(
+async def test_the_ui_configuration_names_the_sign_in(configure: Callable[[dict[str, Any]], Any], host: str) -> None:
+    configure(BASE)
+    assert await get_json(f"{host}/questions/config") == (200, {"auth": "none", "title": "Agent questions"})
+    configure({aq.AUTH: "oauth2", aq.OAUTH2_ISSUER: ISSUER, aq.OAUTH2_AUDIENCE: AUDIENCE, aq.OAUTH2_CLIENT_ID: "agent-question-ui",
+               aq.PAGE_TITLE: "Decisions"})
+    assert await get_json(f"{host}/questions/config") == (200, {
+        "auth": "oauth2", "title": "Decisions",
+        "oauth2": {"issuer": ISSUER, "client_id": "agent-question-ui", "scopes": "openid profile email", "audience": AUDIENCE},
+    })
+
+
+async def test_a_decision_is_forwarded_and_the_row_is_re_read_as_the_recorder_left_it(
     configure: Callable[[dict[str, Any]], Any], reply_endpoint: tuple[FakeReply, str], host: str
 ) -> None:
     fake, base = reply_endpoint
     configure({**BASE, aq.REPLY_TOKEN: "channel-app-bearer"})
-    row = await _take(wait_event(ticket="t-answer", base=base))
+    row = put(wait_event(ticket="t-answer", base=base), 1, 1)
     queue = aq._wakeups.subscribe()
     decisions = [{"id": "toolu_01A", "approved": True, "note": "Carrier confirmed the loss"}]
+
+    async def recorder(body: dict[str, Any]) -> None:
+        # the recorder behind the reply endpoint writes the answer before the outcome goes back
+        put(wait_event(ticket=body["ticket"], base=base), 1, 2, state="answered", answered_by=body["decided_by"],
+            answered_at=iso_utc(), decisions=body["decisions"], outcome={"status": 200, "body": {"type": "answer"}})
+
+    fake.on_post = recorder
     async with aiohttp.ClientSession() as http:
         async with http.post(f"{host}/questions/{row.id}/decide",
                              json={"decisions": decisions, "decided_by": "operator-17"}) as response:
@@ -394,19 +467,23 @@ async def test_a_decision_is_forwarded_recorded_and_broadcast(
         assert result["outcome"]["status"] == 200 and result["outcome"]["body"]["type"] == "answer"
         assert fake.posts[0]["body"] == {"ticket": "t-answer", "decisions": decisions, "decided_by": "operator-17"}
         assert fake.posts[0]["authorization"] == "Bearer channel-app-bearer"
+        # the feed was told to look: the change reaches every device
+        assert [r.id for r in await aq._feed.poll_once()] == [1]
         woken = queue.get_nowait()
         assert woken.id == row.id and woken.state == "answered"
         async with http.post(f"{host}/questions/{row.id}/decide", json={"decisions": decisions}) as response:
-            assert response.status == 409 and "answered" in (await response.json())["message"]
-        # an expired ticket, a refused decision and an endpoint that does not answer leave their states
-        expired = await _take(wait_event(ticket="t-expired", base=base, correlation_id="case-2"))
+            assert response.status == 409 and "operator-17" in (await response.json())["message"]
+        # a recorder that did not write (or a wait decided elsewhere): the row is reported as it stands
+        fake.on_post = None
+        expired = put(wait_event(ticket="t-expired", base=base, correlation_id="case-2"), 2, 3)
         async with http.post(f"{host}/questions/{expired.id}/decide", json={"decisions": decisions}) as response:
-            assert (await response.json())["row"]["state"] == "expired"
-        refused = await _take(wait_event(ticket="t-refused", base=base, correlation_id="case-3"))
+            body = await response.json()
+        assert body["row"]["state"] == "open" and body["outcome"]["status"] == 410
+        refused = put(wait_event(ticket="t-refused", base=base, correlation_id="case-3"), 3, 4)
         async with http.post(f"{host}/questions/{refused.id}/decide", json={"decisions": decisions}) as response:
             body = await response.json()
         assert body["row"]["state"] == "open" and body["outcome"]["body"]["error"].startswith("not a call")
-        silent = await _take(wait_event(ticket="t-silent", base="http://127.0.0.1:9", correlation_id="case-4"))
+        silent = put(wait_event(ticket="t-silent", base="http://127.0.0.1:9", correlation_id="case-4"), 4, 5)
         configure({aq.REPLY_TIMEOUT: "2s"})
         async with http.post(f"{host}/questions/{silent.id}/decide", json={"decisions": decisions}) as response:
             body = await response.json()
@@ -418,87 +495,81 @@ async def test_a_decision_is_forwarded_recorded_and_broadcast(
             assert response.status == 400 and "non-empty list" in (await response.json())["message"]
         async with http.post(f"{host}/questions/999/decide", json={"decisions": decisions}) as response:
             assert response.status == 404
-        advice = await _take(advice_event())
+        advice = put(advice_event(), 5, 6)
         async with http.post(f"{host}/questions/{advice.id}/decide", json={"decisions": decisions}) as response:
             assert response.status == 409 and "advice" in (await response.json())["message"]
         async with http.post(f"{host}/questions/{advice.id}/seen") as response:
-            assert (await response.json())["row"]["state"] == "seen"
-        async with http.post(f"{host}/questions/{row.id}/seen") as response:
-            assert response.status == 409
+            assert response.status == 404, "the seen endpoint is gone with the state"
     aq._wakeups.unsubscribe(queue)
 
 
-async def test_two_devices_on_one_card_the_first_accepted_decision_stands(
-    configure: Callable[[dict[str, Any]], Any], reply_endpoint: tuple[FakeReply, str], host: str
-) -> None:
-    """Both clicks pass the open check and reach the engine; whichever order the outcomes land in, the row ends
-    answered by the device the engine accepted, and the other device gets the row as it stands with its own 410."""
-    _, base = reply_endpoint
-    configure(BASE)
-    decisions = [{"id": "toolu_01A", "approved": True}]
-
-    async def click(http: aiohttp.ClientSession, row_id: int, who: str) -> tuple[int, dict[str, Any]]:
-        async with http.post(f"{host}/questions/{row_id}/decide",
-                             json={"decisions": decisions, "decided_by": who}) as response:
-            return response.status, await response.json()
-
-    async with aiohttp.ClientSession() as http:
-        # the acceptance lands last: the losing device's 410 turned the row expired for a moment, then the acceptance won
-        slow = await _take(wait_event(ticket="t-race-slow", base=base, correlation_id="race-1"))
-        first, second = await asyncio.gather(click(http, slow.id, "device-1"), click(http, slow.id, "device-2"))
-        assert first[0] == 200 and first[1]["row"]["state"] == "answered"
-        assert first[1]["row"]["answered_by"] == "device-1" and first[1]["outcome"]["status"] == 200
-        assert second[0] == 200 and second[1]["row"]["state"] == "expired" and second[1]["outcome"]["status"] == 410
-        stored = await aq.inbox().get(slow.id)
-        assert stored is not None and stored.state == "answered" and stored.answered_by == "device-1"
-        # the acceptance lands first: the 410 that follows changes nothing, and the loser sees who decided
-        fast = await _take(wait_event(ticket="t-race-fast", base=base, correlation_id="race-2"))
-        first, second = await asyncio.gather(click(http, fast.id, "device-1"), click(http, fast.id, "device-2"))
-        assert first[1]["row"]["state"] == "answered" and first[1]["row"]["answered_by"] == "device-1"
-        assert second[0] == 200 and second[1]["outcome"]["status"] == 410
-        assert second[1]["row"]["state"] == "answered" and second[1]["row"]["answered_by"] == "device-1"
-        stored = await aq.inbox().get(fast.id)
-        assert stored is not None and stored.state == "answered" and stored.answered_by == "device-1"
-        # after the fact, the app itself refuses without an engine call
-        async with http.post(f"{host}/questions/{fast.id}/decide", json={"decisions": decisions}) as response:
-            assert response.status == 409 and "device-1" in (await response.json())["message"]
-
-
-async def test_open_waits_past_their_expiry_are_marked_expired(
+async def test_the_transcripts_are_browsed_from_the_audit_store(
     configure: Callable[[dict[str, Any]], Any], host: str
 ) -> None:
     configure(BASE)
-    past = iso_utc(datetime.now(timezone.utc) - timedelta(seconds=5))
-    stale = await _take(wait_event(ticket="t-stale", expires_at=past))
-    fresh = await _take(wait_event(ticket="t-fresh", correlation_id="case-2"))
-    queue = aq._wakeups.subscribe()
-    async with aiohttp.ClientSession() as http, http.get(f"{host}/questions?since=0") as response:
-        rows = {r["id"]: r["state"] for r in (await response.json())["rows"]}
-    assert rows == {stale.id: "expired", fresh.id: "open"}
-    assert queue.get_nowait().id == stale.id, "the expiry is broadcast like any change"
-    aq._wakeups.unsubscribe(queue)
+    reader = aq.reader()
+    reader.put_conversation(conversation(CONVERSATION_A, "2026-11-19T09:00:00.000Z"), [turn(1, "tool_use"), turn(2)])
+    reader.put_conversation(conversation(CONVERSATION_B, "2026-11-19T10:00:00.000Z", correlation_id="release-42",
+                                         graph_id="plan-assistant", status="open"), [turn(1, "tool_use")])
+    reader.put_conversation(conversation(CONVERSATION_C, "2026-11-19T11:00:00.000Z"), [turn(1)])
+    status, page = await get_json(f"{host}/transcripts")
+    assert status == 200
+    assert [c["conversation"] for c in page["conversations"]] == [CONVERSATION_C, CONVERSATION_B, CONVERSATION_A]
+    assert page["next"] == "2026-11-19T09:00:00.000Z" and page["more"] is False
+    assert "system" not in page["conversations"][0] and "tools" not in page["conversations"][0], "the list is light"
+    status, older = await get_json(f"{host}/transcripts?before=2026-11-19T11:00:00Z&limit=1")
+    assert [c["conversation"] for c in older["conversations"]] == [CONVERSATION_B]
+    assert older["next"] == "2026-11-19T10:00:00.000Z" and older["more"] is True
+    status, by_case = await get_json(f"{host}/transcripts?correlation_id=order-1002-case")
+    assert [c["conversation"] for c in by_case["conversations"]] == [CONVERSATION_C, CONVERSATION_A]
+    status, by_graph = await get_json(f"{host}/transcripts?graph_id=plan-assistant")
+    assert [c["conversation"] for c in by_graph["conversations"]] == [CONVERSATION_B]
+    status, one = await get_json(f"{host}/transcripts/{CONVERSATION_A}")
+    assert status == 200 and one["conversation"]["system"] == "You are a careful assistant."
+    assert [t["turn"] for t in one["turns"]] == [1, 2] and one["turns"][0]["calls"][0]["name"] == "issue_refund"
+    assert (await get_json(f"{host}/transcripts/{'f' * 32}"))[0] == 404
+    assert (await get_json(f"{host}/transcripts/not-a-conversation"))[0] == 400
+    assert (await get_json(f"{host}/transcripts?before=yesterday"))[0] == 400
+    assert (await get_json(f"{host}/transcripts?limit=x"))[0] == 400
 
 
-async def test_the_proxy_mode_takes_the_gateway_s_header(
+async def test_the_oauth2_mode_guards_every_read_and_the_click(
     configure: Callable[[dict[str, Any]], Any], reply_endpoint: tuple[FakeReply, str], host: str
 ) -> None:
     fake, base = reply_endpoint
-    configure({**BASE, aq.AUTH: "proxy"})
-    row = await _take(wait_event(base=base))
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_jwk = json.loads(RSAAlgorithm.to_jwk(private_key.public_key()))
+    fake.jwks = {"keys": [{**public_jwk, "kid": "k1", "use": "sig", "alg": "RS256"}]}
+    pem = private_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                    serialization.NoEncryption())
+    configure({**BASE, aq.AUTH: "oauth2", aq.OAUTH2_ISSUER: ISSUER, aq.OAUTH2_AUDIENCE: AUDIENCE,
+               aq.OAUTH2_JWKS_URL: f"{base}/jwks", aq.OAUTH2_CLIENT_ID: "agent-question-ui"})
+    aq._verifier = None
+    now = int(datetime.now(timezone.utc).timestamp())
+    token = jwt.encode({"iss": ISSUER, "aud": AUDIENCE, "sub": "u-17", "preferred_username": "operator-17",
+                        "iat": now, "exp": now + 300}, pem, algorithm="RS256", headers={"kid": "k1"})
+    row = put(wait_event(base=base), 1, 1)
     decisions = [{"id": "toolu_01A", "approved": False}]
     async with aiohttp.ClientSession() as http:
-        for path in ("/questions?since=0", "/questions/events", "/questions/app"):
+        for path in ("/questions?since=0", "/questions/events", "/questions/app", "/transcripts", f"/transcripts/{CONVERSATION_A}"):
             async with http.get(f"{host}{path}") as response:
                 assert response.status == 401, path
+        async with http.get(f"{host}/questions/config") as response:
+            assert response.status == 200 and (await response.json())["oauth2"]["client_id"] == "agent-question-ui"
         async with http.post(f"{host}/questions/{row.id}/decide", json={"decisions": decisions}) as response:
             assert response.status == 401
-        async with http.post(f"{host}/questions/{row.id}/decide", json={"decisions": decisions, "decided_by": "spoof"},
-                             headers={"x-forwarded-user": "operator-17"}) as response:
+        bearer = {"authorization": f"Bearer {token}"}
+        async with http.get(f"{host}/questions?since=0", headers=bearer) as response:
+            assert response.status == 200 and [r["id"] for r in (await response.json())["rows"]] == [1]
+        async with http.get(f"{host}/transcripts", headers=bearer) as response:
             assert response.status == 200
-        assert fake.posts[0]["body"]["decided_by"] == "operator-17", "the gateway's name, never the body's"
+        async with http.post(f"{host}/questions/{row.id}/decide", json={"decisions": decisions, "decided_by": "spoof"},
+                             headers=bearer) as response:
+            assert response.status == 200
+        assert fake.posts[0]["body"]["decided_by"] == "operator-17", "the token's name, never the body's"
 
 
-# --- the PostgreSQL inbox on a recording fake of the pool ----------------------------------------------
+# --- the PostgreSQL reader on a recording fake of the pool ---------------------------------------------
 
 
 class _FakeCursor:
@@ -515,13 +586,15 @@ class _FakeConnection:
 
     async def execute(self, sql: str, params: tuple[Any, ...] | None = None) -> _FakeCursor:
         self._pool.log.append((sql, params))
-        return _FakeCursor(self._pool.rows)
+        rows = self._pool.queue.pop(0) if self._pool.queue else self._pool.rows
+        return _FakeCursor(rows)
 
 
 class _FakePool:
     def __init__(self, rows: list[tuple[Any, ...]] | None = None) -> None:
         self.log: list[tuple[str, tuple[Any, ...] | None]] = []
         self.rows = rows or []
+        self.queue: list[list[tuple[Any, ...]]] = []
         self.opened: tuple[bool, float] | None = None
         self.closed = False
 
@@ -549,46 +622,68 @@ def _record(**overrides: Any) -> tuple[Any, ...]:
     return tuple(values[name.strip()] for name in aq.COLUMNS.split(","))
 
 
-async def test_the_postgres_inbox_runs_the_statements_and_maps_the_records() -> None:
+def _conversation_record(light: bool = True) -> tuple[Any, ...]:
+    started = datetime(2026, 11, 19, 9, 0, 0, tzinfo=timezone.utc)
+    values = (CONVERSATION_A, "order-1002-case", "order-assistant", "assist", "claude-haiku-4-5", "done", 2, started,
+              started, started, started + timedelta(days=365), 120, 40, 0, 0)
+    return values if light else values + ("You are a careful assistant.", [{"name": "issue_refund"}])
+
+
+def _turn_record() -> tuple[Any, ...]:
+    started = datetime(2026, 11, 19, 9, 0, 0, tzinfo=timezone.utc)
+    return (1, "trace-1", "POST /api/graph/order-assistant", "order-1002-case", started, started + timedelta(seconds=1),
+            "tool_use", "tool_use", "req-1", 60, 20, 0, 0, [{"role": "user", "content": "refund?"}],
+            [{"type": "tool_use", "id": "toolu_01A", "name": "issue_refund", "input": {}}],
+            '[{"id":"toolu_01A","name":"issue_refund","input":{}}]')
+
+
+async def test_the_postgres_reader_runs_the_statements_and_maps_the_records() -> None:
     pool = _FakePool([_record()])
-    box = aq.PostgresInbox(pool, 2.5)
-    await box.open()
+    reader = aq.PostgresReader(pool, 2.5)
+    await reader.open()
     assert pool.opened == (True, 2.5)
-    now = "2026-11-19T09:12:05.123Z"
-    row = await box.take(aq.validate_event(wait_event()), now)
-    sql, params = pool.log[-1]
-    assert sql == aq.SQL_UPSERT_WAIT and params is not None
-    assert params[0] == "t-answer" and params[1:5] == ("order-assistant", "order-1002-case", 2, "approval")
-    assert json.loads(params[7])["calls"] == CALLS and params[11] == now
-    assert row.id == 7 and row.seq == 12 and row.requested_at == now and row.expires_at == "2026-11-21T09:12:05.123Z"
-    assert row.message["calls"] == CALLS and row.public()["calls"] == CALLS
-    await box.take(aq.validate_event(advice_event()), now)
-    sql, params = pool.log[-1]
-    assert sql == aq.SQL_INSERT_ADVICE and params is not None and params[3] == "Customer-support assistant"
-    await box.decided(7, [{"id": "toolu_01A", "approved": True}], "operator-17", "answered", {"status": 200, "body": {}}, now)
-    sql, params = pool.log[-1]
-    assert sql == aq.SQL_DECIDED and params == ("answered", '[{"id":"toolu_01A","approved":true}]', '{"status":200,"body":{}}',
-                                                 "operator-17", now, now, 7, "answered")
-    await box.seen(8, now)
-    assert pool.log[-1] == (aq.SQL_SEEN, (now, 8))
-    await box.expire(now)
-    assert pool.log[-1] == (aq.SQL_EXPIRE, (now, now))
-    await box.since(3, 50)
+    row = await reader.get(7)
+    assert pool.log[-1] == (aq.SQL_GET, (7,)) and row is not None
+    assert row.id == 7 and row.seq == 12 and row.requested_at == "2026-11-19T09:12:05.123Z"
+    assert row.expires_at == "2026-11-21T09:12:05.123Z" and row.public()["calls"] == CALLS
+    await reader.since(3, 50)
     assert pool.log[-1] == (aq.SQL_SINCE, (3, 50))
-    await box.get(7)
-    assert pool.log[-1] == (aq.SQL_GET, (7,))
-    pool.rows = [("open", 3), ("answered", 1)]
-    assert await box.counts() == {"open": 3, "answered": 1}
-    await box.close()
+    await reader.before(None, 20)
+    assert pool.log[-1] == (aq.SQL_BEFORE, (None, None, 20))
+    await reader.before(9, 20)
+    assert pool.log[-1] == (aq.SQL_BEFORE, (9, 9, 20))
+    pool.queue = [[(42,)]]
+    assert await reader.latest() == 42 and pool.log[-1] == (aq.SQL_LATEST, ())
+    pool.queue = [[]]
+    assert await reader.latest() == 0
+    pool.queue = [[("open", 3), ("advice", 1)]]
+    assert await reader.counts() == {"open": 3, "advice": 1}
+    pool.queue = [[_conversation_record()]]
+    shown = await reader.conversations("2026-11-19T12:00:00.000Z", 20, "order-1002-case", None)
+    assert pool.log[-1] == (aq.SQL_CONVERSATIONS, ("2026-11-19T12:00:00.000Z", "2026-11-19T12:00:00.000Z", "order-1002-case",
+                                                  "order-1002-case", None, None, 20))
+    assert shown[0]["conversation"] == CONVERSATION_A and shown[0]["started_at"] == "2026-11-19T09:00:00.000Z"
+    assert shown[0]["turns"] == 2 and shown[0]["input_tokens"] == 120 and "system" not in shown[0]
+    pool.queue = [[_conversation_record(light=False)], [_turn_record()]]
+    one = await reader.conversation(CONVERSATION_A)
+    assert [entry[0] for entry in pool.log[-2:]] == [aq.SQL_CONVERSATION, aq.SQL_TURNS] and one is not None
+    assert one["conversation"]["system"] == "You are a careful assistant." and one["conversation"]["tools"] == [{"name": "issue_refund"}]
+    assert one["turns"][0]["turn"] == 1 and one["turns"][0]["status"] == "tool_use"
+    assert one["turns"][0]["calls"] == [{"id": "toolu_01A", "name": "issue_refund", "input": {}}], "json text is parsed"
+    assert one["turns"][0]["ended_at"] == "2026-11-19T09:00:01.000Z"
+    pool.queue = [[]]
+    assert await reader.conversation(CONVERSATION_B) is None
+    await reader.close()
     assert pool.closed
 
 
-def test_a_record_s_json_may_arrive_as_text() -> None:
+def test_a_record_s_json_may_arrive_as_text_and_an_advice_has_no_state() -> None:
     record = _record(message='{"kind":"advice"}', decisions="[]", outcome='{"status":410}', kind="advice", ticket=None,
-                     link=None, turn=None, expires_at=None, state="seen")
+                     link=None, turn=None, expires_at=None, state=None)
     row = aq.row_from_record(record)
     assert row.message == {"kind": "advice"} and row.decisions == [] and row.outcome == {"status": 410}
-    assert row.turn is None and row.expires_at is None and row.state == "seen"
+    assert row.turn is None and row.expires_at is None and row.state is None
+    assert aq.failure(RuntimeError("quotes a row")) == "RuntimeError"
 
 
 # --- the hooks and the boot ---------------------------------------------------------------------------
@@ -603,20 +698,24 @@ async def test_the_platform_hooks_mount_the_routes_and_run_the_boot(
     aq._attach()
     app = fresh.create_app()
     paths = [route.resource.canonical for route in app.router.routes() if route.resource is not None]
-    assert "/questions/app" in paths and "/questions/events" in paths and "/questions/{id}/decide" in paths
+    for path in ("/questions/config", "/questions/app", "/questions/events", "/questions", "/questions/{id}/decide",
+                 "/transcripts", "/transcripts/{conversation}"):
+        assert path in paths, path
     assert paths.index("/questions") < paths.index("/{unknown}")
+    assert paths.index("/questions/config") < paths.index("/questions/{id}/decide")
     runner = web.AppRunner(app)
     with caplog.at_level("WARNING"):
         await runner.setup()
     try:
-        assert "The inbox is in memory" in caplog.text
-        assert aq.inbox().name == "memory" and aq._sweeper is not None
+        assert "The store is in memory" in caplog.text
+        assert aq.reader().name == "memory" and aq._feed.running and aq._feed.cursor == 0
         info = await aq.question_health({"type": "info"}, None)
-        assert info["service"] == "agent.question.inbox" and info["inbox"] == "memory" and info["auth"] == "none"
+        assert info["service"] == "agent.question.inbox" and info["store"] == "memory" and info["auth"] == "none"
+        assert info["feed"] == 0 and info["rows"] == {}
         assert await aq.question_health({}, None) == "agent.question.inbox is running fine"
     finally:
         await runner.cleanup()
-    assert aq._sweeper is None, "the cleanup stops the sweeper"
+    assert not aq._feed.running, "the cleanup stops the feed"
 
 
 # --- a live PostgreSQL --------------------------------------------------------------------------------
@@ -626,33 +725,51 @@ async def test_the_platform_hooks_mount_the_routes_and_run_the_boot(
     not os.environ.get("AGENT_QUESTION_TEST_URL"),
     reason="a live PostgreSQL: set AGENT_QUESTION_TEST_URL, e.g. postgres://mercury:...@127.0.0.1:5432/mercury?sslmode=disable",
 )
-async def test_the_rows_land_on_a_live_postgres() -> None:
+async def test_the_reader_finds_the_rows_on_a_live_postgres() -> None:
     from psycopg_pool import AsyncConnectionPool
 
     pool = AsyncConnectionPool(os.environ["AGENT_QUESTION_TEST_URL"], min_size=1, max_size=2, open=False)
-    box = aq.PostgresInbox(pool, 10.0)
-    await box.open()
+    reader = aq.PostgresReader(pool, 10.0)
+    await reader.open()
     try:
         async with pool.connection() as connection:
-            await connection.execute((_SCHEMA / "postgres.sql").read_bytes())
-        cid = f"live-{int(datetime.now(timezone.utc).timestamp())}"
-        first = await box.take(aq.validate_event(wait_event(ticket=f"{cid}-1", correlation_id=cid)), iso_utc())
-        again = await box.take(aq.validate_event(wait_event(ticket=f"{cid}-2", correlation_id=cid)), iso_utc())
-        assert again.id == first.id and again.seq > first.seq and again.ticket == f"{cid}-2", "the same turn upserts"
-        advice = await box.take(aq.validate_event(advice_event(correlation_id=cid)), iso_utc())
-        assert advice.id != first.id and advice.kind == "advice"
-        decided = await box.decided(first.id, [{"id": "toolu_01A", "approved": True}], "operator-17", "answered",
-                                    {"status": 200, "body": {"type": "answer"}}, iso_utc())
-        assert decided is not None and decided.state == "answered" and decided.outcome == {"status": 200, "body": {"type": "answer"}}
-        seen = await box.seen(advice.id, iso_utc())
-        assert seen is not None and seen.state == "seen"
-        stale = await box.take(aq.validate_event(wait_event(ticket=f"{cid}-3", correlation_id=f"{cid}-b",
-                                                             expires_at=iso_utc(datetime.now(timezone.utc) - timedelta(seconds=1)))),
-                               iso_utc())
-        expired = await box.expire(iso_utc())
-        assert any(r.id == stale.id and r.state == "expired" for r in expired)
-        rows = await box.since(first.seq, 100)
-        assert {r.id for r in rows} >= {first.id, advice.id, stale.id}
-        assert (await box.counts()).get("answered", 0) >= 1
+            await connection.execute(_RECORD_SCHEMA.read_bytes())
+            await connection.execute(_TRANSCRIPT_SCHEMA.read_bytes())
+            cid = f"live-{int(datetime.now(timezone.utc).timestamp())}"
+            event = wait_event(ticket=f"{cid}-1", correlation_id=cid)
+            cursor = await connection.execute(
+                "INSERT INTO question (seq, ticket, graph_id, correlation_id, turn, kind, description, summary, message, "
+                "link, state, requested_at, expires_at, updated_at) VALUES (nextval('question_seq'), %s, %s, %s, %s, %s, %s, "
+                "%s, %s::jsonb, %s, 'open', %s::timestamptz, %s::timestamptz, %s::timestamptz) RETURNING id, seq",
+                (event["ticket"], event["graph_id"], cid, 2, "approval", event["description"], event["summary"],
+                 json.dumps(event), event["link"], event["requested_at"], event["expires_at"], iso_utc()),
+            )
+            inserted = (await cursor.fetchall())[0]
+            conv = f"{int(datetime.now(timezone.utc).timestamp() * 1000):032x}"[-32:]
+            await connection.execute(
+                "INSERT INTO transcript (conversation, correlation_id, graph_id, node, model, status, turns, started_at, "
+                "updated_at, ended_at, expires_at, system, tools) VALUES (%s, %s, %s, %s, %s, 'done', 1, %s::timestamptz, "
+                "%s::timestamptz, %s::timestamptz, %s::timestamptz, %s, %s::jsonb) ON CONFLICT DO NOTHING",
+                (conv, cid, "order-assistant", "assist", "claude-haiku-4-5", iso_utc(), iso_utc(), iso_utc(), iso_utc(),
+                 "sys", "[]"),
+            )
+            await connection.execute(
+                "INSERT INTO transcript_turn (conversation, turn, trace_id, trace_path, correlation_id, started_at, ended_at, "
+                "stop_reason, status, request_id, input_tokens, output_tokens, cache_creation_input_tokens, "
+                "cache_read_input_tokens, request, response, calls) VALUES (%s, 1, %s, %s, %s, %s::timestamptz, "
+                "%s::timestamptz, 'end_turn', 'done', %s, 1, 1, 0, 0, %s::jsonb, %s::jsonb, NULL) ON CONFLICT DO NOTHING",
+                (conv, "trace-live", "POST /api/graph/order-assistant", cid, iso_utc(), iso_utc(), "req-live",
+                 '[{"role":"user","content":"hi"}]', '[{"type":"text","text":"hello"}]'),
+            )
+        row_id, seq = int(inserted[0]), int(inserted[1])
+        found = await reader.get(row_id)
+        assert found is not None and found.ticket == f"{cid}-1" and found.state == "open"
+        assert any(r.id == row_id for r in await reader.since(seq - 1, 10))
+        assert (await reader.before(None, 5))[0].seq >= seq and await reader.latest() >= seq
+        assert (await reader.counts()).get("open", 0) >= 1
+        conversations = await reader.conversations(None, 10, cid, None)
+        assert [c["conversation"] for c in conversations] == [conv]
+        one = await reader.conversation(conv)
+        assert one is not None and one["conversation"]["system"] == "sys" and one["turns"][0]["turn"] == 1
     finally:
-        await box.close()
+        await reader.close()

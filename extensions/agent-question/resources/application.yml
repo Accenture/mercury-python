@@ -2,10 +2,10 @@
 # mercury-serve (and a direct `python agent_question.py`) loads resources/application.yml from the
 # resources folder next to the application file (this one), never from the working directory.
 # Any key can be overridden at run time with the engines' -D syntax, e.g.:
-#   mercury-serve extensions/agent-question/agent_question.py -Dquestion.inbox=postgres
+#   mercury-serve extensions/agent-question/agent_question.py -Dquestion.store=postgres
 
 application.name: 'agent-question'
-info.app.description: 'Mercury Composable agent-question app: the store-and-forward inbox of a person an agent asks'
+info.app.description: 'Mercury Composable agent-question app: the UI backend of the question record and the transcripts an agent asks a person about'
 
 rest.server.port: 8092
 
@@ -18,35 +18,42 @@ mandatory.health.dependencies: 'question.health'
 
 # Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
 show.env.variables: 'LOG_LEVEL'
-show.application.properties: 'application.name, rest.server.port, question.inbox, question.auth'
+show.application.properties: 'application.name, rest.server.port, question.store, question.auth'
 
-# --- the inbox ----------------------------------------------------------------------------------
+# --- the store this app reads -------------------------------------------------------------------
 #
-# memory (development and tests: a restart forgets every card) | postgres (a deployment: the schema is
-# schema/postgres.sql, applied once; pip install 'mercury-composable[postgres]'). The connection keys follow the
-# LLM helper's transcript audit store; the credential is a reference, resolved from the environment and never logged.
-question.inbox: memory
-question.inbox.postgres.host: '${POSTGRES_HOST:127.0.0.1}'
-question.inbox.postgres.port: '${POSTGRES_PORT:5432}'
-question.inbox.postgres.database: '${POSTGRES_DB:mercury}'
-question.inbox.postgres.username: '${POSTGRES_USER:mercury}'
-question.inbox.postgres.password: '${POSTGRES_PASSWORD:}'
-question.inbox.postgres.ssl: true
+# The main flow records and the channels deliver (RFC-0014 round 4): the question record is written by the ask-person
+# process's question.audit and the transcripts by the LLM helper's transcript.audit, both in the audit database, and
+# this app reads them under a reader's role - it writes nothing. memory (tests only: nothing is recorded there at run
+# time) | postgres (a deployment and the development chain: the schemas are extensions/ask-person/schema/postgres.sql
+# and extensions/llm-helper/schema/postgres.sql, applied once; pip install 'mercury-composable[postgres]'). The
+# connection keys follow the transcript audit store; the credential is a reference, resolved from the environment and
+# never logged.
+question.store: memory
+question.store.postgres.host: '${POSTGRES_HOST:127.0.0.1}'
+question.store.postgres.port: '${POSTGRES_PORT:5432}'
+question.store.postgres.database: '${POSTGRES_DB:mercury}'
+question.store.postgres.username: '${POSTGRES_USER:mercury}'
+question.store.postgres.password: '${POSTGRES_PASSWORD:}'
+question.store.postgres.ssl: true
 # the connect timeout and the server-side bound on a statement
-question.inbox.postgres.timeout.ms: 5000
-# how often open waits past their expiry are marked expired when no device is asking
-question.sweep: 30s
+question.store.postgres.timeout.ms: 5000
+# how often the feed looks for rows the record gained, beyond the intake's wake-up
+question.poll: 1s
 
 # --- the person's side --------------------------------------------------------------------------
 #
-# Who may use the page and the stream: none (development - no sign-in; the page offers a name field), proxy (the
-# installation's SSO - a trusted header set by the gateway names the person), oauth2 (an OAuth 2.0 access token
-# validated against the issuer's published keys; pip install 'mercury-composable[ask]').
+# Who may use the UI, the feed and the transcripts: none (development - no sign-in; the page offers a name field),
+# oauth2 (an OAuth 2.0 access token validated against the issuer's published keys; pip install
+# 'mercury-composable[ask]'). The UI signs a person in by Authorization Code with PKCE - a public client in the
+# browser - from the issuer and the client id GET /questions/config names; the field's installations use 3-legged
+# SSO and OAuth 2.0 access tokens, so there is no gateway-header mode.
 question.auth: none
-question.auth.header: x-forwarded-user
 question.auth.oauth2.issuer: '${QUESTION_OIDC_ISSUER:}'
 question.auth.oauth2.audience: '${QUESTION_OIDC_AUDIENCE:}'
 question.auth.oauth2.jwks-url: '${QUESTION_OIDC_JWKS_URL:}'
+question.auth.oauth2.client-id: '${QUESTION_OIDC_CLIENT_ID:}'
+question.auth.oauth2.scopes: 'openid profile email'
 # the bearer this app presents to the main flow's reply endpoint when it invokes a link on a person's behalf
 # (ask.reply.auth.token in the ask-person extension); empty in development
 question.reply.token: '${ASK_REPLY_TOKEN:}'

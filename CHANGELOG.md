@@ -191,7 +191,23 @@
 
 ### Changed
 
-1. **The reply endpoint's identity modes are `none` and `oauth2`; `proxy` is removed (RFC-0014 round 4, R12: the field's
+1. **The agent-question app reads the question record and writes nothing: the backend of the React UI (RFC-0014
+   round 4, section 21.3; build plan step 10).** Its own inbox (`question_inbox`, `schema/`, `dev/`) is gone: the main
+   flow's recorder writes the `question` table and this app reads it under a reader's role (`question.store: postgres`,
+   the audit store's connection keys under `question.store.postgres.*`; `memory` for the tests, where nothing writes it
+   at run time). The intake `agent.question.inbox` checks the event and wakes the feed, which reads the record's change
+   sequence every `question.poll` (1 s) or at once on a wake-up and tells every connected device; `GET /questions?before=<seq>&limit=`
+   pages the history newest first for an infinite scroll beside the replay's `since`; `GET /transcripts` and
+   `GET /transcripts/{conversation}` browse the transcript audit store (the conversations newest first, by time,
+   correlation id or graph; one conversation with its turns); `GET /questions/config` tells the UI the auth mode, the
+   title and, under `oauth2`, the issuer, the public client id (`question.auth.oauth2.client-id`), the scopes and the
+   audience. The click posts to the reply endpoint as before and answers with the row as the recorder then left it;
+   `POST /questions/{id}/seen` is gone with the `seen` state (an advice has no state - whether a person read it is the
+   device's), and `question.sweep` with the sweeper (the recorder's). Identity is `none` or `oauth2` (`proxy` removed,
+   R12). The shared vectors are version 3: `intake_cases`, `click_cases` and `feed_cases`; the development page loses
+   its Seen button and stays the fallback until the React UI lands.
+
+2. **The reply endpoint's identity modes are `none` and `oauth2`; `proxy` is removed (RFC-0014 round 4, R12: the field's
    installations use 3-legged SSO and OAuth 2.0 access tokens).** The reply page signs a person in itself under `oauth2`:
    `GET /ask/{ticket}` is now a shell whose script reads `GET /ask/config` (the auth mode and, under `oauth2`, the issuer,
    the public client id `ask.reply.auth.oauth2.client-id`, the scopes `ask.reply.auth.oauth2.scopes` and the audience -
@@ -201,7 +217,7 @@
    bearer. A ticket that cannot be used is still told so on the page itself, before any sign-in. `ask.reply.auth.header`
    is gone with the mode; a channel app's bearer with `decided_by` works in every mode as before.
 
-2. **The agent-question page separates what waits from the history (Eric, 2026-11-19).** A sticky header carries the
+3. **The agent-question page separates what waits from the history (Eric, 2026-11-19).** A sticky header carries the
    person's name and the count of open cards (also in the tab's title); *Waiting for you* lists the cases with an open
    card - a wait to decide or an advice to read - newest activity first; *History* is a scrollable panel with the closed
    cases, newest first, that keeps its scroll position while new cards arrive, so the whole inbox stays in reach without
