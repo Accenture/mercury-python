@@ -104,6 +104,7 @@ class AppConfig:
         self._overrides: dict[str, Any] = parse_d_args(sys.argv[1:] if argv is None else argv)
         self._source = "none"
         self._resources_dir: str | None = None
+        self._app_dir: str | None = app_dir if app_dir is not None else main_script_dir()
         if path:
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"Configuration file not found - {path}")
@@ -145,6 +146,13 @@ class AppConfig:
         configuration file - beside an explicit file, else next to the application file;
         None when there is neither."""
         return self._resources_dir
+
+    @property
+    def app_dir(self) -> str | None:
+        """The application file's folder - the ``app_dir`` given (the CLI passes the application
+        file's), else the folder of the script Python ran; None in an interactive session. The
+        ``resources`` folder and the static content folder are resolved under it."""
+        return self._app_dir
 
     def set(self, key: str, value: Any) -> None:
         """Runtime override, checked first on every read (f:setConfig analog)."""

@@ -33,6 +33,7 @@ keywords: [configuration, reference, keys, substitution, overrides]
 | `show.application.properties` | opt-in list of configuration keys shown by `/env` | (empty) |
 | `mandatory.health.dependencies` | routes of health check functions that decide `/health` | (empty) |
 | `optional.health.dependencies` | health check routes reported but never affecting status | (empty) |
+| `static.html.folder` | the folder of static web content the host serves for the paths nothing else claims — relative to the application file's folder ([guide](config-logging-actuators.md#static-content-the-engines-public-folder)) | `resources/public` |
 | `otel.forwarding` | the OpenTelemetry forwarder's master switch ([guide](config-logging-actuators.md#distributed-tracing-the-opentelemetry-forwarder-opt-in)) | `false` |
 | `otel.exporter.otlp.endpoint` | the OTLP/HTTP traces URL including the signal path | `http://localhost:4318/v1/traces` |
 | `otel.exporter.otlp.headers` | request headers, `k=v` or `k: v`, comma-separated (re-read per export) | (none) |

@@ -136,6 +136,22 @@
    mode, the PostgreSQL statements on a recording fake, the hooks and the boot; a live PostgreSQL gated on
    `AGENT_QUESTION_TEST_URL`). **Upgrade note:** none - a new application; the main flow lists it in `ask.channels`.
 
+7. **Static web content: the host serves the files of `static.html.folder` - the Java engine's key, with the Rust
+   engine's location as its default, `resources/public` next to the application file (Eric, 2026-11-20).** A `GET` or
+   `HEAD` that no host path, extension route or function claims is answered with the file the path names inside the
+   folder, `index.html` for a folder, so a folder's `index.html` replaces the embedded landing page at `/` while
+   `/info`, `/health` and the other host paths stay the host's. The content type comes from the engines' table by
+   extension (`text/javascript`, `text/css`, `image/svg+xml`, the fonts and images a bundle ships;
+   `application/octet-stream` otherwise); every file carries an ETag and answers `If-None-Match` with 304, and
+   `text/html` is served `Cache-Control: no-cache`, so a redeployed page is revalidated while hashed assets stay
+   cached. A path with a hidden segment (one starting with `.`, so `..` too), a symbolic link that leaves the folder,
+   or anything that is not a regular file is not found, in the engines' error shape as before. A relative value of
+   the key is under the application file's folder, never the working directory (`AppConfig.app_dir` names that
+   folder now); `file:` prefixes an absolute path as in the Java engine; an empty value turns the service off. Not
+   ported: the Java engine's static-content filter, its `no-cache-pages` list and its `mime.types` section. The
+   first consumer is the agent-question app's React front-end, built in the Node.js pack and deployed into both
+   packs' `resources/public`; the 2026-08-24 note that the wrappers serve no static files is withdrawn.
+
 ### Fixed
 
 1. **The agent-question app keeps the first accepted decision when two devices decide one card at the same moment**

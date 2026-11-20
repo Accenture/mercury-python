@@ -32,7 +32,7 @@ charset=utf-8` (the engines' default-serializer presentation).
 
 | Endpoint | Content type | Shape |
 |----------|--------------|-------|
-| `GET /` | `text/html` | minimal index page linking the endpoints |
+| `GET /` | `text/html` | the static folder's `index.html`, else a minimal index page linking the endpoints |
 | `GET /info` | JSON | `{app{name,version,description}, runtime{language,python,mercury_composable}, origin, time{start,current}, up_time}` |
 | `GET /info/routes` | JSON | `{app, routing{public{route: instances}, private{...}}}` |
 | `GET /env` | JSON | `{app, env{environment{...}, properties{...}}}` (opt-in lists) |
@@ -46,6 +46,16 @@ reports `status_code: 404` with `Please check - Route X not found`.
 - `origin` — unique instance id, minted once per process: UTC `yyyyMMdd` + 32-hex
   uuid (the Java reference engine's format).
 - `up_time` — the engines' rendering (`59 seconds`, `1 minute 1 second`, …).
+
+## Static content
+
+A `GET` or `HEAD` of any other path is answered with the file it names inside `static.html.folder`
+(`resources/public` next to the application file by default; `index.html` for a folder) when there
+is one: the content type by extension from the engines' table, an `ETag` (`If-None-Match` answers
+304 with no body) and, for HTML, `Cache-Control: no-cache`. A path that names nothing — including a
+hidden entry, a link out of the folder or a folder without an index page — falls through to the
+error signature below. See the
+[guide](config-logging-actuators.md#static-content-the-engines-public-folder).
 
 ## Error signature (host-level)
 

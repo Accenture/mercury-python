@@ -58,6 +58,7 @@ from .event_stream import (
 )
 from .log import get_logger
 from .registry import FunctionRegistry, ServiceDef, default_registry
+from .static_content import StaticContent, resolve_folder
 from .trace import MY_CID_TAG, MY_CORRELATION_ID
 
 OCTET_STREAM = "application/octet-stream"
@@ -223,6 +224,9 @@ class EventApiServer:
     def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
         self.actuator = Actuator(self.registry)
+        # the static content folder is resolved from the configuration at construction, as the
+        # Actuator's settings are
+        self.static = StaticContent(resolve_folder(app_config()))
 
     async def handle_event(self, request: web.Request) -> web.StreamResponse:
         raw = await request.read()
@@ -420,23 +424,32 @@ class EventApiServer:
 
     def create_app(self, routes: Iterable[RouteMounter] = ()) -> web.Application:
         """The Event API application: ``POST /api/event``, the actuator paths, then the routes
-        of the extensions given (``Platform.add_routes``) and, last, the catch-all that answers
-        the engines' error shape - so the host's paths always win and an extension's path wins
-        over the catch-all."""
+        of the extensions given (``Platform.add_routes``), then the static content folder for a
+        GET or HEAD and, last, the catch-all that answers the engines' error shape - so the host's
+        paths always win, an extension's path wins over a file and a file wins over the catch-all.
+        A folder's ``index.html`` replaces the engines' landing page at ``/``."""
         app = web.Application(client_max_size=16 * 1024 * 1024)
         app.router.add_post("/api/event", self.handle_event)
-        # the engines' landing page + actuator endpoints (see actuator.py)
-        for path in ("/", "/info", "/info/routes", "/env", "/health", "/livenessprobe"):
+        # the engines' landing page (or the static folder's index.html) + actuator endpoints
+        # (see actuator.py)
+        app.router.add_get("/", self.handle_other)
+        for path in ("/info", "/info/routes", "/env", "/health", "/livenessprobe"):
             app.router.add_get(path, self.actuator.handle)
         # an extension's own routes - a reply page, a stream a browser holds - registered
         # after the host's and before the catch-all
         for mount in routes:
             mount(app)
-        # any other path or method answers the engines' error shape, not
-        # aiohttp's default text page (exact routes above win - they are
+        # any other path: a static file for a GET or HEAD that names one, else the engines'
+        # error shape, not aiohttp's default text page (exact routes above win - they are
         # registered first)
-        app.router.add_route("*", "/{unknown:.*}", self.actuator.handle)
+        app.router.add_route("*", "/{unknown:.*}", self.handle_other)
         return app
+
+    async def handle_other(self, request: web.Request) -> web.StreamResponse:
+        """A path no route claimed, and ``/``: the static folder's file (``index.html`` for a
+        folder) when a GET or HEAD names one, else the actuator - the landing page at ``/``, the
+        engines' error shape elsewhere."""
+        return self.static.serve(request) or await self.actuator.handle(request)
 
 
 class Platform:
