@@ -1,7 +1,8 @@
 - [ ] **(blueprint) The 2026-11-20 sprint: the question record joins the audit log, the agent-question backend serves
   the React UI's reads, and the hosts serve static content (Eric's three items, reviewed and agreed 2026-11-20).**
   The agreed design, in build order. **(1) Static content** - `static.html.folder`, default `resources/public` next to
-  the application file, in both hosts: BUILT, PR #73 (the Node twin mercury-nodejs #138), [[static-content-resources-public]].
+  the application file, in both hosts: BUILT and MERGED 2026-11-20, PR #73 (the Node twin mercury-nodejs #138),
+  [[static-content-resources-public]].
   **(2) The question record** - the main flow records, the channels deliver: every question and advice passes
   `person.ask` and every answer, from any channel, passes `POST /ask/reply`, so the recorder is a private one-instance
   function of the ask-person process behind drop-n-forget local events, the helper's `transcript.audit` pattern
