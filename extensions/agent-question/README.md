@@ -28,11 +28,13 @@ application is one of those routes. It is a standalone application on the packag
   waiting (`expired`); an advice has no state - whether a person has read it is the device's, kept by the UI. The
   record is never written here; the recorder's sweeper expires waits and the installation's purge retires rows.
 
-This app is the backend in both packs; the development page it serves at `/questions/app` (under `question.auth: none`)
-is the fallback. The front-end - a React app with the question-and-answer panel, the history with infinite scroll and
-the transcript browser - is built and maintained in the Node.js pack only, so there is one app to maintain in one place
-(Eric, 2026-11-19), and deployed into this app's `resources/public`, which the host serves from the same origin: use
-it from mercury-nodejs `extensions/agent-question-ui` against this backend when it lands.
+This app is the backend in both packs. Its front-end - the React UI with the question-and-answer panel, the history with
+infinite scroll and the transcript browser - is built and maintained in the Node.js pack only, so there is one app to
+maintain in one place (Eric, 2026-11-19): mercury-nodejs `extensions/agent-question-ui`. Its bundle is deployed into
+this app's `resources/public` and committed here, which the host serves from the same origin at the application's root
+(`static.html.folder`): open `http://127.0.0.1:8092/`. The engines' actuator endpoints (`/info`, `/info/routes`, `/health`, `/env`, `/livenessprobe`) stay at their paths
+beside the bundle - a host path always wins over a file - so a container manager's probes work unchanged, and the UI
+offers them as a menu. The development page this app used to generate at `/questions/app` is retired; a change to the UI is a build in the Node.js pack and a commit of the bundle here.
 
 The Node.js twin (mercury-nodejs `extensions/agent-question`) serves the same routes, pinned by the same vector file.
 
@@ -44,7 +46,7 @@ POSTGRES_PASSWORD=... extensions/llm-helper/dev/postgres-up.sh    # the developm
 extensions/ask-person/dev/schema-apply.sh                        # the question record's schema, safe to repeat
 extensions/llm-helper/dev/schema-apply.sh                        # the transcript audit store's schema
 mercury-serve extensions/agent-question/agent_question.py -Dquestion.store=postgres -Dquestion.store.postgres.ssl=false
-open http://127.0.0.1:8092/questions/app
+open http://127.0.0.1:8092/                                      # the React UI, served from resources/public
 ```
 
 Point the main flow at it: in the ask-person extension, `ask.channels: [agent.question.inbox]`,
@@ -73,7 +75,7 @@ A question joins its transcript by `correlation_id` and `graph_id`, which the tr
 
 ## Identity
 
-`question.auth`: `none` in development - no sign-in, the page offers a name field the decision carries as
+`question.auth`: `none` in development - no sign-in, the UI offers a name field the decision carries as
 `decided_by`; `oauth2` - a bearer access token validated against the issuer's published keys
 (`question.auth.oauth2.issuer`, `.audience`, or `.jwks-url`; PyJWT, the `ask` extra). The UI signs a person in by
 Authorization Code with PKCE - a public client in the browser - from the issuer and the client id
@@ -93,7 +95,7 @@ flow as `decided_by` under its own bearer (`question.reply.token`, the reply end
 | `question.auth.oauth2.client-id` / `.scopes` | - / `openid profile email` | with `oauth2`: the UI's sign-in (PKCE) |
 | `question.reply.token` | - | the bearer presented to the reply endpoint |
 | `question.reply.timeout` | `10s` | how long the reply endpoint may take |
-| `question.page.title` | `Agent questions` | the page's title, also told to the UI |
+| `question.page.title` | `Agent questions` | the UI's title, told through `GET /questions/config` |
 
 ## Tests
 

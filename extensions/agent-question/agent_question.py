@@ -18,6 +18,9 @@ configured with, and this application is one of those routes.
   button automates the click: ``POST /questions/{id}/decide`` posts ``{ticket, decisions, decided_by}`` to the main
   flow's reply endpoint - the link's own base, under this app's bearer - and the answer lands on the row through the
   recorder; the feed carries the change to every device.
+- The React UI (mercury-nodejs ``extensions/agent-question-ui``, the one front-end of both packs' backends) is served
+  by the host's static content service from ``resources/public`` next to this file, at the application's root; the
+  bundle is built in the Node.js pack and committed here. This app generates no page of its own.
 - The store this app reads is PostgreSQL (``question.store: postgres``, the ``postgres`` extra, the audit database the
   main flow and the LLM helper write) or, for the tests, memory - nothing writes a memory store at run time. The
   feed polls the record's change sequence (``question.poll``) and the intake wakes it. Who may use the UI is
@@ -34,7 +37,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import html
 import importlib.util
 import json
 import re
@@ -74,7 +76,6 @@ KINDS = ("approval", "question", "advice")
 WAIT_KINDS = ("approval", "question")
 # a wait's states; an advice has none (None) - whether a person read it is the device's business
 STATES = ("open", "answered", "expired")
-PAGE_PATH = "/questions/app"
 LIST_PATH = "/questions"
 EVENTS_PATH = "/questions/events"
 CONFIG_PATH = "/questions/config"
@@ -1057,151 +1058,9 @@ async def decide(request: web.Request) -> web.Response:
     return web.json_response({"row": shown.public(), "outcome": outcome})
 
 
-STYLE = (
-    "body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;color:#222;background:#f4f5f7}"
-    "header{background:#1f2a44;color:#fff;padding:.8rem 1.2rem;display:flex;gap:1rem;align-items:center}"
-    "header h1{font-size:1.1rem;margin:0;flex:1}header input{padding:.3rem .5rem;border-radius:6px;border:1px solid #889}"
-    "#status{font-size:.8rem;opacity:.85}main{padding:1rem 1.2rem;max-width:1000px;margin:0 auto}"
-    ".case{background:#fff;border:1px solid #dde;border-radius:10px;margin:1rem 0;padding:.8rem 1rem}"
-    ".case h2{font-size:1rem;margin:0 0 .3rem}.meta{color:#667;font-size:.8rem}"
-    ".card{border-top:1px solid #eee;padding:.7rem 0}.card.open{border-left:4px solid #e0a800;padding-left:.8rem}"
-    ".card.answered{border-left:4px solid #2e9e5b;padding-left:.8rem;opacity:.85}"
-    ".card.expired{border-left:4px solid #999;padding-left:.8rem;opacity:.7}"
-    ".card.advice{border-left:4px solid #3a7bd5;padding-left:.8rem}pre{background:#f3f3f3;border-radius:6px;"
-    "padding:.5rem .7rem;overflow:auto;font-size:.8rem}fieldset{border:1px solid #ddd;border-radius:8px;margin:.5rem 0}"
-    "textarea,input[type=text]{width:100%;box-sizing:border-box;margin:.2rem 0}button{padding:.4rem 1rem;border-radius:6px;"
-    "border:1px solid #556;background:#fff;cursor:pointer}button.primary{background:#1f2a44;color:#fff}"
-    ".outcome{font-size:.85rem;color:#334;margin-top:.4rem}.empty{color:#667;padding:2rem;text-align:center}"
-    "header{position:sticky;top:0;z-index:2}.section{display:flex;align-items:center;gap:.5rem;font-size:.95rem;color:#445;margin:1.2rem 0 .4rem}.count{background:#e0a800;color:#222;border-radius:999px;padding:0 .5rem;font-size:.8rem;min-width:1.2rem;text-align:center}.count:empty{display:none}#history-section .count{background:#dde;color:#334}.panel{max-height:45vh;overflow-y:auto;border:1px solid #dde;border-radius:10px;background:#fafbfc;padding:0 .8rem}.panel .case{margin:.6rem 0}"
-)
-
-SCRIPT = r"""
-const rows = new Map(); let cursor = 0; let source = null;
-const status = document.getElementById('status');
-const nameBox = document.getElementById('name');
-try { nameBox.value = localStorage.getItem('agent-question.name') || ''; } catch (e) {}
-nameBox.addEventListener('change', () => { try { localStorage.setItem('agent-question.name', nameBox.value); } catch (e) {} });
-const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function merge(list) { for (const r of list) { rows.set(r.id, r); if (r.seq > cursor) cursor = r.seq; } render(); }
-async function replay() {
-  const res = await fetch(LIST + '?since=' + cursor, {credentials: 'same-origin'});
-  if (!res.ok) { status.textContent = 'replay failed: ' + res.status; return; }
-  const body = await res.json(); merge(body.rows); if (body.more) return replay();
-}
-function listen() {
-  if (source) source.close();
-  source = new EventSource(EVENTS + '?since=' + cursor, {withCredentials: true});
-  source.addEventListener('question', (ev) => { merge([JSON.parse(ev.data)]); });
-  source.onopen = () => { status.textContent = 'connected'; };
-  source.onerror = () => { status.textContent = 'reconnecting...'; };
-}
-function callForm(call, i) {
-  const id = esc(call.id), input = call.input ? '<pre>' + esc(JSON.stringify(call.input, null, 2)) + '</pre>' : '';
-  if (call.ask) {
-    const opts = Array.isArray(call.input && call.input.options) ? call.input.options : [];
-    const radios = opts.map((o, k) => '<label><input type="radio" name="a-' + i + '" value="' + esc(o) + '"' + (k === 0 ? ' checked' : '') + '> ' + esc(o) + '</label><br>').join('')
-      + (opts.length ? '<label><input type="radio" name="a-' + i + '" value="__other__"> another answer:</label>' : '');
-    return '<fieldset data-id="' + id + '" data-kind="ask"><legend>' + esc(call.name) + ' - a question</legend>' + input + radios + '<textarea rows="2" placeholder="Your answer"></textarea></fieldset>';
-  }
-  if (call.wait === false) return '<fieldset><legend>' + esc(call.name) + ' - runs on resume</legend>' + input + '</fieldset>';
-  return '<fieldset data-id="' + id + '" data-kind="write"><legend>' + esc(call.name) + ' - waits for a decision</legend>' + input
-    + '<label><input type="radio" name="d-' + i + '" value="yes"> approve</label> <label><input type="radio" name="d-' + i + '" value="no"> refuse</label>'
-    + '<input type="text" placeholder="A note for the model (optional)"></fieldset>';
-}
-function card(r) {
-  const when = esc((r.updated_at || '').replace('T', ' ').slice(0, 19));
-  let body = '<div class="card ' + esc(r.state || '') + ' ' + esc(r.kind) + '" data-row="' + r.id + '"><div><strong>' + esc(r.summary) + '</strong> <span class="meta">' + esc(r.kind) + (r.turn != null ? ' · turn ' + r.turn : '') + (r.state ? ' · ' + esc(r.state) : '') + ' · ' + when + '</span></div>';
-  if (r.details) body += '<p>' + esc(r.details) + '</p>';
-  if (r.kind === 'advice') { /* an advice is a notice: nothing to decide */ }
-  else if (r.state === 'open') {
-    body += '<form data-decide="' + r.id + '">' + (r.calls || []).map(callForm).join('') + '<button class="primary" type="submit">Send the decision</button></form>';
-    if (r.expires_at) body += '<div class="meta">expires ' + esc(r.expires_at.replace('T', ' ').slice(0, 19)) + '</div>';
-  } else {
-    body += '<div class="outcome">' + (r.answered_by ? 'decided by ' + esc(r.answered_by) + ' at ' + esc((r.answered_at || '').replace('T', ' ').slice(0, 19)) : '') + (r.outcome ? ' · ' + esc((r.outcome.body && (r.outcome.body.type || r.outcome.body.message)) || r.outcome.status) : '') + '</div>';
-  }
-  return body + '</div>';
-}
-function caseHtml(list) {
-  list.sort((a, b) => a.seq - b.seq);
-  const first = list[0];
-  return '<section class="case"><h2>' + esc(first.description) + '</h2><div class="meta">' + esc(first.graph_id) + ' · ' + esc(first.correlation_id) + '</div>' + list.map(card).join('') + '</section>';
-}
-function render() {
-  // what waits for the person first - every case with an open card - and the closed cases in the history panel,
-  // newest activity first on both sides; the panel keeps its scroll position across updates
-  const waiting = document.getElementById('cases'), history = document.getElementById('history');
-  const groups = new Map();
-  for (const r of rows.values()) { const key = r.graph_id + '\u0000' + r.correlation_id; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(r); }
-  const newest = (list) => Math.max(...list.map(r => r.seq));
-  const ordered = [...groups.values()].sort((a, b) => newest(b) - newest(a));
-  const open = ordered.filter(list => list.some(r => r.state === 'open'));
-  const closed = ordered.filter(list => !list.some(r => r.state === 'open'));
-  const openCards = open.reduce((n, list) => n + list.filter(r => r.state === 'open').length, 0);
-  document.getElementById('waiting-count').textContent = openCards ? String(openCards) : '';
-  document.getElementById('history-count').textContent = closed.length ? String(closed.length) : '';
-  document.title = (openCards ? '(' + openCards + ') ' : '') + TITLE;
-  waiting.innerHTML = open.length ? open.map(caseHtml).join('') : '<div class="empty">Nothing waits for you.</div>';
-  const keep = history.scrollTop;
-  history.innerHTML = closed.length ? closed.map(caseHtml).join('') : '<div class="empty">Nothing yet.</div>';
-  history.scrollTop = keep;
-}
-document.getElementById('cases').addEventListener('submit', async (ev) => {
-  const form = ev.target.closest('form[data-decide]'); if (!form) return;
-  ev.preventDefault();
-  const decisions = [];
-  for (const set of form.querySelectorAll('fieldset[data-id]')) {
-    if (set.dataset.kind === 'ask') {
-      const picked = set.querySelector('input[type=radio]:checked'); const text = set.querySelector('textarea').value.trim();
-      decisions.push({id: set.dataset.id, answer: picked && picked.value !== '__other__' ? picked.value : text});
-    } else {
-      const choice = set.querySelector('input[type=radio]:checked');
-      if (!choice) { alert('Approve or refuse every waiting call'); return; }
-      const note = set.querySelector('input[type=text]').value.trim();
-      const d = {id: set.dataset.id, approved: choice.value === 'yes'}; if (note) d.note = note; decisions.push(d);
-    }
-  }
-  const button = form.querySelector('button'); button.disabled = true; button.textContent = 'Sending...';
-  const res = await fetch(LIST + '/' + form.dataset.decide + '/decide', {method: 'POST', credentials: 'same-origin',
-    headers: {'content-type': 'application/json'}, body: JSON.stringify({decisions, decided_by: nameBox.value.trim() || undefined})});
-  if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.message || ('failed: ' + res.status)); button.disabled = false; button.textContent = 'Send the decision'; return; }
-  const body = await res.json(); merge([body.row]);
-});
-replay().then(listen);
-"""
-
-
-def page(title: str) -> str:
-    """The development page (``question.auth: none``): the React UI maintained in the Node.js pack replaces it,
-    served from this app's ``resources/public`` when deployed there."""
-    return (
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        f"<title>{html.escape(title)}</title>\n<style>{STYLE}</style>\n</head>\n<body>\n"
-        f"<header><h1>{html.escape(title)}</h1><label class=\"meta\">your name <input id=\"name\" type=\"text\" "
-        "placeholder=\"as the model will see it\"></label><span id=\"status\">connecting...</span></header>\n"
-        "<main><section id=\"waiting-section\"><h2 class=\"section\">Waiting for you <span id=\"waiting-count\" "
-        "class=\"count\"></span></h2><div id=\"cases\"><div class=\"empty\">Loading...</div></div></section>\n"
-        "<section id=\"history-section\"><h2 class=\"section\">History <span id=\"history-count\" class=\"count\"></span>"
-        "</h2><div id=\"history\" class=\"panel\"><div class=\"empty\">Loading...</div></div></section></main>\n"
-        f"<script>const LIST = {json.dumps(LIST_PATH)}; const EVENTS = {json.dumps(EVENTS_PATH)}; "
-        f"const TITLE = {json.dumps(title)};{SCRIPT}</script>\n"
-        "</body>\n</html>\n"
-    )
-
-
-async def serve_page(request: web.Request) -> web.Response:
-    settings = current_settings()
-    try:
-        await identify(request, settings, None)
-    except ReplyError as exc:
-        return web.Response(status=exc.status, text=page(f"Sign-in required - {exc.message}"), content_type="text/html")
-    return web.Response(text=page(settings.page_title), content_type="text/html")
-
-
 def mount(app: web.Application) -> None:
     """The browser side on the host (``Platform.add_routes``)."""
     app.router.add_get(CONFIG_PATH, show_config)
-    app.router.add_get(PAGE_PATH, serve_page)
     app.router.add_get(EVENTS_PATH, events)
     app.router.add_get(LIST_PATH, list_rows)
     app.router.add_get(TRANSCRIPTS_PATH, list_transcripts)
@@ -1232,8 +1091,8 @@ async def boot() -> None:
     except Exception as exc:
         raise QuestionError(f"the {settings.store} store could not open - {failure(exc)}") from exc
     _feed.start(settings.poll_ms)
-    log.info("agent-question ready - store %s (feed from %d), page %s, stream %s, poll %d ms, auth %s",
-             _reader.name, _feed.cursor, PAGE_PATH, EVENTS_PATH, settings.poll_ms, settings.auth)
+    log.info("agent-question ready - store %s (feed from %d), stream %s, poll %d ms, auth %s",
+             _reader.name, _feed.cursor, EVENTS_PATH, settings.poll_ms, settings.auth)
 
 
 async def shutdown() -> None:
