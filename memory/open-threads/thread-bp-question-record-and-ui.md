@@ -27,6 +27,8 @@
   `fetch` since `EventSource` carries no bearer, the reply page signing in the same way; a Keycloak development
   container plus a mock issuer fixture for the tests; the vanilla page retired in both packs when the UI lands; no
   source maps. RFC-0014 gets a round-4 amendment in mercury-composable before the record is built. Status: step 1 of 3
-  built (PR #73); next the RFC amendment, then the record.
+  built and merged (PR #73); the RFC amendment merged (mercury-composable #660); step 2 BUILT in Python as PR #74
+  (the recorder, the contract, the schema, identity `none`/`oauth2` with the page's PKCE sign-in; the agent-question app
+  still on its inbox); next the Node twin, then the backend's reads (step 10) and the UI.
   → serves: vision-mercury-python
   <!-- id: bp-question-record-and-ui | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-075621 -->

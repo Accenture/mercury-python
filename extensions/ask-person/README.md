@@ -6,42 +6,62 @@ conversation with the answer. The graph suspends durably on its state store and 
 is the person: nothing carried a waiting call to anyone, and nothing brought a decision back except a request a
 developer typed. This extension is the **main flow** of RFC-0014 (mercury-composable,
 `draft-design-specs/ask-a-person-channel.md`): it carries the wait out and brings the decision in, knows no channel,
-and keeps no store - the engine's at-most-once resume stays the authority.
+and holds no state of the wait - the engine's at-most-once resume stays the authority. Since round 4 of the paper it
+also keeps the **question record**: what was asked, advised and decided, by whom and with what outcome, as part of the
+transcript audit log, whatever channel delivered the message.
 
 - **`person.ask`** is a composable function the graph's hold path calls before it suspends. The message names the
   graph (`graph_id`, `description`, `node`), the transaction (`correlation_id`, `turn`), the waiting `calls` exactly as
   the loop returned them, and the suspension's `ttl`. The function issues a signed, stateless **ticket**, builds the
-  **resume link** and sends the whole message as one event to every route in `ask.channels` - the agent-question app's
-  intake, a chat poster, a mail sender, a topic publisher - knowing nothing of what a route does with it. A channel
-  that fails is logged by type and never fails the hold. A third kind, **`advice`**, is a notification with no decision
-  (a status update of a long run, an acknowledgement after a response): no ticket, no link.
-- **The resume link**, `<ask.reply.url>/ask/<ticket>`, opens the wait on this process's reply page. A `GET` shows the
-  current wait, read from the engine by the reference graph's re-advice (a request without decisions), and never
-  resumes - link unfurlers and mail scanners click links. Only a submit resumes: **`POST /ask/reply`** with
+  **resume link**, writes the message to the question record and sends it as one event to every route in
+  `ask.channels` - the agent-question app's intake, a chat poster, a mail sender, a topic publisher - knowing nothing of
+  what a route does with it. A channel that fails is logged by type and never fails the hold. A third kind,
+  **`advice`**, is a notification with no decision (a status update of a long run, an acknowledgement after a
+  response): no ticket, no link.
+- **The resume link**, `<ask.reply.url>/ask/<ticket>`, opens the wait on this process's reply page. The page reads the
+  current wait from the engine by the reference graph's re-advice (a request without decisions, `GET /ask/{ticket}/wait`)
+  and never resumes - link unfurlers and mail scanners click links. Only a submit resumes: **`POST /ask/reply`** with
   `{ticket, decisions}` - a person's browser, or a channel app on the person's behalf under its own bearer with
   `decided_by` - verifies the ticket, maps the graph id to the engine's entry through the `ask.graphs` allowlist (never
   to an address a message told it), prefixes who decided and when to each tool call's note, sends the resume (the same
-  entry, the correlation id in `x-correlation-id`, `{turn, decisions}`) and returns the engine's outcome to the invoker.
+  entry, the correlation id in `x-correlation-id`, `{turn, decisions}`), writes the answer to the question record and
+  returns the engine's outcome to the invoker.
+- **The question record** is written by `question.audit`, a private composable function of this process behind local
+  events, off the request path: a wait upserted on `(graph_id, correlation_id, turn)`, an advice appended, the answer
+  with the stamped decisions, who decided, when and the engine's outcome. The main flow records and the channels
+  deliver, so a chat that keeps only its recent messages or a topic with no browser of its history loses nothing to the
+  audit, and the agent-question app's UI shows what any channel delivered.
 
-The Node.js twin (mercury-nodejs `extensions/ask-person`) serves the same route and the same page, pinned by the
-same vector file.
+The Node.js twin (mercury-nodejs `extensions/ask-person`) serves the same routes, the same page and the same record,
+pinned by the same vector file.
 
 ## Run
 
 ```bash
-pip install mercury-composable                   # the open and the proxy modes add no dependency
-pip install 'mercury-composable[ask]'            # + PyJWT for the oauth2 mode of the reply page
+pip install mercury-composable                   # the open mode adds no dependency
+pip install 'mercury-composable[ask]'            # + PyJWT for the oauth2 mode of the reply page and endpoint
+pip install 'mercury-composable[postgres]'       # + psycopg for the question record in PostgreSQL
 export ASK_TICKET_KEY='a long random secret'
 mercury-serve extensions/ask-person/ask_person.py -Dask.ticket.key='${ASK_TICKET_KEY}'
 python extensions/ask-person/ask_person.py       # the same without mercury-serve
 python extensions/ask-person/ask_person.py inspect v1.eyJ...   # read a ticket (a check, never a resume)
 ```
 
+For the record in PostgreSQL, on the development database the LLM helper's dev scripts start:
+
+```bash
+POSTGRES_PASSWORD=... extensions/llm-helper/dev/postgres-up.sh    # once; the container mercury-transcripts
+extensions/ask-person/dev/schema-apply.sh                         # schema/postgres.sql, safe to repeat
+mercury-serve extensions/ask-person/ask_person.py -Dask.ticket.key='${ASK_TICKET_KEY}' \
+  -Dask.audit=postgres -Dask.audit.postgres.ssl=false
+```
+
 The extension reads `resources/application.yml` next to `ask_person.py`, whichever directory the command runs from;
 `-Dkey=value` overrides any key, and a value may carry `${ENV_VAR:default}` references. It listens on port 8091 by
 default (`rest.server.port`). The boot stops the application by name when the ticket key is not set, the reply URL is
-not an http or https base, the auth mode is unknown, or `oauth2` is chosen without PyJWT or without an issuer or a JWKS
-URL; it warns when no channel or no graph is configured.
+not an http or https base, the auth mode or the record store is unknown, `oauth2` is chosen without PyJWT or without an
+issuer or a JWKS URL, or `postgres` without psycopg; it warns when no channel or no graph is configured, when the record
+is in memory, and when the record's database does not answer at start (the writes then fail by type until it does).
 
 ## The message
 
@@ -73,9 +93,11 @@ URL; it warns when no channel or no graph is configured.
 | `requested_at` | optional ISO-8601; the default is now | optional |
 
 The function cross-checks `graph_id` against the engine's `x-graph-id` header when one is present. It answers
-`{ticket, link, expires_at, delivered}` for a wait and `{delivered}` for an advice, where `delivered` lists each channel
-route with `ok` and the status it answered; `expires_at` is `requested_at` plus `ttl`, the suspension's own expiry. The
-event a channel receives is the message plus `ticket`, `link` and `expires_at`.
+`{ticket, link, expires_at, delivered, recorded}` for a wait and `{delivered, recorded}` for an advice, where
+`delivered` lists each channel route with `ok` and the status it answered and `recorded` says whether the question record
+took the message; `expires_at` is `requested_at` plus `ttl`, the suspension's own expiry. The event a channel receives
+is the message plus `ticket`, `link` and `expires_at`. A flow that asks a person at a stage sends the same message with
+its id as `graph_id` and the stage as `turn`; the record has one shape for an AI node and a deterministic node.
 
 ## The ticket
 
@@ -89,23 +111,60 @@ engine; a malformed one or another version is a 400, one no key signs a 403.
 
 ## The reply page and endpoint
 
-- `GET /ask/{ticket}` renders the wait: the graph and the turn from the ticket, the calls from the engine's re-advice
-  - approve or refuse with a note per waiting call, an answer (the options offered, or free text) for a question, a
-  call marked `wait: false` shown as running on resume. A wait the engine no longer holds (`nothing-waiting`, HTTP 410)
-  renders as expired; an engine that has moved on shows its reply.
+- `GET /ask/{ticket}` is the page: a ticket that cannot be used is told so there (expired, tampered, malformed, a graph
+  not in the allowlist), before any sign-in. Otherwise the page's script reads `GET /ask/config`, signs the person in
+  when the installation asks for it (below), reads the wait from `GET /ask/{ticket}/wait` and renders it: the graph and
+  the turn from the ticket, the calls from the engine's re-advice - approve or refuse with a note per waiting call, an
+  answer (the options offered, or free text) for a question, a call marked `wait: false` shown as running on resume. A
+  wait the engine no longer holds (`nothing-waiting`, HTTP 410) renders as expired; an engine that has moved on shows
+  its reply.
+- `GET /ask/{ticket}/wait` is that read as JSON, under the same identity as the reply: `{payload: {g, c, t, k},
+  advice}` with the engine's re-advice, 410 `{"type": "nothing-waiting"}`, or the engine's own refusal. It re-advises
+  and never resumes.
 - `POST /ask/reply` takes `{"ticket": "...", "decisions": [...], "decided_by": "..."}`: `{id, approved, note?}` for a
   tool call, `{id, answer}` for a question - the shapes the loop accepts. Each tool call's note is prefixed
   `[<who> at <time>]`; the audit store carries it when the note reaches the model, which the loop does for a refused
-  call - an approved call's decision stays on the channel's record and in this log; an answer travels unchanged. The
-  engine's status and JSON body come back as they are; a graph that does not answer or answers outside the contract is a
-  502 `{"type": "error", "message": ...}`; an expired ticket is a 410 `{"type": "expired"}`.
+  call, and the question record carries the decision itself in every case. The engine's status and JSON body come back
+  as they are; a graph that does not answer or answers outside the contract is a 502 `{"type": "error", "message":
+  ...}`; an expired ticket is a 410 `{"type": "expired"}`.
 - **Who may answer** (`ask.reply.auth`): `none` in development - no sign-in, `decided_by` is taken as given or the
-  person is `anonymous`; `proxy` - the installation's SSO, a trusted header set by the gateway (`ask.reply.auth.header`,
-  `x-forwarded-user`) names the person; `oauth2` - a bearer access token validated against the issuer's published keys
-  (`ask.reply.auth.oauth2.issuer`, `.audience`, or `.jwks-url`; PyJWT). In every mode a channel app may present the
-  bearer `ask.reply.auth.token` and name the person in `decided_by`.
+  person is `anonymous`; `oauth2` - a bearer access token validated against the issuer's published keys
+  (`ask.reply.auth.oauth2.issuer`, `.audience`, or `.jwks-url`; PyJWT). Under `oauth2` the page signs the person in by
+  Authorization Code with PKCE, a public client in the browser: `GET /ask/config` tells it the issuer, the client id
+  (`ask.reply.auth.oauth2.client-id`), the scopes and the audience, the token is kept for the tab and sent as a bearer
+  on the wait and the reply; the issuer must allow the page's URL as a redirect (`<ask.reply.url>/ask/*`). The field's
+  installations use 3-legged SSO and OAuth 2.0 access tokens, so there is no gateway-header mode. In every mode a
+  channel app may present the bearer `ask.reply.auth.token` and name the person in `decided_by`.
 - **The allowlist** `ask.graphs` maps a graph id to the engine entry the resume is sent to; a ticket for a graph that is
   not listed is a 404, and the endpoint never posts to an address a message told it.
+
+## The question record
+
+The row (`schema/postgres.sql`; the Node.js twin's is byte-identical):
+
+| Column | Meaning |
+| --- | --- |
+| `id`, `seq` | the row, and the change sequence a feed reads from (`question_seq`, bumped on every write) |
+| `kind`, `graph_id`, `correlation_id`, `turn` | from the message; a wait upserts on the last three, an advice appends |
+| `ticket`, `link`, `expires_at` | a wait's; null for an advice |
+| `description`, `summary`, `details`, `message` | what the message said; `message` is the event as sent, the audit copy |
+| `state` | a wait's: `open`, `answered`, `expired`; null for an advice - whether a person read it is the device's |
+| `requested_at`, `updated_at` | the message's time and the row's last change |
+| `answered_at`, `answered_by`, `decisions`, `outcome` | the answer: when, who, the stamped decisions, the engine's status and body |
+
+The writes are order-independent, so `question.audit` may run several instances (`ask.audit.instances`): a wait is
+upserted unless the row holds a newer `requested_at` (an older message landing late never overwrites a newer one), an
+advice is appended, and an answer applies while the row is open or when the engine accepted the decision - the first
+accepted decision stands, a late `nothing waiting` never overwrites it. The sweeper (`ask.audit.sweep`) marks open
+waits past their expiry `expired`. A question joins its transcript (the LLM helper's `transcript` table) by
+`correlation_id` and `graph_id`. Rows are never deleted here; `schema/purge.sql` is the installation's retention.
+
+**The contract** (`QuestionStore` in `ask_person.py`) is published so a field keeps the record on another database:
+`record(event, now)` (a wait upserted or an advice appended, the row as it stands), `answer(key, decisions, who, state,
+outcome, now)` (the first-decision rule; None when no wait was recorded), `expire(now)`, `since(seq, limit)`,
+`counts()`. PostgreSQL is the reference implementation; the memory store carries the same semantics for unit tests
+(`ask.audit: memory`, the default - a restart forgets and no other process reads it). The agent-question app reads the
+record under the store's read role; it is the backend of the React UI maintained in the Node.js pack.
 
 ## Configuration
 
@@ -118,17 +177,25 @@ engine; a malformed one or another version is a 400, one no key signs a 403.
 | `ask.ticket.key` | - | the HMAC key, a `${ASK_TICKET_KEY}` reference; required |
 | `ask.ticket.previous-key` | - | verifies tickets issued before a rotation |
 | `ask.reply.url` | - | the public base of the resume link; required |
-| `ask.reply.auth` | `none` | `none`, `proxy` or `oauth2` |
-| `ask.reply.auth.header` | `x-forwarded-user` | with `proxy`: the header that names the signed-in person |
-| `ask.reply.auth.oauth2.issuer` / `.audience` / `.jwks-url` | - | with `oauth2` |
+| `ask.reply.auth` | `none` | `none` or `oauth2` |
+| `ask.reply.auth.oauth2.issuer` / `.audience` / `.jwks-url` | - | with `oauth2`: the token's validation |
+| `ask.reply.auth.oauth2.client-id` / `.scopes` | - / `openid profile email` | with `oauth2`: the page's sign-in (PKCE) |
 | `ask.reply.auth.token` | - | the bearer a channel app presents when it invokes the link |
 | `ask.graphs` | `[]` | `{id, entry}` entries: the graphs a reply may resume (or `id=url,...`) |
 | `ask.engine.timeout` | `60s` | how long the engine may take to answer a re-advice or a resume |
+| `ask.audit` | `memory` | the question record: `memory` (tests) or `postgres` |
+| `ask.audit.postgres.host` / `.port` / `.database` / `.username` / `.password` / `.ssl` / `.timeout.ms` | the audit store's defaults | the connection; the password a `${POSTGRES_PASSWORD}` reference |
+| `ask.audit.sweep` | `30s` | how often open waits past their expiry are marked expired |
+| `ask.audit.instances` | `1` | the recorder's workers; more is safe |
+| `ask.audit.timeout` | `5s` | how long a write may take before the hold or the reply goes on without it |
 
 ## Tests
 
 `tests/test_ask_person.py` runs the shared vectors (`tests/vectors/ask-person-vectors.json`: the ticket issued, verified,
 tampered, expired and rotated; the message validated and the event built; the re-advice and the resume requests; the
-outcomes) and drives the function and the page in-process: channels that take, refuse and miss the event; the reply
-endpoint against a fake engine; the three auth modes with a signed token; the host hook that mounts the routes before
-the catch-all.
+outcomes; the row a message becomes, the state an answer leaves and the record's transitions) and drives the function
+and the page in-process: channels that take, refuse and miss the event, the record written before they are told; the
+reply endpoint against a fake engine, the answer recorded with who decided; the two auth modes with a signed token and
+the page's configuration; the PostgreSQL store's statements on a recording fake of the pool, and - gated on
+`ASK_AUDIT_TEST_URL` - the schema and the rows on a live PostgreSQL; the host hook that mounts the routes before the
+catch-all.

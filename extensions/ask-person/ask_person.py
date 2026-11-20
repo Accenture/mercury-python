@@ -3,7 +3,7 @@ Ask a person - the main flow of RFC-0014 (the engines' ``draft-design-specs/ask-
 A graph's agent loop can wait for a person - a tool call marked ``write: true`` under the default
 mode, or the ask row of the loop spec's section 7.3 - and the graph suspends durably on its state
 store. This extension carries the wait to a person and brings the decision back; it knows no
-channel, and it keeps no store: the engine's at-most-once resume is the authority.
+channel, and it holds no state of the wait: the engine's at-most-once resume is the authority.
 
 - ``person.ask`` is a composable function the graph's hold path calls before it suspends. The
   message names the graph (``graph_id``, ``description``, ``node``), the transaction
@@ -16,35 +16,49 @@ channel, and it keeps no store: the engine's at-most-once resume is the authorit
   response): no ticket, no link.
 - The resume link opens the wait on this process's reply page, ``GET /ask/{ticket}``: the page
   reads the current wait from the engine by the reference graph's re-advice (a request without
-  decisions on the same entry and correlation id) and only a submit resumes. ``POST /ask/reply``
-  with ``{ticket, decisions}`` - a person's browser, or a channel app on the person's behalf under
-  its own bearer with ``decided_by`` - verifies the ticket, maps the graph id to the engine's entry
-  through the ``ask.graphs`` allowlist (never to an address a message told it), prefixes who
-  decided and when to each note, sends the resume (the same entry, the correlation id in
-  ``x-correlation-id``, ``{turn, decisions}``) and returns the engine's outcome to the invoker.
+  decisions on the same entry and correlation id, ``GET /ask/{ticket}/wait``) and only a submit
+  resumes. ``POST /ask/reply`` with ``{ticket, decisions}`` - a person's browser, or a channel app
+  on the person's behalf under its own bearer with ``decided_by`` - verifies the ticket, maps the
+  graph id to the engine's entry through the ``ask.graphs`` allowlist (never to an address a
+  message told it), prefixes who decided and when to each note, sends the resume (the same entry,
+  the correlation id in ``x-correlation-id``, ``{turn, decisions}``) and returns the engine's
+  outcome to the invoker.
+- The question record (round 4 of the paper, section 21): the main flow records and the channels
+  deliver. Every wait and every advice ``person.ask`` sends, whatever channel delivers it, and every
+  answer the reply endpoint brings back - who decided, when, the engine's outcome - is written to
+  the question record, part of the transcript audit log, by ``question.audit``: a private
+  composable function of this process behind local events, off the request path, whose writes
+  are order-independent (a wait upserts on its key unless an older message arrives late, an advice
+  appends, the first accepted answer stands), so it may run several instances. The store is
+  PostgreSQL (``ask.audit: postgres``, ``schema/postgres.sql``) or memory for the tests; the
+  contract is published so a field implements another database. A failure is logged by type and
+  never fails a hold or a reply.
 
 Run:  mercury-serve extensions/ask-person/ask_person.py -Dask.ticket.key='${ASK_TICKET_KEY}'
 
 The pure half - the ticket, the message's validation and the event, the resume request and the
-outcome - is pinned by ``tests/vectors/ask-person-vectors.json``, shared byte for byte with the
-Node.js twin (mercury-nodejs ``extensions/ask-person``).
+outcome, the row a message becomes, the state an answer leaves and the record's transitions - is
+pinned by ``tests/vectors/ask-person-vectors.json``, shared byte for byte with the Node.js twin
+(mercury-nodejs ``extensions/ask-person``).
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import html
+import importlib.util
 import json
 import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Protocol
 
 import aiohttp
 from aiohttp import web
@@ -60,6 +74,7 @@ from mercury_composable import (
     Body,
     PostOffice,
     app_config,
+    default_registry,
     get_logger,
     iso_utc,
     platform,
@@ -72,17 +87,23 @@ log = get_logger(__name__)
 
 ROUTE = "person.ask"
 HEALTH_ROUTE = "ask.health"
+AUDIT_ROUTE = "question.audit"
 INSTANCES = 10
 KINDS = ("approval", "question", "advice")
 WAIT_KINDS = ("approval", "question")
+# a wait's states; an advice has none (None): whether a person read it is the device's business
+STATES = ("open", "answered", "expired")
 TICKET_VERSION = "v1"
 SHOW_PATH = "/ask/{ticket}"
+WAIT_PATH = "/ask/{ticket}/wait"
 REPLY_PATH = "/ask/reply"
-AUTH_MODES = ("none", "proxy", "oauth2")
+CONFIG_PATH = "/ask/config"
+AUTH_MODES = ("none", "oauth2")
 # the signature algorithms an access token may carry (asymmetric only: the issuer's published keys)
 JWT_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512")
 GRAPH_ID_HEADER = "x-graph-id"
 CORRELATION_HEADER = "x-correlation-id"
+AUDITS = ("memory", "postgres")
 
 # configuration keys
 ENABLED = "ask.enabled"
@@ -93,14 +114,21 @@ TICKET_KEY = "ask.ticket.key"
 PREVIOUS_KEY = "ask.ticket.previous-key"
 REPLY_URL = "ask.reply.url"
 REPLY_AUTH = "ask.reply.auth"
-AUTH_HEADER = "ask.reply.auth.header"
 OAUTH2_ISSUER = "ask.reply.auth.oauth2.issuer"
 OAUTH2_AUDIENCE = "ask.reply.auth.oauth2.audience"
 OAUTH2_JWKS_URL = "ask.reply.auth.oauth2.jwks-url"
+OAUTH2_CLIENT_ID = "ask.reply.auth.oauth2.client-id"
+OAUTH2_SCOPES = "ask.reply.auth.oauth2.scopes"
 APP_TOKEN = "ask.reply.auth.token"
 GRAPHS = "ask.graphs"
 ENGINE_TIMEOUT = "ask.engine.timeout"
+AUDIT = "ask.audit"
+AUDIT_POSTGRES_PREFIX = "ask.audit.postgres."
+AUDIT_SWEEP = "ask.audit.sweep"
+AUDIT_INSTANCES = "ask.audit.instances"
+AUDIT_TIMEOUT = "ask.audit.timeout"
 
+MISSING_POSTGRES = "ask.audit is postgres but psycopg is not installed - pip install 'mercury-composable[postgres]'"
 DURATION = re.compile(r"^(\d+)\s*(ms|s|m|h|d)?$")
 # the base64url alphabet without padding - a ticket part outside it is malformed, never decoded leniently
 BASE64URL = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -177,13 +205,20 @@ class Settings:
     keys: tuple[bytes, ...]
     reply_url: str
     auth: str
-    auth_header: str
     oauth2_issuer: str
     oauth2_audience: str
     oauth2_jwks_url: str
+    oauth2_client_id: str
+    oauth2_scopes: str
     app_token: str
     graphs: dict[str, str]
     engine_timeout_ms: int
+    audit: str
+    audit_postgres: dict[str, Any]
+    audit_postgres_timeout_s: float
+    audit_sweep_ms: int
+    audit_instances: int
+    audit_timeout_ms: int
 
 
 def _text(config: AppConfig, key: str, default: str = "") -> str:
@@ -239,6 +274,36 @@ def _timeout(config: AppConfig, key: str, default: str) -> int:
     return ms
 
 
+def _whole(config: AppConfig, key: str, default: int, minimum: int) -> int:
+    """A whole number >= ``minimum`` (a count of instances, a number of milliseconds)."""
+    value = config.get(key)
+    text = str(default if value is None else value).strip()
+    if not text.isdigit() or int(text) < minimum:
+        raise AskError(f"{key} must be a whole number >= {minimum}")
+    return int(text)
+
+
+def _audit_postgres(config: AppConfig, timeout_ms: int) -> dict[str, Any]:
+    """The connection keys of the question record's PostgreSQL store - the transcript audit
+    store's keys under the ``ask.audit.postgres.`` prefix; the password a reference, never logged."""
+    port_text = _text(config, AUDIT_POSTGRES_PREFIX + "port", "5432")
+    if not port_text.isdigit() or int(port_text) <= 0:
+        raise AskError(f"{AUDIT_POSTGRES_PREFIX}port must be a port number")
+    ssl = _text(config, AUDIT_POSTGRES_PREFIX + "ssl", "true").lower() != "false"
+    settings: dict[str, Any] = {
+        "host": _text(config, AUDIT_POSTGRES_PREFIX + "host", "127.0.0.1"),
+        "port": int(port_text),
+        "dbname": _text(config, AUDIT_POSTGRES_PREFIX + "database", "mercury"),
+        "user": _text(config, AUDIT_POSTGRES_PREFIX + "username") or None,
+        "password": _text(config, AUDIT_POSTGRES_PREFIX + "password") or None,
+        "sslmode": "require" if ssl else "disable",
+        "connect_timeout": max(1, round(timeout_ms / 1000)),
+        # the server-side bound on a statement, as the transcript audit store sets it
+        "options": f"-c statement_timeout={timeout_ms}",
+    }
+    return {key: value for key, value in settings.items() if value is not None}
+
+
 def load_settings(config: AppConfig) -> Settings:
     """The extension's settings from the application configuration, or an AskError naming the
     key that stops the boot."""
@@ -248,7 +313,8 @@ def load_settings(config: AppConfig) -> Settings:
     keys = tuple(key.encode("utf-8") for key in (current_key, _text(config, PREVIOUS_KEY)) if key)
     reply_url = _text(config, REPLY_URL).rstrip("/")
     auth = _text(config, REPLY_AUTH, "none").lower()
-    auth_header = _text(config, AUTH_HEADER, "x-forwarded-user").lower()
+    audit = _text(config, AUDIT, "memory").lower()
+    postgres_timeout_ms = _whole(config, AUDIT_POSTGRES_PREFIX + "timeout.ms", 5000, 1)
     settings = Settings(
         enabled=enabled,
         channels=tuple(_names(config.get(CHANNELS))),
@@ -257,13 +323,20 @@ def load_settings(config: AppConfig) -> Settings:
         keys=keys,
         reply_url=reply_url,
         auth=auth,
-        auth_header=auth_header,
         oauth2_issuer=_text(config, OAUTH2_ISSUER).rstrip("/"),
         oauth2_audience=_text(config, OAUTH2_AUDIENCE),
         oauth2_jwks_url=_text(config, OAUTH2_JWKS_URL),
+        oauth2_client_id=_text(config, OAUTH2_CLIENT_ID),
+        oauth2_scopes=_text(config, OAUTH2_SCOPES, "openid profile email"),
         app_token=_text(config, APP_TOKEN),
         graphs=_pairs(config.get(GRAPHS), "id", "entry", GRAPHS),
         engine_timeout_ms=_timeout(config, ENGINE_TIMEOUT, "60s"),
+        audit=audit,
+        audit_postgres=_audit_postgres(config, postgres_timeout_ms),
+        audit_postgres_timeout_s=postgres_timeout_ms / 1000,
+        audit_sweep_ms=_timeout(config, AUDIT_SWEEP, "30s"),
+        audit_instances=_whole(config, AUDIT_INSTANCES, 1, 1),
+        audit_timeout_ms=_timeout(config, AUDIT_TIMEOUT, "5s"),
     )
     if not enabled:
         return settings
@@ -273,8 +346,6 @@ def load_settings(config: AppConfig) -> Settings:
         raise AskError(f"{REPLY_URL} must be the public base of the resume link (http or https)")
     if auth not in AUTH_MODES:
         raise AskError(f"{REPLY_AUTH} must be one of {', '.join(AUTH_MODES)}")
-    if auth == "proxy" and not auth_header:
-        raise AskError(f"{AUTH_HEADER} names the header the gateway sets - it must not be empty")
     if auth == "oauth2":
         if jwt is None:
             raise AskError(
@@ -282,6 +353,13 @@ def load_settings(config: AppConfig) -> Settings:
             )
         if not settings.oauth2_issuer and not settings.oauth2_jwks_url:
             raise AskError(f"{REPLY_AUTH} is oauth2 - set {OAUTH2_ISSUER} or {OAUTH2_JWKS_URL}")
+        if not settings.oauth2_issuer or not settings.oauth2_client_id:
+            log.warning(
+                "%s is oauth2 without %s and %s - the reply page cannot sign a person in; a channel app's "
+                "bearer and a token obtained elsewhere still work", REPLY_AUTH, OAUTH2_ISSUER, OAUTH2_CLIENT_ID,
+            )
+    if audit not in AUDITS:
+        raise AskError(f"{AUDIT} must be one of {', '.join(AUDITS)}")
     for graph_id, entry in settings.graphs.items():
         if not entry.startswith(("http://", "https://")):
             raise AskError(f"{GRAPHS}: the entry of {graph_id} must be an http or https URL")
@@ -629,6 +707,394 @@ def map_outcome(status: int | None, text: str | None, error: str | None) -> tupl
     return status, body
 
 
+# --- the question record (round 4) ------------------------------------------------------------
+#
+# The main flow records and the channels deliver: every wait and advice person.ask sends and every
+# answer the reply endpoint brings back is written here, part of the transcript audit log, by the
+# question.audit function behind local events. The row is what the agent-question app's feed
+# carries to a device; the shape is pinned by the shared vectors.
+
+
+@dataclass(frozen=True)
+class Row:
+    id: int
+    seq: int
+    kind: str
+    graph_id: str
+    correlation_id: str
+    turn: int | None
+    ticket: str | None
+    link: str | None
+    description: str
+    summary: str
+    details: str | None
+    message: dict[str, Any]
+    state: str | None
+    requested_at: str
+    expires_at: str | None
+    updated_at: str
+    answered_at: str | None = None
+    answered_by: str | None = None
+    decisions: list[dict[str, Any]] | None = None
+    outcome: dict[str, Any] | None = None
+
+    def public(self) -> dict[str, Any]:
+        """The row as a feed carries it."""
+        return {
+            "id": self.id, "seq": self.seq, "kind": self.kind, "graph_id": self.graph_id,
+            "correlation_id": self.correlation_id, "turn": self.turn, "ticket": self.ticket, "link": self.link,
+            "description": self.description, "summary": self.summary, "details": self.details,
+            "calls": self.message.get("calls"), "state": self.state, "requested_at": self.requested_at,
+            "expires_at": self.expires_at, "updated_at": self.updated_at, "answered_at": self.answered_at,
+            "answered_by": self.answered_by, "decisions": self.decisions, "outcome": self.outcome,
+        }  # fmt: skip
+
+
+def wait_key(event: Mapping[str, Any]) -> tuple[str, str, int] | None:
+    """The key a wait upserts on; an advice has none and appends."""
+    if event.get("kind") not in WAIT_KINDS:
+        return None
+    return str(event["graph_id"]), str(event["correlation_id"]), int(event["turn"])
+
+
+def row_fields(event: Mapping[str, Any], now: str) -> dict[str, Any]:
+    """What a row takes from a message event: a wait starts open with its ticket, link and
+    expiry; an advice has no ticket, no link, no expiry and no state."""
+    wait = event["kind"] in WAIT_KINDS
+    return {
+        "kind": event["kind"],
+        "graph_id": event["graph_id"],
+        "correlation_id": event["correlation_id"],
+        "turn": event.get("turn"),
+        "ticket": event.get("ticket") if wait else None,
+        "link": event.get("link") if wait else None,
+        "description": event["description"],
+        "summary": event["summary"],
+        "details": event.get("details"),
+        "message": dict(event),
+        "state": "open" if wait else None,
+        "requested_at": event.get("requested_at") or now,
+        "expires_at": event.get("expires_at") if wait else None,
+        "updated_at": now,
+        "answered_at": None,
+        "answered_by": None,
+        "decisions": None,
+        "outcome": None,
+    }
+
+
+def answer_state(status: int | None, body: Any) -> str:
+    """The state an answer's outcome leaves: the engine accepted it (answered), nothing was
+    waiting (expired), or the decision was refused or the engine could not be reached (open)."""
+    kind = body.get("type") if isinstance(body, Mapping) else None
+    if status == 410 or kind == "nothing-waiting":
+        return "expired"
+    if status is not None and 200 <= status < 300 and not (isinstance(body, Mapping) and body.get("error")):
+        return "answered"
+    return "open"
+
+
+class QuestionStore(Protocol):
+    """The question record's contract - published so a field implements it on another database.
+    PostgreSQL is the reference; the memory store carries the same semantics for the tests."""
+
+    name: str
+
+    async def open(self) -> None: ...
+    async def close(self) -> None: ...
+    async def record(self, event: Mapping[str, Any], now: str) -> Row:
+        """A wait upserted on (graph_id, correlation_id, turn) - applied unless the row holds a
+        newer message, so a late re-advice never overwrites a newer one - or an advice appended."""
+        ...
+    async def answer(self, key: tuple[str, str, int], decisions: list[dict[str, Any]], who: str,
+                     state: str, outcome: dict[str, Any], now: str) -> Row | None:
+        """The answer on the wait with the key, applied while the row is open or when the engine
+        accepted the decision (answered always wins: the first accepted decision stands); the
+        row as it stands otherwise, None when no wait was recorded."""
+        ...
+    async def expire(self, now: str) -> list[Row]: ...
+    async def since(self, seq: int, limit: int) -> list[Row]: ...
+    async def counts(self) -> dict[str, int]: ...
+
+
+class MemoryQuestionStore:
+    """The reference semantics in one process: ids and the change sequence assigned here, every
+    write bumping the sequence a feed reads from."""
+
+    name = "memory"
+
+    def __init__(self) -> None:
+        self._rows: dict[int, Row] = {}
+        self._keys: dict[tuple[str, str, int], int] = {}
+        self._next_id = 0
+        self._seq = 0
+
+    async def open(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    def _bump(self) -> int:
+        self._seq += 1
+        return self._seq
+
+    async def record(self, event: Mapping[str, Any], now: str) -> Row:
+        fields = row_fields(event, now)
+        key = wait_key(event)
+        existing = self._rows.get(self._keys[key]) if key is not None and key in self._keys else None
+        if existing is not None:
+            if fields["requested_at"] < existing.requested_at:
+                return existing  # an older message landing late never overwrites a newer row
+            row = replace(existing, seq=self._bump(), **fields)
+        else:
+            self._next_id += 1
+            row = Row(id=self._next_id, seq=self._bump(), **fields)
+            if key is not None:
+                self._keys[key] = row.id
+        self._rows[row.id] = row
+        return row
+
+    async def answer(self, key: tuple[str, str, int], decisions: list[dict[str, Any]], who: str,
+                     state: str, outcome: dict[str, Any], now: str) -> Row | None:
+        row_id = self._keys.get(key)
+        row = self._rows.get(row_id) if row_id is not None else None
+        if row is None:
+            return None
+        if row.state != "open" and state != "answered":
+            return row  # decided first by another device: a later nothing-waiting never overwrites it
+        row = replace(row, seq=self._bump(), state=state, decisions=decisions, outcome=outcome,
+                      answered_by=who, answered_at=now, updated_at=now)
+        self._rows[row.id] = row
+        return row
+
+    async def expire(self, now: str) -> list[Row]:
+        changed: list[Row] = []
+        for row in list(self._rows.values()):
+            if row.state == "open" and row.kind in WAIT_KINDS and row.expires_at and row.expires_at < now:
+                row = replace(row, seq=self._bump(), state="expired", updated_at=now)
+                self._rows[row.id] = row
+                changed.append(row)
+        return changed
+
+    async def since(self, seq: int, limit: int) -> list[Row]:
+        rows = sorted((r for r in self._rows.values() if r.seq > seq), key=lambda r: r.seq)
+        return rows[:limit]
+
+    async def counts(self) -> dict[str, int]:
+        result: dict[str, int] = {}
+        for row in self._rows.values():
+            label = row.state or row.kind
+            result[label] = result.get(label, 0) + 1
+        return result
+
+
+# the statements the reference store runs, with psycopg's placeholders. JSON travels as compact text
+# cast to jsonb and stamps as text cast to timestamptz, so the Node.js twin runs the same statements.
+COLUMNS = ("id, seq, ticket, graph_id, correlation_id, turn, kind, description, summary, details, message, link, "
+           "state, requested_at, expires_at, updated_at, answered_at, answered_by, decisions, outcome")
+SQL_RECORD_WAIT = (
+    "INSERT INTO question (seq, ticket, graph_id, correlation_id, turn, kind, description, summary, details, "
+    "message, link, state, requested_at, expires_at, updated_at) "
+    "VALUES (nextval('question_seq'), %s, %s, %s, %s, %s, %s, %s, NULL, %s::jsonb, %s, 'open', "
+    "%s::timestamptz, %s::timestamptz, %s::timestamptz) "
+    "ON CONFLICT (graph_id, correlation_id, turn) WHERE kind <> 'advice' DO UPDATE SET "
+    "seq = nextval('question_seq'), ticket = EXCLUDED.ticket, description = EXCLUDED.description, "
+    "summary = EXCLUDED.summary, details = NULL, message = EXCLUDED.message, link = EXCLUDED.link, state = 'open', "
+    "requested_at = EXCLUDED.requested_at, expires_at = EXCLUDED.expires_at, updated_at = EXCLUDED.updated_at, "
+    "answered_at = NULL, answered_by = NULL, decisions = NULL, outcome = NULL "
+    f"WHERE EXCLUDED.requested_at >= question.requested_at RETURNING {COLUMNS}"
+)
+SQL_RECORD_ADVICE = (
+    "INSERT INTO question (seq, ticket, graph_id, correlation_id, turn, kind, description, summary, details, "
+    "message, link, state, requested_at, expires_at, updated_at) "
+    "VALUES (nextval('question_seq'), NULL, %s, %s, %s, 'advice', %s, %s, %s, %s::jsonb, NULL, NULL, "
+    f"%s::timestamptz, NULL, %s::timestamptz) RETURNING {COLUMNS}"
+)
+SQL_WAIT = (
+    f"SELECT {COLUMNS} FROM question WHERE graph_id = %s AND correlation_id = %s AND turn = %s AND kind <> 'advice'"
+)
+SQL_ANSWER = (
+    "UPDATE question SET seq = nextval('question_seq'), state = %s, decisions = %s::jsonb, outcome = %s::jsonb, "
+    "answered_by = %s, answered_at = %s::timestamptz, updated_at = %s::timestamptz "
+    "WHERE graph_id = %s AND correlation_id = %s AND turn = %s AND kind <> 'advice' "
+    f"AND (state = 'open' OR %s::text = 'answered') RETURNING {COLUMNS}"
+)
+SQL_EXPIRE = (
+    "UPDATE question SET seq = nextval('question_seq'), state = 'expired', updated_at = %s::timestamptz "
+    f"WHERE state = 'open' AND kind <> 'advice' AND expires_at < %s::timestamptz RETURNING {COLUMNS}"
+)
+SQL_SINCE = f"SELECT {COLUMNS} FROM question WHERE seq > %s ORDER BY seq LIMIT %s"
+SQL_COUNTS = "SELECT COALESCE(state, kind), count(*) FROM question GROUP BY COALESCE(state, kind)"
+
+
+def _compact(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+
+
+def _stamp(value: Any) -> str | None:
+    """A stamp as the row carries it: ISO-8601 UTC with milliseconds, from the driver's datetime
+    or a text."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return iso_utc(value)
+    parsed = parse_iso(str(value))
+    return iso_utc(parsed) if parsed else str(value)
+
+
+def _json(value: Any) -> Any:
+    if isinstance(value, (str, bytes)):
+        return json.loads(value)
+    return value
+
+
+def row_from_record(record: Sequence[Any]) -> Row:
+    """A row from a record of COLUMNS, as psycopg returns it (jsonb as Python values, timestamptz
+    as datetimes)."""
+    (row_id, seq, ticket, graph_id, correlation_id, turn, kind, description, summary, details, message, link,
+     state, requested_at, expires_at, updated_at, answered_at, answered_by, decisions, outcome) = record
+    return Row(
+        id=int(row_id), seq=int(seq), kind=str(kind), graph_id=str(graph_id), correlation_id=str(correlation_id),
+        turn=None if turn is None else int(turn), ticket=ticket, link=link, description=str(description),
+        summary=str(summary), details=details, message=_json(message) or {},
+        state=None if state is None else str(state), requested_at=_stamp(requested_at) or "",
+        expires_at=_stamp(expires_at), updated_at=_stamp(updated_at) or "", answered_at=_stamp(answered_at),
+        answered_by=answered_by, decisions=_json(decisions), outcome=_json(outcome),
+    )  # fmt: skip
+
+
+class PostgresQuestionStore:
+    """The reference store: psycopg 3 over an asynchronous connection pool (the ``postgres``
+    extra). The function inserts and updates one table and nothing else (schema/postgres.sql);
+    the agent-question app and people read."""
+
+    name = "postgres"
+
+    def __init__(self, pool: Any, timeout_s: float = 5.0) -> None:
+        self._pool = pool  # psycopg_pool.AsyncConnectionPool, or a recording fake in the tests
+        self._timeout_s = timeout_s
+
+    async def open(self) -> None:
+        await self._pool.open(wait=True, timeout=self._timeout_s)
+
+    async def close(self) -> None:
+        await self._pool.close()
+
+    async def _one(self, sql: str, params: tuple[Any, ...]) -> Row | None:
+        async with self._pool.connection() as connection:
+            cursor = await connection.execute(sql, params)
+            records = await cursor.fetchall()
+        return row_from_record(records[0]) if records else None
+
+    async def _many(self, sql: str, params: tuple[Any, ...]) -> list[Row]:
+        async with self._pool.connection() as connection:
+            cursor = await connection.execute(sql, params)
+            records = await cursor.fetchall()
+        return [row_from_record(record) for record in records]
+
+    async def record(self, event: Mapping[str, Any], now: str) -> Row:
+        fields = row_fields(event, now)
+        key = wait_key(event)
+        if key is not None:
+            row = await self._one(SQL_RECORD_WAIT, (
+                fields["ticket"], fields["graph_id"], fields["correlation_id"], fields["turn"], fields["kind"],
+                fields["description"], fields["summary"], _compact(fields["message"]), fields["link"],
+                fields["requested_at"], fields["expires_at"], now,
+            ))
+            if row is None:  # the guard kept a newer row: answer with it as it stands
+                row = await self._one(SQL_WAIT, key)
+        else:
+            row = await self._one(SQL_RECORD_ADVICE, (
+                fields["graph_id"], fields["correlation_id"], fields["turn"], fields["description"],
+                fields["summary"], fields["details"], _compact(fields["message"]), fields["requested_at"], now,
+            ))
+        if row is None:  # pragma: no cover - RETURNING or the read always yields the row
+            raise AppException(500, "the question record returned no row")
+        return row
+
+    async def answer(self, key: tuple[str, str, int], decisions: list[dict[str, Any]], who: str,
+                     state: str, outcome: dict[str, Any], now: str) -> Row | None:
+        row = await self._one(SQL_ANSWER, (state, _compact(decisions), _compact(outcome), who, now, now,
+                                           key[0], key[1], key[2], state))
+        # no row: the guard kept a row another device decided first (or no wait was recorded) - as stored
+        return row if row is not None else await self._one(SQL_WAIT, key)
+
+    async def expire(self, now: str) -> list[Row]:
+        return await self._many(SQL_EXPIRE, (now, now))
+
+    async def since(self, seq: int, limit: int) -> list[Row]:
+        return await self._many(SQL_SINCE, (seq, limit))
+
+    async def counts(self) -> dict[str, int]:
+        async with self._pool.connection() as connection:
+            cursor = await connection.execute(SQL_COUNTS, ())
+            records = await cursor.fetchall()
+        return {str(label): int(count) for label, count in records}
+
+
+def postgres_store(settings: Settings) -> PostgresQuestionStore:
+    """The pool from the ask.audit.postgres.* keys; nothing connects until open()."""
+    if any(importlib.util.find_spec(name) is None for name in ("psycopg", "psycopg_pool")):
+        raise AskError(MISSING_POSTGRES)
+    from psycopg_pool import AsyncConnectionPool  # the [postgres] extra; checked above
+
+    pool = AsyncConnectionPool(kwargs=dict(settings.audit_postgres), min_size=1, max_size=4, open=False,
+                               timeout=settings.audit_postgres_timeout_s)
+    return PostgresQuestionStore(pool, settings.audit_postgres_timeout_s)
+
+
+def failure(exc: BaseException) -> str:
+    """A failure as a log may carry it: the type and the database's SQLSTATE, never a message that
+    could quote a row (the transcript audit store's rule)."""
+    name = type(exc).__name__
+    state = getattr(exc, "sqlstate", None)
+    return f"{name} sqlstate={state}" if state else name
+
+
+_store: QuestionStore | None = None
+_sweeper: asyncio.Task[None] | None = None
+
+
+def question_store() -> QuestionStore:
+    global _store
+    if _store is None:
+        _store = MemoryQuestionStore()
+    return _store
+
+
+async def question_audit(_headers: dict[str, str], body: Body) -> Any:
+    """The recorder (round 4): ``{record: <message event>}`` from person.ask - a wait upserted, an
+    advice appended - and ``{answer: {graph_id, correlation_id, turn, decisions, who, at, status,
+    body}}`` from the reply endpoint. Registered at boot with ``ask.audit.instances`` workers: the
+    writes are order-independent. A failure is logged by type and reported, never raised with a
+    message that could quote a row."""
+    event: dict[str, Any] = body if isinstance(body, dict) else {}
+    store = question_store()
+    now = iso_utc()
+    try:
+        if isinstance(event.get("record"), Mapping):
+            row = await store.record(event["record"], now)
+            log.info("%s recorded %s %d for %s turn %s (seq %d)", AUDIT_ROUTE, row.kind, row.id, row.graph_id,
+                     row.turn, row.seq)
+            return {"recorded": True, "id": row.id, "seq": row.seq, "state": row.state}
+        answer = event.get("answer")
+        if isinstance(answer, Mapping):
+            key = (str(answer["graph_id"]), str(answer["correlation_id"]), int(answer["turn"]))
+            state = answer_state(answer.get("status"), answer.get("body"))
+            row = await store.answer(key, list(answer.get("decisions") or []), str(answer.get("who") or ""),
+                                     state, {"status": answer.get("status"), "body": answer.get("body")}, now)
+            if row is None:
+                log.warning("%s has no wait for %s %s turn %s - the answer is not recorded", AUDIT_ROUTE, *key)
+                return {"recorded": False, "error": "no wait recorded"}
+            log.info("%s recorded the answer on %d by %s - %s", AUDIT_ROUTE, row.id, row.answered_by, row.state)
+            return {"recorded": True, "id": row.id, "seq": row.seq, "state": row.state}
+    except Exception as exc:  # noqa: BLE001 - off the request path: logged by type, reported to the caller
+        log.warning("%s could not write - %s", AUDIT_ROUTE, failure(exc))
+        return {"recorded": False, "error": failure(exc)}
+    raise AppException(400, f"{AUDIT_ROUTE} takes record or answer")
+
+
 # --- the function -----------------------------------------------------------------------------
 
 _post_office: PostOffice | None = None
@@ -672,10 +1138,28 @@ async def deliver(event: Mapping[str, Any], settings: Settings) -> list[dict[str
     return list(await asyncio.gather(*(one(route) for route in settings.channels)))
 
 
+async def record(event: dict[str, Any], settings: Settings) -> bool:
+    """Tell the recorder, as a local request so the row is written before anyone is told of the
+    message: the record of a message event, or an answer. A recorder that fails or does not
+    answer is logged by type and never fails the hold or the reply."""
+    try:
+        reply = await _po().request(AUDIT_ROUTE, event, timeout_ms=settings.audit_timeout_ms)
+    except Exception as exc:  # noqa: BLE001 - in-process; nothing here may fail the caller
+        log.warning("%s did not take the write - %s", AUDIT_ROUTE, type(exc).__name__)
+        return False
+    result = reply.body if isinstance(reply.body, Mapping) else {}
+    if reply.get_status() >= 400 or not result.get("recorded"):
+        log.warning("%s did not record - status %d, %s", AUDIT_ROUTE, reply.get_status(),
+                    result.get("error") or "no detail")
+        return False
+    return True
+
+
 @preload(route=ROUTE, instances=INSTANCES)
 async def person_ask(headers: dict[str, str], body: Body) -> Any:
     """Carry a wait, or an advice, to the configured channels; answer with the ticket, the link,
-    the expiry and what was delivered (``delivered`` alone for an advice)."""
+    the expiry and what was delivered (``delivered`` alone for an advice). The message is written
+    to the question record first, so a channel's device finds the row it is told of."""
     settings = current_settings()
     if not settings.enabled:
         raise AppException(503, "person.ask is disabled - ask.enabled is false")
@@ -686,15 +1170,16 @@ async def person_ask(headers: dict[str, str], body: Body) -> Any:
             400, f"graph_id {message.graph_id} does not match the {GRAPH_ID_HEADER} header {graph_header}"
         )
     event = build_event(message, settings.keys[0], settings.reply_url)
+    recorded = await record({"record": event}, settings)
     delivered = await deliver(event, settings)
-    result: dict[str, Any] = {"delivered": delivered}
+    result: dict[str, Any] = {"delivered": delivered, "recorded": recorded}
     if message.kind in WAIT_KINDS:
         result["ticket"] = event["ticket"]
         result["link"] = event["link"]
         result["expires_at"] = event["expires_at"]
     log.info(
-        "person.ask %s for %s turn %s - %d of %d channel(s) took it",
-        message.kind, message.graph_id, message.turn, sum(1 for d in delivered if d["ok"]),
+        "person.ask %s for %s turn %s - recorded %s, %d of %d channel(s) took it",
+        message.kind, message.graph_id, message.turn, recorded, sum(1 for d in delivered if d["ok"]),
         len(delivered),
     )
     return result
@@ -705,6 +1190,10 @@ async def ask_health(headers: dict[str, str], _body: Body) -> Any:
     """Health check speaking the engines' interface contract (type=info / type=health)."""
     settings = current_settings()
     if headers.get("type") == "info":
+        try:
+            rows = await question_store().counts()
+        except Exception as exc:  # noqa: BLE001 - health reports a store it cannot read by type
+            rows = {"error": failure(exc)}
         return {
             "service": ROUTE,
             "href": "http://127.0.0.1",
@@ -713,6 +1202,8 @@ async def ask_health(headers: dict[str, str], _body: Body) -> Any:
             "graphs": sorted(settings.graphs),
             "reply_url": settings.reply_url,
             "auth": settings.auth,
+            "audit": question_store().name,
+            "rows": rows,
         }
     return "person.ask is running fine"
 
@@ -815,18 +1306,14 @@ async def identify(
     request: web.Request, settings: Settings, decided_by: str | None, allow_app: bool
 ) -> Identity:
     """Who is answering: a channel app under its bearer (``decided_by`` is the person it acts
-    for), or a person by the configured mode - nobody in development, the gateway's trusted
-    header, or a validated access token."""
+    for), or a person by the configured mode - nobody in development, or a validated OAuth 2.0
+    access token (the page obtains one by Authorization Code with PKCE, a channel app's device
+    through its own UI)."""
     bearer = _bearer(request)
     if allow_app and settings.app_token and bearer and hmac.compare_digest(bearer, settings.app_token):
         return Identity(decided_by or "channel", "app")
     if settings.auth == "none":
         return Identity(decided_by or "anonymous", "none")
-    if settings.auth == "proxy":
-        who = request.headers.get(settings.auth_header, "").strip()
-        if not who:
-            raise ReplyError(401, f"sign-in required - the {settings.auth_header} header names the person")
-        return Identity(who, "proxy")
     if not bearer:
         raise ReplyError(401, "sign-in required - a bearer access token")
     claims = await _oauth2(settings).verify(bearer)
@@ -847,16 +1334,86 @@ STYLE = (
     "button{font-size:1rem;padding:.5rem 1.2rem}#outcome{margin-top:1rem}"
 )
 
-SCRIPT = """
-const form = document.getElementById('decisions');
-form.addEventListener('submit', async (ev) => {
+# The reply page's script: the wait is read from this process (GET /ask/{ticket}/wait, which re-advises
+# the engine and never resumes) and rendered here, so that under oauth2 the page can first sign the
+# person in - Authorization Code with PKCE, a public client in the browser, the token kept for this tab
+# and sent as a bearer on the wait and the reply (round 4, R12: no gateway header, no cookie session).
+SCRIPT = r"""
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const wait = document.getElementById('wait'), out = document.getElementById('outcome');
+let token = null;
+const store = {
+  get: (k) => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+  set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} },
+  del: (k) => { try { sessionStorage.removeItem(k); } catch (e) {} }
+};
+function b64url(bytes) { return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function random(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return b64url(a); }
+async function sha256(text) { return b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))); }
+async function discovery(issuer) {
+  const key = 'ask.oidc.' + issuer, cached = store.get(key);
+  if (cached) return JSON.parse(cached);
+  const res = await fetch(issuer.replace(/\/$/, '') + '/.well-known/openid-configuration');
+  if (!res.ok) throw new Error('the issuer is not reachable: ' + res.status);
+  const doc = await res.json(); store.set(key, JSON.stringify(doc)); return doc;
+}
+async function signIn(oauth2) {
+  const held = store.get('ask.token'), until = Number(store.get('ask.token.exp') || 0);
+  if (held && until > Date.now() / 1000 + 30) return held;
+  const doc = await discovery(oauth2.issuer), here = new URL(location.href);
+  const redirect = location.origin + location.pathname;
+  const code = here.searchParams.get('code'), state = here.searchParams.get('state');
+  if (code && state && state === store.get('ask.state')) {
+    const body = new URLSearchParams({grant_type: 'authorization_code', code, redirect_uri: redirect,
+      client_id: oauth2.client_id, code_verifier: store.get('ask.verifier') || ''});
+    const res = await fetch(doc.token_endpoint, {method: 'POST', headers: {'content-type': 'application/x-www-form-urlencoded'}, body});
+    if (!res.ok) throw new Error('the sign-in was refused: ' + res.status);
+    const grant = await res.json();
+    store.set('ask.token', grant.access_token);
+    store.set('ask.token.exp', String(Math.floor(Date.now() / 1000) + (grant.expires_in || 300)));
+    store.del('ask.state'); store.del('ask.verifier');
+    history.replaceState(null, '', location.pathname);
+    return grant.access_token;
+  }
+  const verifier = random(32), nonce = random(16);
+  store.set('ask.verifier', verifier); store.set('ask.state', nonce);
+  const params = new URLSearchParams({response_type: 'code', client_id: oauth2.client_id, redirect_uri: redirect,
+    scope: oauth2.scopes || 'openid', state: nonce, code_challenge: await sha256(verifier), code_challenge_method: 'S256'});
+  if (oauth2.audience) params.set('audience', oauth2.audience);
+  location.assign(doc.authorization_endpoint + '?' + params.toString());
+  return new Promise(() => {});
+}
+function headers(extra) { const h = Object.assign({}, extra || {}); if (token) h['authorization'] = 'Bearer ' + token; return h; }
+function callForm(call, i) {
+  const id = esc(call.id), input = call.input ? '<pre>' + esc(JSON.stringify(call.input, null, 2)) + '</pre>' : '';
+  if (call.ask) {
+    const opts = Array.isArray(call.input && call.input.options) ? call.input.options : [];
+    const radios = opts.map((o, k) => '<label><input type="radio" name="a-' + i + '" value="' + esc(o) + '"' + (k === 0 ? ' checked' : '') + '> ' + esc(o) + '</label><br>').join('')
+      + (opts.length ? '<label><input type="radio" name="a-' + i + '" value="__other__"> another answer:</label>' : '');
+    return '<fieldset data-id="' + id + '" data-kind="ask"><legend>' + esc(call.name) + ' - a question</legend>' + input + radios + '<textarea rows="3" placeholder="Your answer"></textarea></fieldset>';
+  }
+  if (call.wait === false) return '<fieldset><legend>' + esc(call.name) + ' - runs on resume</legend>' + input + '</fieldset>';
+  return '<fieldset data-id="' + id + '" data-kind="write"><legend>' + esc(call.name) + ' - waits for a decision</legend><p class="meta">' + esc(call.route || '') + '</p>' + input
+    + '<label><input type="radio" name="d-' + i + '" value="yes"> approve</label> <label><input type="radio" name="d-' + i + '" value="no"> refuse</label>'
+    + '<input type="text" placeholder="A note for the model (optional)"></fieldset>';
+}
+function notice(title, text) { wait.innerHTML = '<h2>' + esc(title) + '</h2><p>' + esc(text) + '</p>'; }
+function render(payload, advice) {
+  const calls = Array.isArray(advice.calls) ? advice.calls : [];
+  let html = '<p class="meta">graph ' + esc(payload.g) + ' &middot; correlation id ' + esc(payload.c) + ' &middot; turn ' + esc(payload.t) + '</p>';
+  if (advice.message) html += '<p>' + esc(advice.message) + '</p>';
+  html += '<form id="decisions">' + (calls.length ? calls.map(callForm).join('') : '<p>The graph reported no waiting call.</p>')
+    + '<button type="submit">Send the decision</button></form>';
+  wait.innerHTML = html;
+  document.getElementById('decisions').addEventListener('submit', submit);
+}
+async function submit(ev) {
   ev.preventDefault();
-  const decisions = [];
+  const form = ev.target, decisions = [];
   for (const set of form.querySelectorAll('fieldset[data-id]')) {
     const id = set.dataset.id;
     if (set.dataset.kind === 'ask') {
-      const picked = set.querySelector('input[type=radio]:checked');
-      const text = set.querySelector('textarea').value.trim();
+      const picked = set.querySelector('input[type=radio]:checked'), text = set.querySelector('textarea').value.trim();
       decisions.push({id, answer: picked && picked.value !== '__other__' ? picked.value : text});
     } else {
       const choice = set.querySelector('input[type=radio]:checked');
@@ -867,16 +1424,35 @@ form.addEventListener('submit', async (ev) => {
       decisions.push(decision);
     }
   }
-  const out = document.getElementById('outcome');
   out.textContent = 'Sending...';
-  const response = await fetch(form.dataset.reply, {method: 'POST', credentials: 'same-origin',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({ticket: form.dataset.ticket, decisions})});
+  const response = await fetch(REPLY, {method: 'POST', credentials: 'same-origin',
+    headers: headers({'content-type': 'application/json'}), body: JSON.stringify({ticket: TICKET, decisions})});
   const body = await response.text();
   out.innerHTML = '<p class="meta">status ' + response.status + '</p><pre></pre>';
   out.querySelector('pre').textContent = body;
   if (response.ok) form.querySelector('button').disabled = true;
-});
+}
+async function load() {
+  try {
+    const config = await (await fetch(CONFIG, {credentials: 'same-origin'})).json();
+    if (config.auth === 'oauth2') {
+      if (!config.oauth2 || !config.oauth2.issuer || !config.oauth2.client_id) {
+        notice('Sign-in required', 'This page cannot sign you in - the issuer or the client id is not configured.'); return;
+      }
+      token = await signIn(config.oauth2);
+    }
+    const res = await fetch(WAIT, {credentials: 'same-origin', headers: headers()});
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401) { store.del('ask.token'); notice('Sign-in required', body.message || 'a bearer access token'); return; }
+    if (res.status === 410 || body.type === 'nothing-waiting') {
+      notice('This wait has expired', 'Nothing is waiting for this decision any more - it was decided already, or the suspension expired.'); return;
+    }
+    if (!res.ok) { notice('The graph refused', JSON.stringify(body)); return; }
+    if (!body.advice || body.advice.type !== 'approval') { notice('The graph has moved on', JSON.stringify(body.advice || body)); return; }
+    render(body.payload, body.advice);
+  } catch (e) { notice('Something went wrong', String((e && e.message) || e)); }
+}
+load();
 """
 
 
@@ -896,61 +1472,33 @@ def _notice(status: int, title: str, text: str) -> web.Response:
     return web.Response(status=status, text=_page(title, body), content_type="text/html")
 
 
-def _render_call(call: Mapping[str, Any]) -> str:
-    """One waiting call as a fieldset: an answer for a question, approve or refuse with a note
-    for a tool call, and a note alone for a call that runs on resume."""
-    call_id = str(call.get("id", ""))
-    name = html.escape(str(call.get("name", call_id)))
-    inputs = call.get("input")
-    shown = html.escape(json.dumps(inputs, indent=2, ensure_ascii=False)) if inputs is not None else ""
-    if call.get("ask"):
-        options = inputs.get("options") if isinstance(inputs, Mapping) else None
-        radios = ""
-        if isinstance(options, list) and options:
-            for index, option in enumerate(options):
-                text = html.escape(str(option))
-                radios += (
-                    f"<label><input type=\"radio\" name=\"a-{html.escape(call_id)}\" value=\"{text}\""
-                    f"{' checked' if index == 0 else ''}> {text}</label><br>\n"
-                )
-            radios += (
-                f"<label><input type=\"radio\" name=\"a-{html.escape(call_id)}\" value=\"__other__\">"
-                " another answer:</label>\n"
-            )
-        return (
-            f"<fieldset data-id=\"{html.escape(call_id)}\" data-kind=\"ask\">\n<legend>{name} - a question</legend>\n"
-            f"<pre>{shown}</pre>\n{radios}<textarea rows=\"3\" placeholder=\"Your answer\"></textarea>\n</fieldset>\n"
-        )
-    if not call.get("wait", True):
-        return (
-            f"<fieldset>\n<legend>{name} - runs on resume</legend>\n<pre>{shown}</pre>\n</fieldset>\n"
-        )
-    route = html.escape(str(call.get("route", "")))
-    return (
-        f"<fieldset data-id=\"{html.escape(call_id)}\" data-kind=\"write\">\n"
-        f"<legend>{name} - waits for a decision</legend>\n<p class=\"meta\">{route}</p>\n<pre>{shown}</pre>\n"
-        f"<label><input type=\"radio\" name=\"d-{html.escape(call_id)}\" value=\"yes\"> approve</label> \n"
-        f"<label><input type=\"radio\" name=\"d-{html.escape(call_id)}\" value=\"no\"> refuse</label>\n"
-        "<input type=\"text\" placeholder=\"A note for the model (optional)\">\n</fieldset>\n"
+def shell_page(ticket: str, payload: Mapping[str, Any]) -> str:
+    """The page for a wait: the kind and the graph from the ticket, and the script that signs the
+    person in when the installation asks for it, reads the wait from this process and renders the
+    form. The ticket is verified before this is rendered, so its characters are base64url and dots."""
+    constants = (
+        f"const TICKET = {json.dumps(ticket)}; const WAIT = {json.dumps(WAIT_PATH.replace('{ticket}', ticket))}; "
+        f"const REPLY = {json.dumps(REPLY_PATH)}; const CONFIG = {json.dumps(CONFIG_PATH)};"
     )
+    body = "<div id=\"wait\"><p class=\"meta\">Loading the wait...</p></div>\n<div id=\"outcome\"></div>"
+    return _page(f"{str(payload['k']).capitalize()} - {payload['g']}", body, constants + SCRIPT)
 
 
-def render_wait(ticket: str, payload: Mapping[str, Any], advice: Mapping[str, Any]) -> str:
-    """The page for a wait as the engine returned it on re-advice: the calls and the form."""
-    calls = advice.get("calls")
-    rendered = "".join(_render_call(call) for call in calls if isinstance(call, Mapping)) \
-        if isinstance(calls, list) else "<p>The graph reported no waiting call.</p>"
-    message = advice.get("message")
-    intro = f"<p>{html.escape(str(message))}</p>\n" if message else ""
-    meta = (
-        f"<p class=\"meta\">graph {html.escape(str(payload['g']))} &middot; "
-        f"correlation id {html.escape(str(payload['c']))} &middot; turn {html.escape(str(payload['t']))}</p>\n"
-    )
-    form = (
-        f"<form id=\"decisions\" data-ticket=\"{html.escape(ticket)}\" data-reply=\"{REPLY_PATH}\">\n"
-        f"{rendered}<button type=\"submit\">Send the decision</button>\n</form>\n<div id=\"outcome\"></div>"
-    )
-    return _page(f"{payload['k'].capitalize()} - {payload['g']}", meta + intro + form, SCRIPT)
+def page_config(settings: Settings) -> dict[str, Any]:
+    """What the page needs to sign a person in: the auth mode and, under oauth2, the issuer, the
+    public client id, the scopes and the audience - no secret, since a public client has none."""
+    config: dict[str, Any] = {"auth": settings.auth}
+    if settings.auth == "oauth2":
+        config["oauth2"] = {
+            "issuer": settings.oauth2_issuer, "client_id": settings.oauth2_client_id,
+            "scopes": settings.oauth2_scopes, "audience": settings.oauth2_audience,
+        }  # fmt: skip
+    return config
+
+
+async def show_config(_request: web.Request) -> web.Response:
+    """``GET /ask/config``: the sign-in configuration the page reads first - open, it holds no secret."""
+    return web.json_response(page_config(current_settings()))
 
 
 async def _engine(request: EngineRequest, timeout_ms: int) -> tuple[int, dict[str, Any]]:
@@ -971,7 +1519,9 @@ async def _engine(request: EngineRequest, timeout_ms: int) -> tuple[int, dict[st
 
 
 async def show_wait(request: web.Request) -> web.Response:
-    """``GET /ask/{ticket}``: show the current wait and the decision form - never resume."""
+    """``GET /ask/{ticket}``: the page for the wait - a shell whose script signs the person in when
+    the installation asks for it and reads the wait from ``GET /ask/{ticket}/wait``. A ticket that
+    cannot be used is told so here, before any sign-in; the graph is never resumed."""
     settings = current_settings()
     ticket = request.match_info["ticket"]
     try:
@@ -979,23 +1529,38 @@ async def show_wait(request: web.Request) -> web.Response:
     except TicketError as exc:
         return _notice(exc.status, "This link cannot be used" if exc.status != 410 else "This wait has expired",
                        exc.message)
+    if str(payload["g"]) not in settings.graphs:
+        return _notice(404, "This graph is not configured", f"graph {payload['g']} is not configured for replies")
+    return web.Response(text=shell_page(ticket, payload), content_type="text/html")
+
+
+async def read_wait(request: web.Request) -> web.Response:
+    """``GET /ask/{ticket}/wait``: the current wait as the engine returns it on re-advice, for the
+    page's script - the signed-in person's request; never a resume. 410 ``nothing-waiting`` when
+    the engine holds nothing; the engine's own status and body when it refuses."""
+    settings = current_settings()
+    ticket = request.match_info["ticket"]
+    try:
+        payload = verify_ticket(ticket, settings.keys, time.time())
+    except TicketError as exc:
+        kind = "expired" if exc.status == 410 else "error"
+        return web.json_response({"type": kind, "message": exc.message}, status=exc.status)
     try:
         await identify(request, settings, None, allow_app=False)
-    except ReplyError as exc:
-        return _notice(exc.status, "Sign-in required", exc.message)
-    try:
         readvice = readvice_request(payload, settings.graphs)
     except ReplyError as exc:
-        return _notice(exc.status, "This graph is not configured", exc.message)
+        return web.json_response({"type": "error", "message": exc.message}, status=exc.status)
     status, advice = await _engine(readvice, settings.engine_timeout_ms)
     if status == 410 or advice.get("type") == "nothing-waiting":
-        return _notice(410, "This wait has expired", "Nothing is waiting for this decision any more - it was "
-                       "decided already, or the suspension expired.")
+        return web.json_response({
+            "type": "nothing-waiting",
+            "message": "Nothing is waiting for this decision any more - it was decided already, or the "
+                       "suspension expired.",
+        }, status=410)  # fmt: skip
     if status >= 400:
-        return _notice(status, "The graph refused", json.dumps(advice, ensure_ascii=False))
-    if advice.get("type") != "approval":
-        return _notice(200, "The graph has moved on", json.dumps(advice, ensure_ascii=False))
-    return web.Response(text=render_wait(ticket, payload, advice), content_type="text/html")
+        return web.json_response(advice, status=status)
+    shown = {key: payload[key] for key in ("g", "c", "t", "k")}
+    return web.json_response({"payload": shown, "advice": advice})
 
 
 async def post_reply(request: web.Request) -> web.Response:
@@ -1021,9 +1586,10 @@ async def post_reply(request: web.Request) -> web.Response:
     decided_by = body.get("decided_by")
     if decided_by is not None and not isinstance(decided_by, str):
         return web.json_response({"type": "error", "message": "decided_by must be text"}, status=400)
+    at = iso_utc()
     try:
         identity = await identify(request, settings, decided_by or None, allow_app=True)
-        resume = build_resume(payload, body.get("decisions"), identity.who, iso_utc(), settings.graphs)
+        resume = build_resume(payload, body.get("decisions"), identity.who, at, settings.graphs)
     except ReplyError as exc:
         return web.json_response({"type": "error", "message": exc.message}, status=exc.status)
     status, outcome = await _engine(resume, settings.engine_timeout_ms)
@@ -1031,21 +1597,48 @@ async def post_reply(request: web.Request) -> web.Response:
         "reply for %s turn %s by %s via %s - the graph answered %d %s",
         payload["g"], payload["t"], identity.who, identity.via, status, outcome.get("type"),
     )
+    # the answer on the question record: the stamped decisions, who decided, when, and the engine's
+    # outcome, written before the invoker is answered so a device's feed finds the row changed
+    await record({"answer": {
+        "graph_id": payload["g"], "correlation_id": payload["c"], "turn": payload["t"], "ticket": ticket,
+        "decisions": resume.body["decisions"], "who": identity.who, "via": identity.via, "at": at,
+        "status": status, "body": outcome,
+    }}, settings)  # fmt: skip
     return web.json_response(outcome, status=status)
 
 
 def mount(app: web.Application) -> None:
-    """The reply page and endpoint on the host (``Platform.add_routes``)."""
+    """The reply page and endpoint on the host (``Platform.add_routes``): the sign-in configuration
+    before the ticket paths, so ``/ask/config`` is never read as a ticket."""
+    app.router.add_get(CONFIG_PATH, show_config)
     app.router.add_post(REPLY_PATH, post_reply)
+    app.router.add_get(WAIT_PATH, read_wait)
     app.router.add_get(SHOW_PATH, show_wait)
 
 
 # --- boot -------------------------------------------------------------------------------------
 
 
+async def _sweep(interval_ms: int) -> None:
+    """Expire the waits the engine stopped waiting for, so the record never says open past the
+    expiry even when nobody asks."""
+    while True:
+        await asyncio.sleep(interval_ms / 1000)
+        try:
+            expired = await question_store().expire(iso_utc())
+        except Exception as exc:  # noqa: BLE001 - the store may be down; the next interval retries
+            log.warning("%s could not expire the waits - %s", AUDIT_ROUTE, failure(exc))
+            continue
+        if expired:
+            log.info("%s expired %d wait(s)", AUDIT_ROUTE, len(expired))
+
+
 async def boot() -> None:
-    """Load the settings inside the serving loop, before the first request; a configuration the
-    extension cannot start with stops the application by name."""
+    """Load the settings inside the serving loop, before the first request, open the question
+    record and register its recorder; a configuration the extension cannot start with stops the
+    application by name, a record store that does not answer is logged and the writes fail by type
+    until it does."""
+    global _store, _sweeper
     settings = configure()
     if not settings.enabled:
         log.info("person.ask is disabled - %s is false", ENABLED)
@@ -1054,20 +1647,46 @@ async def boot() -> None:
         log.warning("No channel configured (%s) - the link is returned to the graph only", CHANNELS)
     if not settings.graphs:
         log.warning("No graph configured (%s) - a reply cannot be forwarded", GRAPHS)
+    store: QuestionStore = postgres_store(settings) if settings.audit == "postgres" else MemoryQuestionStore()
+    _store = store
+    if settings.audit != "postgres":
+        log.warning(
+            "The question record is in memory - a restart forgets every row and no other process reads it; "
+            "set %s=postgres for a deployment", AUDIT,
+        )
+    if not default_registry.exists(AUDIT_ROUTE):
+        default_registry.register(AUDIT_ROUTE, question_audit, instances=settings.audit_instances, private=True)
+        log.info("Loaded PRIVATE %s, instances=%d - question record %s", AUDIT_ROUTE, settings.audit_instances,
+                 store.name)
+    try:
+        await store.open()
+    except Exception as exc:  # noqa: BLE001 - an outage, not a deployment error: the writes fail by type until it answers
+        log.warning("The question record (%s) is not answering at start - %s", store.name, failure(exc))
+    if _sweeper is None:
+        _sweeper = asyncio.get_running_loop().create_task(_sweep(settings.audit_sweep_ms), name="question-audit-sweep")
     log.info(
-        "person.ask ready - %d channel(s) %s, %d graph(s), reply page %s/ask/{ticket}, auth %s",
+        "person.ask ready - %d channel(s) %s, %d graph(s), reply page %s/ask/{ticket}, auth %s, record %s",
         len(settings.channels), list(settings.channels), len(settings.graphs), settings.reply_url,
-        settings.auth,
+        settings.auth, store.name,
     )
 
 
 async def shutdown() -> None:
-    global _http
+    global _http, _sweeper, _store, _post_office
+    if _sweeper is not None:
+        _sweeper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _sweeper
+        _sweeper = None
+    if _store is not None:
+        await _store.close()
+        _store = None
     if _http is not None and not _http.closed:
         await _http.close()
     _http = None
     if _post_office is not None:
         await _post_office.close()
+        _post_office = None  # a closed PostOffice is never reused: the next send builds a fresh one
 
 
 def inspect(words: list[str]) -> int:
