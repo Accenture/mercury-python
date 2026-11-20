@@ -29,8 +29,8 @@
   source maps. RFC-0014 gets a round-4 amendment in mercury-composable before the record is built. Status: step 1 of 3
   built and merged (PR #73); the RFC amendment merged (mercury-composable #660); step 2 BUILT and MERGED in both packs 2026-11-20
   (PR #74, mercury-nodejs #139: the recorder, the contract, the schema, identity `none`/`oauth2` with the page's PKCE
-  sign-in); step 3 BUILT in Python as PR #75 (the agent-question app a reader of the record and the transcripts: the
-  feed, the history's pages, the transcript browser, the UI's config endpoint; vectors version 3); next the Node twin,
-  then the React UI (step 11 of the plan) in the Node pack.
+  sign-in); step 3 BUILT and MERGED in both packs 2026-11-20 (PR #75, mercury-nodejs #140: the agent-question app a reader
+  of the record and the transcripts: the feed, the history's pages, the transcript browser, the UI's config endpoint;
+  vectors version 3); next the React UI (step 11 of the plan) in the Node pack, `extensions/agent-question-ui/`.
   → serves: vision-mercury-python
   <!-- id: bp-question-record-and-ui | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-075621 -->

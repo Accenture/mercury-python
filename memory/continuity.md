@@ -302,7 +302,7 @@
   backend in both packs; the front-end that replaces the page, a small React app pointed at either backend, is built and
   maintained in the Node pack only (mercury-nodejs thread `agent-question-react-ui`), and this pack points to it - never a
   second front-end here.
-  **Round 4 (Eric's sprint of 2026-11-20; PR #75):** the app reads the question record and writes nothing - the backend
+  **Round 4 (Eric's sprint of 2026-11-20; PR #75, MERGED 2026-11-20):** the app reads the question record and writes nothing - the backend
   of the React UI. Its inbox is gone with its schema; the main flow's recorder writes the `question` table and this app
   reads it and the transcript audit tables under a reader's role (`question.store: postgres`; `memory` for the tests,
   where nothing writes it at run time). The intake wakes the feed, which polls the record's change sequence
