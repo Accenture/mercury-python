@@ -302,6 +302,16 @@
   backend in both packs; the front-end that replaces the page, a small React app pointed at either backend, is built and
   maintained in the Node pack only (mercury-nodejs thread `agent-question-react-ui`), and this pack points to it - never a
   second front-end here.
+  **Round 4 (Eric's sprint of 2026-11-20; PR #75):** the app reads the question record and writes nothing - the backend
+  of the React UI. Its inbox is gone with its schema; the main flow's recorder writes the `question` table and this app
+  reads it and the transcript audit tables under a reader's role (`question.store: postgres`; `memory` for the tests,
+  where nothing writes it at run time). The intake wakes the feed, which polls the record's change sequence
+  (`question.poll`, 1 s) and tells every connected device; `GET /questions?before=<seq>` pages the history newest first
+  for the infinite scroll, `GET /transcripts` and `GET /transcripts/{conversation}` browse the audit store,
+  `GET /questions/config` tells the UI how to sign in; the click answers with the row as the recorder left it; `seen`
+  and the sweeper are gone; identity `none` or `oauth2` (`proxy` removed). Vectors version 3 (`intake_cases`,
+  `click_cases`, `feed_cases`). **How to apply (amended):** this app never writes the record - a new fact of a row is
+  the recorder's and the schema's; a new read for the UI is an endpoint here, in both packs and in the vectors.
   <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
 
 - **The host serves static web content from `resources/public` next to the application file - the engines' `public`

@@ -1,8 +1,8 @@
 {
   "contract": "agent-question",
-  "version": 2,
-  "description": "The agent-question app's shared vectors (RFC-0014, build plan step 3): the pure half of extensions/agent-question, run by mercury-python and mercury-nodejs against the same file. row_cases pin the row a message event becomes (every field a replay carries; the upsert key of a wait; an advice has none) or the exact 400 that refuses the event. outcome_cases pin the state a decision's outcome leaves: the engine accepted it (answered), nothing was waiting (expired), a refusal or an endpoint that did not answer (open). click_cases pin the request the automated click sends - the link's own base plus /ask/reply, the ticket, the decisions and the person as decided_by. transition_cases pin the reference inbox on a scripted sequence - takes, a decision, a seen, an expiry sweep, two replays - as the rows each step leaves and the final rows, ids and change sequence included: a wait upserts on (graph_id, correlation_id, turn), an advice appends, every write bumps the sequence a replay reads from. Version 2 (the live drive of step 5) adds the rule of two devices on one card: a decision's write applies when the row is still open or when the engine accepted the decision (answered), so an acceptance always wins the row and a nothing-waiting that lands after one never overwrites it - the losing device gets the row as it stands. No HTTP is exchanged by these cases; the routes are tested by each pack in-process.",
-  "row_cases": [
+  "version": 3,
+  "description": "The agent-question app's shared vectors (RFC-0014, build plan steps 3 and 10): the pure half of extensions/agent-question, run by mercury-python and mercury-nodejs against the same file. Version 3 (round 4): the app reads the question record the main flow keeps and writes nothing - the row a message becomes, the state an answer leaves and the record's transitions moved to the ask-person vectors (version 2). intake_cases pin the event the intake accepts (what it answers the main flow) or the exact 400 that refuses it. click_cases pin the request the automated click sends to the reply endpoint the link names. feed_cases pin the pages the replay and the history read over a fixed set of rows: since(seq, limit) - the rows whose sequence passed the cursor, oldest first, with the cursor to continue from - and before(seq, limit) - the rows before the cursor, newest first, with the cursor of the older page (every row when the cursor is null); more says a page was full.",
+  "intake_cases": [
     {
       "name": "an approval",
       "event": {
@@ -32,57 +32,11 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
-      "key": [
-        "order-assistant",
-        "order-1002-case",
-        2
-      ],
-      "row": {
+      "accepted": {
+        "accepted": true,
         "kind": "approval",
         "graph_id": "order-assistant",
-        "correlation_id": "order-1002-case",
-        "turn": 2,
-        "ticket": "v1.payload.mac",
-        "link": "https://ask.example.test/ask/v1.payload.mac",
-        "description": "Customer-support assistant: a refund waits for a supervisor",
-        "summary": "A refund waits for the supervisor's decision",
-        "details": null,
-        "message": {
-          "kind": "approval",
-          "graph_id": "order-assistant",
-          "description": "Customer-support assistant: a refund waits for a supervisor",
-          "correlation_id": "order-1002-case",
-          "turn": 2,
-          "node": "assist",
-          "summary": "A refund waits for the supervisor's decision",
-          "calls": [
-            {
-              "id": "toolu_01A",
-              "name": "issue_refund",
-              "route": "demo.refund.issue",
-              "wait": true,
-              "input": {
-                "order_id": "ORD-1002",
-                "amount": 174.0,
-                "reason": "Shipment lost in transit"
-              }
-            }
-          ],
-          "ttl": "2d",
-          "requested_at": "2026-11-19T09:12:04.118Z",
-          "expires_at": "2026-11-21T09:12:04.118Z",
-          "ticket": "v1.payload.mac",
-          "link": "https://ask.example.test/ask/v1.payload.mac"
-        },
-        "state": "open",
-        "requested_at": "2026-11-19T09:12:04.118Z",
-        "expires_at": "2026-11-21T09:12:04.118Z",
-        "updated_at": "2026-11-19T09:12:05.000Z",
-        "answered_at": null,
-        "answered_by": null,
-        "decisions": null,
-        "outcome": null
+        "turn": 2
       }
     },
     {
@@ -117,60 +71,11 @@
         "ticket": "v1.plan.mac",
         "link": "https://ask.example.test/ask/v1.plan.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
-      "key": [
-        "plan-assistant",
-        "release-42",
-        1
-      ],
-      "row": {
+      "accepted": {
+        "accepted": true,
         "kind": "question",
         "graph_id": "plan-assistant",
-        "correlation_id": "release-42",
-        "turn": 1,
-        "ticket": "v1.plan.mac",
-        "link": "https://ask.example.test/ask/v1.plan.mac",
-        "description": "Planning assistant: the owner picks one of the plans",
-        "summary": "The planning assistant asks which plan to follow",
-        "details": null,
-        "message": {
-          "kind": "question",
-          "graph_id": "plan-assistant",
-          "description": "Planning assistant: the owner picks one of the plans",
-          "correlation_id": "release-42",
-          "turn": 1,
-          "node": "plan",
-          "summary": "The planning assistant asks which plan to follow",
-          "calls": [
-            {
-              "id": "toolu_02B",
-              "name": "ask_owner",
-              "ask": true,
-              "wait": true,
-              "input": {
-                "question": "Which plan?",
-                "options": [
-                  "A",
-                  "B",
-                  "C"
-                ]
-              }
-            }
-          ],
-          "ttl": 3600,
-          "requested_at": "2026-11-19T09:20:00.000Z",
-          "expires_at": "2026-11-19T10:20:00.000Z",
-          "ticket": "v1.plan.mac",
-          "link": "https://ask.example.test/ask/v1.plan.mac"
-        },
-        "state": "open",
-        "requested_at": "2026-11-19T09:20:00.000Z",
-        "expires_at": "2026-11-19T10:20:00.000Z",
-        "updated_at": "2026-11-19T09:12:05.000Z",
-        "answered_at": null,
-        "answered_by": null,
-        "decisions": null,
-        "outcome": null
+        "turn": 1
       }
     },
     {
@@ -186,37 +91,11 @@
         "details": "The assistant runs the decided call and answers the customer",
         "requested_at": "2026-11-19T09:40:12.004Z"
       },
-      "now": "2026-11-19T09:12:05.000Z",
-      "key": null,
-      "row": {
+      "accepted": {
+        "accepted": true,
         "kind": "advice",
         "graph_id": "order-assistant",
-        "correlation_id": "order-1002-case",
-        "turn": 2,
-        "ticket": null,
-        "link": null,
-        "description": "Customer-support assistant: a refund waits for a supervisor",
-        "summary": "The supervisor's decision was received; the assistant continues",
-        "details": "The assistant runs the decided call and answers the customer",
-        "message": {
-          "kind": "advice",
-          "graph_id": "order-assistant",
-          "description": "Customer-support assistant: a refund waits for a supervisor",
-          "correlation_id": "order-1002-case",
-          "turn": 2,
-          "node": "decide",
-          "summary": "The supervisor's decision was received; the assistant continues",
-          "details": "The assistant runs the decided call and answers the customer",
-          "requested_at": "2026-11-19T09:40:12.004Z"
-        },
-        "state": "open",
-        "requested_at": "2026-11-19T09:40:12.004Z",
-        "expires_at": null,
-        "updated_at": "2026-11-19T09:12:05.000Z",
-        "answered_at": null,
-        "answered_by": null,
-        "decisions": null,
-        "outcome": null
+        "turn": 2
       }
     },
     {
@@ -228,39 +107,16 @@
         "correlation_id": "order-1002-case",
         "summary": "Nightly: the queue is empty"
       },
-      "now": "2026-11-19T09:12:05.000Z",
-      "key": null,
-      "row": {
+      "accepted": {
+        "accepted": true,
         "kind": "advice",
         "graph_id": "order-assistant",
-        "correlation_id": "order-1002-case",
-        "turn": null,
-        "ticket": null,
-        "link": null,
-        "description": "Customer-support assistant",
-        "summary": "Nightly: the queue is empty",
-        "details": null,
-        "message": {
-          "kind": "advice",
-          "graph_id": "order-assistant",
-          "description": "Customer-support assistant",
-          "correlation_id": "order-1002-case",
-          "summary": "Nightly: the queue is empty"
-        },
-        "state": "open",
-        "requested_at": "2026-11-19T09:12:05.000Z",
-        "expires_at": null,
-        "updated_at": "2026-11-19T09:12:05.000Z",
-        "answered_at": null,
-        "answered_by": null,
-        "decisions": null,
-        "outcome": null
+        "turn": null
       }
     },
     {
       "name": "not a map",
       "event": "approval",
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "the inbox takes the message event as a map"
     },
@@ -293,7 +149,6 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "kind must be one of approval, question, advice"
     },
@@ -325,7 +180,6 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "graph_id is required"
     },
@@ -358,7 +212,6 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "summary is required"
     },
@@ -391,7 +244,6 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "turn must be a whole number >= 0"
     },
@@ -423,7 +275,6 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "turn is required for an approval or a question"
     },
@@ -455,7 +306,6 @@
         "expires_at": "2026-11-21T09:12:04.118Z",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "ticket is required for an approval or a question"
     },
@@ -487,7 +337,6 @@
         "expires_at": "2026-11-21T09:12:04.118Z",
         "ticket": "v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "link is required for an approval or a question"
     },
@@ -519,7 +368,6 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "expires_at is required for an approval or a question"
     },
@@ -540,7 +388,6 @@
         "ticket": "v1.payload.mac",
         "link": "https://ask.example.test/ask/v1.payload.mac"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "calls must be a non-empty list for an approval or a question"
     },
@@ -559,99 +406,8 @@
         ],
         "requested_at": "2026-11-19T09:40:12.004Z"
       },
-      "now": "2026-11-19T09:12:05.000Z",
       "status": 400,
       "error": "details must be text"
-    }
-  ],
-  "outcome_cases": [
-    {
-      "name": "the engine answered",
-      "status": 200,
-      "body": {
-        "type": "answer",
-        "turn": 3,
-        "message": "Your refund has been issued."
-      },
-      "state": "answered"
-    },
-    {
-      "name": "the model asked again",
-      "status": 200,
-      "body": {
-        "type": "approval",
-        "turn": 4,
-        "calls": []
-      },
-      "state": "answered"
-    },
-    {
-      "name": "the loop refused the decision - the graph re-advised with the error",
-      "status": 200,
-      "body": {
-        "type": "approval",
-        "turn": 2,
-        "error": "not a call waiting for approval"
-      },
-      "state": "open"
-    },
-    {
-      "name": "nothing waiting by status",
-      "status": 410,
-      "body": {
-        "type": "nothing-waiting"
-      },
-      "state": "expired"
-    },
-    {
-      "name": "nothing waiting by type",
-      "status": 200,
-      "body": {
-        "type": "nothing-waiting"
-      },
-      "state": "expired"
-    },
-    {
-      "name": "the ticket expired at the reply endpoint",
-      "status": 410,
-      "body": {
-        "type": "expired",
-        "message": "Ticket expired"
-      },
-      "state": "expired"
-    },
-    {
-      "name": "the reply endpoint refused the decisions",
-      "status": 400,
-      "body": {
-        "type": "error",
-        "message": "each decision needs the id of its call"
-      },
-      "state": "open"
-    },
-    {
-      "name": "the graph did not answer",
-      "status": 502,
-      "body": {
-        "type": "error",
-        "message": "the graph did not answer - TimeoutError"
-      },
-      "state": "open"
-    },
-    {
-      "name": "the reply endpoint did not answer",
-      "status": 502,
-      "body": {
-        "type": "error",
-        "message": "the reply endpoint did not answer - ClientConnectorError"
-      },
-      "state": "open"
-    },
-    {
-      "name": "an answer with no body",
-      "status": 200,
-      "body": null,
-      "state": "answered"
     }
   ],
   "click_cases": [
@@ -741,457 +497,143 @@
       "error": "the row's link does not name a reply endpoint"
     }
   ],
-  "transition_cases": [
+  "feed_cases": [
     {
-      "name": "the reference sequence",
-      "steps": [
-        {
-          "op": "take",
-          "event": {
-            "kind": "approval",
-            "graph_id": "order-assistant",
-            "description": "Customer-support assistant: a refund waits for a supervisor",
-            "correlation_id": "order-1002-case",
-            "turn": 2,
-            "node": "assist",
-            "summary": "A refund waits for the supervisor's decision",
-            "calls": [
-              {
-                "id": "toolu_01A",
-                "name": "issue_refund",
-                "route": "demo.refund.issue",
-                "wait": true,
-                "input": {
-                  "order_id": "ORD-1002",
-                  "amount": 174.0,
-                  "reason": "Shipment lost in transit"
-                }
-              }
-            ],
-            "ttl": "2d",
-            "requested_at": "2026-11-19T09:12:04.118Z",
-            "expires_at": "2026-11-21T09:12:04.118Z",
-            "ticket": "v1.payload.mac",
-            "link": "https://ask.example.test/ask/v1.payload.mac"
-          },
-          "now": "2026-11-19T09:12:05.000Z"
-        },
-        {
-          "op": "take",
-          "event": {
-            "kind": "question",
-            "graph_id": "plan-assistant",
-            "description": "Planning assistant: the owner picks one of the plans",
-            "correlation_id": "release-42",
-            "turn": 1,
-            "node": "plan",
-            "summary": "The planning assistant asks which plan to follow",
-            "calls": [
-              {
-                "id": "toolu_02B",
-                "name": "ask_owner",
-                "ask": true,
-                "wait": true,
-                "input": {
-                  "question": "Which plan?",
-                  "options": [
-                    "A",
-                    "B",
-                    "C"
-                  ]
-                }
-              }
-            ],
-            "ttl": 3600,
-            "requested_at": "2026-11-19T09:20:00.000Z",
-            "expires_at": "2026-11-19T10:20:00.000Z",
-            "ticket": "v1.plan.mac",
-            "link": "https://ask.example.test/ask/v1.plan.mac"
-          },
-          "now": "2026-11-19T09:20:01.000Z"
-        },
-        {
-          "op": "take",
-          "event": {
-            "kind": "advice",
-            "graph_id": "order-assistant",
-            "description": "Customer-support assistant",
-            "correlation_id": "order-1002-case",
-            "summary": "Nightly: the queue is empty"
-          },
-          "now": "2026-11-19T09:30:00.000Z"
-        },
-        {
-          "op": "take",
-          "event": {
-            "kind": "approval",
-            "graph_id": "order-assistant",
-            "description": "Customer-support assistant: a refund waits for a supervisor",
-            "correlation_id": "order-1002-case",
-            "turn": 2,
-            "node": "assist",
-            "summary": "A refund waits for the supervisor's decision",
-            "calls": [
-              {
-                "id": "toolu_01A",
-                "name": "issue_refund",
-                "route": "demo.refund.issue",
-                "wait": true,
-                "input": {
-                  "order_id": "ORD-1002",
-                  "amount": 174.0,
-                  "reason": "Shipment lost in transit"
-                }
-              }
-            ],
-            "ttl": "2d",
-            "requested_at": "2026-11-19T09:35:00.000Z",
-            "expires_at": "2026-11-21T09:35:00.000Z",
-            "ticket": "v1.payload2.mac",
-            "link": "https://ask.example.test/ask/v1.payload2.mac"
-          },
-          "now": "2026-11-19T09:35:00.500Z",
-          "note": "a re-advice for the same turn updates the same row with the new ticket"
-        },
-        {
-          "op": "decided",
-          "id": 1,
-          "decisions": [
-            {
-              "id": "toolu_01A",
-              "approved": true,
-              "note": "Carrier confirmed"
-            }
-          ],
-          "who": "operator-17",
-          "status": 200,
-          "body": {
-            "type": "answer",
-            "turn": 3
-          },
-          "now": "2026-11-19T09:40:00.000Z"
-        },
-        {
-          "op": "take",
-          "event": {
-            "kind": "advice",
-            "graph_id": "order-assistant",
-            "description": "Customer-support assistant: a refund waits for a supervisor",
-            "correlation_id": "order-1002-case",
-            "turn": 2,
-            "node": "decide",
-            "summary": "The supervisor's decision was received; the assistant continues",
-            "details": "The assistant runs the decided call and answers the customer",
-            "requested_at": "2026-11-19T09:40:12.004Z"
-          },
-          "now": "2026-11-19T09:40:12.100Z"
-        },
-        {
-          "op": "seen",
-          "id": 4,
-          "now": "2026-11-19T09:41:00.000Z"
-        },
-        {
-          "op": "expire",
-          "now": "2026-11-19T10:30:00.000Z",
-          "note": "the question's hour is over; the answered wait is untouched"
-        },
-        {
-          "op": "since",
-          "seq": 4,
-          "limit": 10
-        },
-        {
-          "op": "since",
-          "seq": 0,
-          "limit": 3
-        }
-      ],
-      "results": [
+      "name": "the replay and the history over seven rows",
+      "rows": [
         {
           "id": 1,
-          "seq": 1,
-          "state": "open",
-          "ticket": "v1.payload.mac"
+          "seq": 3,
+          "kind": "approval",
+          "state": "answered"
         },
         {
           "id": 2,
           "seq": 2,
-          "state": "open",
-          "ticket": "v1.plan.mac"
+          "kind": "advice",
+          "state": null
         },
         {
           "id": 3,
-          "seq": 3,
-          "state": "open",
-          "ticket": null
-        },
-        {
-          "id": 1,
-          "seq": 4,
-          "state": "open",
-          "ticket": "v1.payload2.mac"
-        },
-        {
-          "id": 1,
           "seq": 5,
-          "state": "answered",
-          "answered_by": "operator-17"
+          "kind": "question",
+          "state": "open"
         },
         {
           "id": 4,
-          "seq": 6,
-          "state": "open",
-          "ticket": null
+          "seq": 4,
+          "kind": "approval",
+          "state": "expired"
         },
         {
-          "id": 4,
+          "id": 5,
           "seq": 7,
-          "state": "seen"
+          "kind": "approval",
+          "state": "open"
         },
         {
-          "expired": [
-            {
-              "id": 2,
-              "seq": 8
-            }
-          ]
+          "id": 6,
+          "seq": 6,
+          "kind": "advice",
+          "state": null
         },
         {
+          "id": 7,
+          "seq": 1,
+          "kind": "approval",
+          "state": "answered"
+        }
+      ],
+      "queries": [
+        {
+          "before": null,
+          "limit": 3,
           "ids": [
-            1,
+            5,
+            6,
+            3
+          ],
+          "seqs": [
+            7,
+            6,
+            5
+          ],
+          "next": 5,
+          "more": true
+        },
+        {
+          "before": 5,
+          "limit": 3,
+          "ids": [
             4,
+            1,
             2
           ],
           "seqs": [
-            5,
-            7,
-            8
-          ]
+            4,
+            3,
+            2
+          ],
+          "next": 2,
+          "more": true
         },
         {
+          "before": 2,
+          "limit": 3,
           "ids": [
-            3,
-            1,
-            4
+            7
           ],
           "seqs": [
-            3,
-            5,
-            7
-          ]
-        }
-      ],
-      "final": [
-        {
-          "id": 1,
-          "seq": 5,
-          "kind": "approval",
-          "state": "answered",
-          "ticket": "v1.payload2.mac",
-          "turn": 2,
-          "requested_at": "2026-11-19T09:35:00.000Z",
-          "expires_at": "2026-11-21T09:35:00.000Z",
-          "updated_at": "2026-11-19T09:40:00.000Z",
-          "answered_by": "operator-17",
-          "outcome": {
-            "status": 200,
-            "body": {
-              "type": "answer",
-              "turn": 3
-            }
-          }
-        },
-        {
-          "id": 2,
-          "seq": 8,
-          "kind": "question",
-          "state": "expired",
-          "ticket": "v1.plan.mac",
-          "turn": 1,
-          "requested_at": "2026-11-19T09:20:00.000Z",
-          "expires_at": "2026-11-19T10:20:00.000Z",
-          "updated_at": "2026-11-19T10:30:00.000Z",
-          "answered_by": null,
-          "outcome": null
-        },
-        {
-          "id": 3,
-          "seq": 3,
-          "kind": "advice",
-          "state": "open",
-          "ticket": null,
-          "turn": null,
-          "requested_at": "2026-11-19T09:30:00.000Z",
-          "expires_at": null,
-          "updated_at": "2026-11-19T09:30:00.000Z",
-          "answered_by": null,
-          "outcome": null
-        },
-        {
-          "id": 4,
-          "seq": 7,
-          "kind": "advice",
-          "state": "seen",
-          "ticket": null,
-          "turn": 2,
-          "requested_at": "2026-11-19T09:40:12.004Z",
-          "expires_at": null,
-          "updated_at": "2026-11-19T09:41:00.000Z",
-          "answered_by": null,
-          "outcome": null
-        }
-      ]
-    },
-    {
-      "name": "two devices on one card - the first accepted decision stands",
-      "steps": [
-        {
-          "op": "take",
-          "event": {
-            "kind": "approval",
-            "graph_id": "order-assistant",
-            "description": "Customer-support assistant: a refund waits for a supervisor",
-            "correlation_id": "order-1004-case",
-            "turn": 2,
-            "node": "assist",
-            "summary": "A refund waits for the supervisor's decision",
-            "calls": [
-              {
-                "id": "toolu_01A",
-                "name": "issue_refund",
-                "route": "demo.refund.issue",
-                "wait": true,
-                "input": {
-                  "order_id": "ORD-1004",
-                  "amount": 240.0,
-                  "reason": "Shipment lost in transit"
-                }
-              }
-            ],
-            "ttl": "2d",
-            "requested_at": "2026-11-19T10:00:00.000Z",
-            "expires_at": "2026-11-21T10:00:00.000Z",
-            "ticket": "v1.two.mac",
-            "link": "https://ask.example.test/ask/v1.two.mac"
-          },
-          "now": "2026-11-19T10:00:00.200Z"
-        },
-        {
-          "op": "decided",
-          "id": 1,
-          "decisions": [
-            {
-              "id": "toolu_01A",
-              "approved": true,
-              "note": "from device-2"
-            }
-          ],
-          "who": "device-2",
-          "status": 410,
-          "body": {
-            "type": "nothing-waiting",
-            "run": "fresh"
-          },
-          "now": "2026-11-19T10:00:01.000Z",
-          "note": "two devices clicked at once; the engine took the other one's decision, so this one got nothing-waiting, and it lands first: the open row turns expired for a moment"
-        },
-        {
-          "op": "decided",
-          "id": 1,
-          "decisions": [
-            {
-              "id": "toolu_01A",
-              "approved": true,
-              "note": "from device-1"
-            }
-          ],
-          "who": "device-1",
-          "status": 200,
-          "body": {
-            "type": "answer",
-            "turn": 3
-          },
-          "now": "2026-11-19T10:00:02.000Z",
-          "note": "the accepted decision always wins the row"
-        },
-        {
-          "op": "decided",
-          "id": 1,
-          "decisions": [
-            {
-              "id": "toolu_01A",
-              "approved": false
-            }
-          ],
-          "who": "device-3",
-          "status": 410,
-          "body": {
-            "type": "nothing-waiting",
-            "run": "fresh"
-          },
-          "now": "2026-11-19T10:00:03.000Z",
-          "note": "a nothing-waiting after the acceptance changes nothing: the row stands as device-1 left it and the sequence does not move"
-        },
-        {
-          "op": "since",
-          "seq": 0,
-          "limit": 10
-        }
-      ],
-      "results": [
-        {
-          "id": 1,
-          "seq": 1,
-          "state": "open",
-          "ticket": "v1.two.mac"
-        },
-        {
-          "id": 1,
-          "seq": 2,
-          "state": "expired",
-          "answered_by": "device-2"
-        },
-        {
-          "id": 1,
-          "seq": 3,
-          "state": "answered",
-          "answered_by": "device-1"
-        },
-        {
-          "id": 1,
-          "seq": 3,
-          "state": "answered",
-          "answered_by": "device-1"
-        },
-        {
-          "ids": [
             1
           ],
-          "seqs": [
-            3
-          ]
-        }
-      ],
-      "final": [
+          "next": 1,
+          "more": false
+        },
         {
-          "id": 1,
-          "seq": 3,
-          "kind": "approval",
-          "state": "answered",
-          "ticket": "v1.two.mac",
-          "turn": 2,
-          "requested_at": "2026-11-19T10:00:00.000Z",
-          "expires_at": "2026-11-21T10:00:00.000Z",
-          "updated_at": "2026-11-19T10:00:02.000Z",
-          "answered_by": "device-1",
-          "outcome": {
-            "status": 200,
-            "body": {
-              "type": "answer",
-              "turn": 3
-            }
-          }
+          "before": 1,
+          "limit": 3,
+          "ids": [],
+          "seqs": [],
+          "next": null,
+          "more": false
+        },
+        {
+          "since": 4,
+          "limit": 10,
+          "ids": [
+            3,
+            6,
+            5
+          ],
+          "seqs": [
+            5,
+            6,
+            7
+          ],
+          "next": 7,
+          "more": false
+        },
+        {
+          "since": 0,
+          "limit": 2,
+          "ids": [
+            7,
+            2
+          ],
+          "seqs": [
+            1,
+            2
+          ],
+          "next": 2,
+          "more": true
+        },
+        {
+          "since": 7,
+          "limit": 5,
+          "ids": [],
+          "seqs": [],
+          "next": 7,
+          "more": false
         }
       ]
     }
