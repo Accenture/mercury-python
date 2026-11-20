@@ -34,7 +34,9 @@
   vectors version 3); step 3 - the React UI, step 11 of the plan - BUILT 2026-11-20: mercury-nodejs #141 (the subproject:
   four panels including an Actuator menu over the host's endpoints, PKCE, the release script, a Keycloak development
   issuer, the device-side seen state) and here #76 (the bundle committed and served at `/`, the vanilla page retired,
-  the actuator endpoints pinned beside the bundle); next the live drive through both backends and its report in
-  mercury-composable.
+  the actuator endpoints pinned beside the bundle); DRIVEN LIVE 2026-11-20 through both backends and a Keycloak issuer
+  (mercury-composable `docs/test-reports/agent-question-ui-live-drive.md`): one host defect fixed in both packs
+  ([[platform-on-shutdown-hook]]), two UI fixes; next the record-on-merge of #76 / mercury-nodejs #141, then the reply
+  page's own sign-in against the same issuer (a follow-up).
   → serves: vision-mercury-python
   <!-- id: bp-question-record-and-ui | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-075621 -->
