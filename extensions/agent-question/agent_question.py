@@ -605,23 +605,34 @@ def failure(exc: BaseException) -> str:
 
 
 class Wakeups:
-    """Every connected device holds a queue; a changed row goes to all of them."""
+    """Every connected device holds a queue; a changed row goes to all of them. ``close`` ends every
+    stream (``None`` on the queue) when the application stops, so the host can close its connections."""
 
     def __init__(self) -> None:
-        self._queues: set[asyncio.Queue[Row]] = set()
+        self._queues: set[asyncio.Queue[Row | None]] = set()
+        self.closing = False
 
-    def subscribe(self) -> asyncio.Queue[Row]:
-        queue: asyncio.Queue[Row] = asyncio.Queue()
+    def subscribe(self) -> asyncio.Queue[Row | None]:
+        queue: asyncio.Queue[Row | None] = asyncio.Queue()
         self._queues.add(queue)
+        if self.closing:
+            queue.put_nowait(None)
         return queue
 
-    def unsubscribe(self, queue: asyncio.Queue[Row]) -> None:
+    def unsubscribe(self, queue: asyncio.Queue[Row | None]) -> None:
         self._queues.discard(queue)
 
     def publish(self, rows: Sequence[Row]) -> None:
         for queue in list(self._queues):
             for row in rows:
                 queue.put_nowait(row)
+
+    def close(self) -> None:
+        """The application is stopping: every connected device's stream ends now, and a stream opened
+        from here on ends at once; the devices reconnect to the next instance."""
+        self.closing = True
+        for queue in list(self._queues):
+            queue.put_nowait(None)
 
     @property
     def connected(self) -> int:
@@ -920,6 +931,8 @@ async def events(request: web.Request) -> web.StreamResponse:
             except asyncio.TimeoutError:
                 await response.write(b": ping\n\n")
                 continue
+            if row is None:
+                break  # the application is stopping; the device reconnects
             if row.seq > since:
                 await response.write(_frame(row))
                 since = row.seq
@@ -1095,6 +1108,13 @@ async def boot() -> None:
              _reader.name, _feed.cursor, EVENTS_PATH, settings.poll_ms, settings.auth)
 
 
+async def close_streams() -> None:
+    """The application is stopping (``Platform.on_shutdown``): end every connected device's stream, so the
+    host can close its connections and exit within a container manager's grace period; a device reconnects to
+    the next instance from its last sequence and misses nothing."""
+    _wakeups.close()
+
+
 async def shutdown() -> None:
     global _http
     await _feed.stop()
@@ -1107,6 +1127,7 @@ async def shutdown() -> None:
 
 def _attach() -> None:
     platform.on_startup(boot)
+    platform.on_shutdown(close_streams)
     platform.on_cleanup(shutdown)
     platform.add_routes(mount)
 

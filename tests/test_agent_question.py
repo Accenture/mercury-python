@@ -683,6 +683,25 @@ def test_a_record_s_json_may_arrive_as_text_and_an_advice_has_no_state() -> None
     assert aq.failure(RuntimeError("quotes a row")) == "RuntimeError"
 
 
+async def test_a_stopping_application_ends_its_streams(configure: Callable[[dict[str, Any]], Any], host: str) -> None:
+    """A device's stream otherwise keeps the process alive past SIGTERM (found by the UI drive of 2026-11-20): the
+    shutdown hook ends every stream, a stream opened while stopping ends at once, and the device reconnects."""
+    configure(BASE)
+    async with aiohttp.ClientSession() as http:
+        async with http.get(f"{host}/questions/events") as response:
+            assert response.status == 200
+            await asyncio.sleep(0.2)
+            assert aq._wakeups.connected == 1
+            await aq.close_streams()
+            body = await asyncio.wait_for(response.read(), 5)  # the stream ended
+            assert b"event: question" not in body
+        async with http.get(f"{host}/questions/events") as response:
+            assert response.status == 200
+            await asyncio.wait_for(response.read(), 5)  # a stream opened while stopping ends at once
+    await asyncio.sleep(0.1)
+    assert aq._wakeups.connected == 0
+
+
 # --- the React UI's bundle, served by the host ------------------------------------------------------------
 
 PUBLIC = Path(__file__).resolve().parent.parent / "extensions" / "agent-question" / "resources" / "public"
@@ -733,6 +752,7 @@ async def test_the_platform_hooks_mount_the_routes_and_run_the_boot(
     monkeypatch.setattr(aq, "platform", fresh)
     aq._attach()
     app = fresh.create_app()
+    assert len(app.on_shutdown) == 1, "the streams end on shutdown, before the host waits for the requests in flight"
     paths = [route.resource.canonical for route in app.router.routes() if route.resource is not None]
     for path in ("/questions/config", "/questions/events", "/questions", "/questions/{id}/decide",
                  "/transcripts", "/transcripts/{conversation}"):

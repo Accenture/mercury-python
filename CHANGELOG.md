@@ -185,6 +185,18 @@
    bundle is served (`/`, the hashed script and stylesheet, `/favicon.svg`) and the five actuator endpoints answer
    beside it.
 
+10. **`Platform.on_shutdown(callback)`: the moment the application starts to stop, while the host still holds its
+    connections and before it waits for the requests in flight - aiohttp's `on_shutdown`, the place to end a
+    long-lived response; in lockstep with the Node.js pack's `Platform.onShutdown`.** The live drive of the React UI
+    (2026-11-20) found that a device holding the agent-question stream kept a stopping backend alive: after SIGTERM
+    the host stopped listening within two seconds but waited for the stream, which never ends on its own, and the
+    process was still there 75 seconds later - in a container, the manager's grace period and a SIGKILL. The
+    agent-question app now ends every connected device's stream in that hook (`close_streams`: the wake-ups close, a
+    stream opened while stopping ends at once) and the devices reconnect to the next instance from their last
+    sequence, missing nothing; the cleanup (`on_cleanup`) still closes the stores after the last request. **How to
+    apply:** an extension that holds a stream or a socket open ends it in `on_shutdown` and closes its stores in
+    `on_cleanup`.
+
 ### Fixed
 
 1. **The agent-question app keeps the first accepted decision when two devices decide one card at the same moment**
