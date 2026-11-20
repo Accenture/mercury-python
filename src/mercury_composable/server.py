@@ -458,6 +458,7 @@ class Platform:
     def __init__(self, registry: FunctionRegistry | None = None):
         self.registry = registry or default_registry
         self._startup: list[Callable[[], Awaitable[None]]] = []
+        self._shutdown: list[Callable[[], Awaitable[None]]] = []
         self._cleanup: list[Callable[[], Awaitable[None]]] = []
         self._routes: list[RouteMounter] = []
 
@@ -467,6 +468,14 @@ class Platform:
         peer and registering the routes it serves. A callback that raises stops the application
         before it listens, so a boot failure is a failure to start, never a run-time surprise."""
         self._startup.append(callback)
+
+    def on_shutdown(self, callback: Callable[[], Awaitable[None]]) -> None:
+        """Run an async callback the moment the application starts to stop (SIGTERM, SIGINT), while
+        the host still holds its connections and before it waits for the requests in flight - the
+        place to end a long-lived response, such as a stream a browser holds, which otherwise keeps
+        the process alive past a container manager's grace period. The cleanup callbacks run after
+        the last request."""
+        self._shutdown.append(callback)
 
     def on_cleanup(self, callback: Callable[[], Awaitable[None]]) -> None:
         """Run an async callback when the application shuts down, after the last request."""
@@ -481,7 +490,7 @@ class Platform:
         self._routes.append(mount)
 
     def create_app(self) -> web.Application:
-        """The Event API application with this platform's startup and cleanup callbacks
+        """The Event API application with this platform's startup, shutdown and cleanup callbacks
         attached, and the opt-in OpenTelemetry forwarder activated on its extension route;
         ``run`` serves it, and a test may serve it with aiohttp's own runner."""
         config = app_config()
@@ -491,6 +500,8 @@ class Platform:
         app = EventApiServer(self.registry).create_app(self._routes)
         for callback in self._startup:
             app.on_startup.append(_lifecycle(callback))
+        for callback in self._shutdown:
+            app.on_shutdown.append(_lifecycle(callback))
         for callback in self._cleanup:
             app.on_cleanup.append(_lifecycle(callback))
         if exporter is not None:

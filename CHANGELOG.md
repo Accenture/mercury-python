@@ -172,6 +172,31 @@
    here, plus a late older message and an answer with no recorded wait). The agent-question app becomes a reader of
    this record in the next step; until then it keeps its own inbox.
 
+9. **The React UI's bundle, committed in `extensions/agent-question/resources/public` (RFC-0014 round 4, section
+   21.4; build plan step 11).** The front-end of the agent-question app - the question-and-answer panel, the history
+   with infinite scroll and the transcript browser - is built and maintained in the Node.js pack only (mercury-nodejs
+   `extensions/agent-question-ui`; Eric, 2026-11-19: one app to maintain in one place), and its bundle is deployed here
+   by that subproject's release script and committed, so this backend serves it from its own origin at `/` through the
+   host's static content service - no CORS, nothing configured. Sign-in follows `GET /questions/config`: a name field
+   under `none`, Authorization Code with PKCE against the configured issuer under `oauth2`, the bearer on every call and
+   on the stream; an *Actuator* panel offers the host's `/info`, `/info/routes`, `/health`, `/env` and `/livenessprobe`
+   as a menu, which stay at their paths beside the bundle - a host path always wins over a file - so Kubernetes probes
+   work unchanged. A change to the UI is a build there and a commit of the bundle here; the test checks the committed
+   bundle is served (`/`, the hashed script and stylesheet, `/favicon.svg`) and the five actuator endpoints answer
+   beside it.
+
+10. **`Platform.on_shutdown(callback)`: the moment the application starts to stop, while the host still holds its
+    connections and before it waits for the requests in flight - aiohttp's `on_shutdown`, the place to end a
+    long-lived response; in lockstep with the Node.js pack's `Platform.onShutdown`.** The live drive of the React UI
+    (2026-11-20) found that a device holding the agent-question stream kept a stopping backend alive: after SIGTERM
+    the host stopped listening within two seconds but waited for the stream, which never ends on its own, and the
+    process was still there 75 seconds later - in a container, the manager's grace period and a SIGKILL. The
+    agent-question app now ends every connected device's stream in that hook (`close_streams`: the wake-ups close, a
+    stream opened while stopping ends at once) and the devices reconnect to the next instance from their last
+    sequence, missing nothing; the cleanup (`on_cleanup`) still closes the stores after the last request. **How to
+    apply:** an extension that holds a stream or a socket open ends it in `on_shutdown` and closes its stores in
+    `on_cleanup`.
+
 ### Fixed
 
 1. **The agent-question app keeps the first accepted decision when two devices decide one card at the same moment**
@@ -226,6 +251,9 @@
    replace this page, a small React app pointed at either backend, is on the Node.js pack's backlog (Eric: one front-end
    to maintain in one place, mercury-nodejs `extensions/agent-question`); this pack points to it and keeps the vanilla
    page as the fallback.
+
+4. **The agent-question app generates no page: `GET /questions/app` is retired.** The React UI's bundle at the root
+   replaces the vanilla page (Added 9). **Upgrade note:** open `http://127.0.0.1:8092/` instead of `/questions/app`.
 
 2. **`web.crawl` accepts a relative `include`.** A prefix that does not start with `/` now matches anywhere in a link's path,
    since a model names a section as `guides/` as often as `/guides/`: the live drive of the Playground's `site-notes` graph

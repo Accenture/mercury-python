@@ -15,6 +15,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import re
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
@@ -391,10 +392,6 @@ async def test_the_replay_and_the_history_page_the_record(configure: Callable[[d
     assert [r["id"] for r in oldest["rows"]] == [7] and oldest["next"] == 1 and oldest["more"] is False
     assert (await get_json(f"{host}/questions?since=x"))[0] == 400
     assert (await get_json(f"{host}/questions?before=x"))[0] == 400
-    async with aiohttp.ClientSession() as http, http.get(f"{host}/questions/app") as response:
-        text = await response.text()
-        assert response.status == 200 and "Agent questions" in text
-        assert 'id="history"' in text and "Waiting for you" in text and "data-seen" not in text
 
 
 async def test_the_stream_replays_then_follows_the_feed_with_keep_alives(
@@ -551,7 +548,7 @@ async def test_the_oauth2_mode_guards_every_read_and_the_click(
     row = put(wait_event(base=base), 1, 1)
     decisions = [{"id": "toolu_01A", "approved": False}]
     async with aiohttp.ClientSession() as http:
-        for path in ("/questions?since=0", "/questions/events", "/questions/app", "/transcripts", f"/transcripts/{CONVERSATION_A}"):
+        for path in ("/questions?since=0", "/questions/events", "/transcripts", f"/transcripts/{CONVERSATION_A}"):
             async with http.get(f"{host}{path}") as response:
                 assert response.status == 401, path
         async with http.get(f"{host}/questions/config") as response:
@@ -686,6 +683,64 @@ def test_a_record_s_json_may_arrive_as_text_and_an_advice_has_no_state() -> None
     assert aq.failure(RuntimeError("quotes a row")) == "RuntimeError"
 
 
+async def test_a_stopping_application_ends_its_streams(configure: Callable[[dict[str, Any]], Any], host: str) -> None:
+    """A device's stream otherwise keeps the process alive past SIGTERM (found by the UI drive of 2026-11-20): the
+    shutdown hook ends every stream, a stream opened while stopping ends at once, and the device reconnects."""
+    configure(BASE)
+    async with aiohttp.ClientSession() as http:
+        async with http.get(f"{host}/questions/events") as response:
+            assert response.status == 200
+            await asyncio.sleep(0.2)
+            assert aq._wakeups.connected == 1
+            await aq.close_streams()
+            body = await asyncio.wait_for(response.read(), 5)  # the stream ended
+            assert b"event: question" not in body
+        async with http.get(f"{host}/questions/events") as response:
+            assert response.status == 200
+            await asyncio.wait_for(response.read(), 5)  # a stream opened while stopping ends at once
+    await asyncio.sleep(0.1)
+    assert aq._wakeups.connected == 0
+
+
+# --- the React UI's bundle, served by the host ------------------------------------------------------------
+
+PUBLIC = Path(__file__).resolve().parent.parent / "extensions" / "agent-question" / "resources" / "public"
+
+
+async def test_the_host_serves_the_committed_ui_bundle_at_the_root(configure: Callable[[dict[str, Any]], Any]) -> None:
+    """The React UI is built in the Node.js pack and its bundle committed here, in resources/public next to the
+    application file; the host's static content service serves it at the root - the app generates no page."""
+    configure({**BASE, "static.html.folder": f"file:{PUBLIC}"})
+    runner, host = await _serve(EventApiServer(FunctionRegistry()).create_app(routes=[aq.mount]))
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(f"{host}/") as response:
+                index = await response.text()
+                assert response.status == 200 and response.content_type == "text/html"
+                assert '<div id="root">' in index and 'href="/favicon.svg"' in index
+            scripts = re.findall(r'src="(/assets/[^"]+\.js)"', index)
+            styles = re.findall(r'href="(/assets/[^"]+\.css)"', index)
+            assert len(scripts) == 1 and len(styles) == 1, "one script and one stylesheet, hashed"
+            async with http.get(f"{host}{scripts[0]}") as response:
+                assert response.status == 200 and response.content_type == "text/javascript"
+            async with http.get(f"{host}{styles[0]}") as response:
+                assert response.status == 200 and response.content_type == "text/css"
+            async with http.get(f"{host}/favicon.svg") as response:
+                assert response.status == 200 and response.content_type == "image/svg+xml"
+            async with http.get(f"{host}/questions/app") as response:
+                assert response.status == 404, "the generated page is retired"
+            # the engines' actuator endpoints stay at their paths beside the bundle - Kubernetes probes and operations
+            for path in ("/info", "/info/routes", "/health", "/env"):
+                async with http.get(f"{host}{path}") as response:
+                    assert response.status == 200 and response.content_type == "application/json", path
+                    await response.json()
+            async with http.get(f"{host}/livenessprobe") as response:
+                assert response.status == 200 and await response.text() == "OK"
+    finally:
+        await runner.cleanup()
+        await aq.shutdown()
+
+
 # --- the hooks and the boot ---------------------------------------------------------------------------
 
 
@@ -697,8 +752,9 @@ async def test_the_platform_hooks_mount_the_routes_and_run_the_boot(
     monkeypatch.setattr(aq, "platform", fresh)
     aq._attach()
     app = fresh.create_app()
+    assert len(app.on_shutdown) == 1, "the streams end on shutdown, before the host waits for the requests in flight"
     paths = [route.resource.canonical for route in app.router.routes() if route.resource is not None]
-    for path in ("/questions/config", "/questions/app", "/questions/events", "/questions", "/questions/{id}/decide",
+    for path in ("/questions/config", "/questions/events", "/questions", "/questions/{id}/decide",
                  "/transcripts", "/transcripts/{conversation}"):
         assert path in paths, path
     assert paths.index("/questions") < paths.index("/{unknown}")

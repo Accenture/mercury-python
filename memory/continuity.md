@@ -312,6 +312,11 @@
   and the sweeper are gone; identity `none` or `oauth2` (`proxy` removed). Vectors version 3 (`intake_cases`,
   `click_cases`, `feed_cases`). **How to apply (amended):** this app never writes the record - a new fact of a row is
   the recorder's and the schema's; a new read for the UI is an endpoint here, in both packs and in the vectors.
+  **2026-11-20 (PR #76):** the generated page is gone - `GET /questions/app` retired; the React UI's bundle (mercury-nodejs
+  `extensions/agent-question-ui`, #141) is committed in `resources/public` and served at `/` by the host
+  ([[static-content-resources-public]]), the engines' actuator endpoints beside it for Kubernetes probes (Eric).
+  **Driven live 2026-11-20** with the React UI (mercury-composable `docs/test-reports/agent-question-ui-live-drive.md`);
+  the streams end when the application stops ([[platform-on-shutdown-hook]]).
   <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
 
 - **The host serves static web content from `resources/public` next to the application file - the engines' `public`
@@ -331,6 +336,18 @@
   configured; a host path or an extension route always wins over a file of the same name; a relative folder is never
   the working directory's.
   <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-075621 -->
+
+- **`Platform.on_shutdown` runs the moment the application starts to stop - aiohttp's `on_shutdown`, while the host
+  still holds its connections and before it waits for the requests in flight - and an extension that holds a stream
+  or a socket ends it there (2026-11-20, PR #76; the Node twin `Platform.onShutdown`, mercury-nodejs #141).** Found by
+  the React UI's live drive: after SIGTERM the host stopped listening within two seconds but waited for a device's
+  agent-question stream, which never ends on its own, and the process was still there 75 seconds later - in a
+  container, the manager's grace period and a SIGKILL on every rollout. The agent-question app ends every device's
+  stream in the hook (`close_streams`: the wake-ups close, a stream opened while stopping ends at once) and the devices
+  reconnect to the next instance from their last sequence; the cleanup (`on_cleanup`) still closes the stores after
+  the last request. **How to apply:** a stream or a socket ends in `on_shutdown`, a store closes in `on_cleanup`;
+  never a shorter `shutdown_timeout` as the remedy - only the extension knows a response is a stream.
+  <!-- id: platform-on-shutdown-hook | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-094019 -->
 
 ## Conventions
 
