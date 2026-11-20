@@ -152,6 +152,26 @@
    first consumer is the agent-question app's React front-end, built in the Node.js pack and deployed into both
    packs' `resources/public`; the 2026-08-24 note that the wrappers serve no static files is withdrawn.
 
+8. **The question record: the questions, answers and advices of ask-a-person join the transcript audit log, decoupled
+   from the channels (RFC-0014 round 4, Eric's sprint of 2026-11-20; build plan step 9).** The main flow records and the
+   channels deliver: every wait and every advice `person.ask` sends, whatever channel delivers it, and every answer
+   `POST /ask/reply` brings back - the stamped decisions, who decided, when, the engine's outcome - is written to the
+   `question` table of the audit database by `question.audit`, a private composable function of the ask-person process
+   behind local events (the transcript audit's pattern), off the request path: a recorder that fails is logged by type and
+   never fails a hold or a reply. The row is written before the channels are told, so a device finds the row it is told
+   of. The writes are order-independent, so `ask.audit.instances` may exceed 1: a wait upserts on `(graph_id,
+   correlation_id, turn)` unless an older message lands late, an advice appends, and an answer applies while the row is
+   open or when the engine accepted it (the first accepted decision stands); a sweeper (`ask.audit.sweep`, 30 s) expires
+   open waits past their expiry. The store contract is published: PostgreSQL out of the box (`ask.audit: postgres`,
+   `extensions/ask-person/schema/postgres.sql` with `question_seq` as the change sequence, `purge.sql` the installation's
+   retention, the `dev/` scripts on the helper's container), a memory implementation with the same interface as the
+   pattern for the tests (`ask.audit: memory`, the default: a restart forgets and no other process reads it), another
+   database by the contract. An advice has no state (`seen` is the device's, kept by the UI); a question joins its
+   transcript by correlation id and graph id; an AI node's and a deterministic node's record are one shape. The shared
+   vectors are version 2 with `record_cases`, `answer_cases` and `transition_cases` (the inbox's transitions, moved
+   here, plus a late older message and an answer with no recorded wait). The agent-question app becomes a reader of
+   this record in the next step; until then it keeps its own inbox.
+
 ### Fixed
 
 1. **The agent-question app keeps the first accepted decision when two devices decide one card at the same moment**
@@ -171,7 +191,17 @@
 
 ### Changed
 
-1. **The agent-question page separates what waits from the history (Eric, 2026-11-19).** A sticky header carries the
+1. **The reply endpoint's identity modes are `none` and `oauth2`; `proxy` is removed (RFC-0014 round 4, R12: the field's
+   installations use 3-legged SSO and OAuth 2.0 access tokens).** The reply page signs a person in itself under `oauth2`:
+   `GET /ask/{ticket}` is now a shell whose script reads `GET /ask/config` (the auth mode and, under `oauth2`, the issuer,
+   the public client id `ask.reply.auth.oauth2.client-id`, the scopes `ask.reply.auth.oauth2.scopes` and the audience -
+   no secret, since a public client has none), runs Authorization Code with PKCE against the issuer when asked to, keeps
+   the token for the tab, and reads the wait from `GET /ask/{ticket}/wait` - the re-advice of the engine, never a resume,
+   now a JSON endpoint under the same identity as the reply - before it renders the form and posts the decision with the
+   bearer. A ticket that cannot be used is still told so on the page itself, before any sign-in. `ask.reply.auth.header`
+   is gone with the mode; a channel app's bearer with `decided_by` works in every mode as before.
+
+2. **The agent-question page separates what waits from the history (Eric, 2026-11-19).** A sticky header carries the
    person's name and the count of open cards (also in the tab's title); *Waiting for you* lists the cases with an open
    card - a wait to decide or an advice to read - newest activity first; *History* is a scrollable panel with the closed
    cases, newest first, that keeps its scroll position while new cards arrive, so the whole inbox stays in reach without

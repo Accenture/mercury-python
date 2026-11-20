@@ -18,7 +18,7 @@ mandatory.health.dependencies: 'ask.health'
 
 # Opt-in lists for the /env endpoint - nothing is ever dumped wholesale.
 show.env.variables: 'LOG_LEVEL'
-show.application.properties: 'application.name, rest.server.port, ask.enabled, ask.channels, ask.reply.url, ask.reply.auth'
+show.application.properties: 'application.name, rest.server.port, ask.enabled, ask.channels, ask.reply.url, ask.reply.auth, ask.audit'
 
 # --- the main flow ------------------------------------------------------------------------------
 #
@@ -43,16 +43,43 @@ ask.ticket.previous-key: '${ASK_TICKET_PREVIOUS_KEY:}'
 
 # The resume link: <ask.reply.url>/ask/<ticket>, the public base a person's device reaches.
 ask.reply.url: '${ASK_REPLY_URL:http://127.0.0.1:8091}'
-# Who may answer: none (development - no sign-in), proxy (the installation's SSO - a trusted header
-# set by the gateway names the person), oauth2 (an OAuth 2.0 access token, validated against the
-# issuer's published keys; pip install 'mercury-composable[ask]').
+# Who may answer: none (development - no sign-in), oauth2 (an OAuth 2.0 access token validated against the
+# issuer's published keys; pip install 'mercury-composable[ask]'). The reply page signs a person in by
+# Authorization Code with PKCE - a public client in the browser - so the issuer and the client id are
+# what the page needs; a channel app's device signs in through its own UI and presents the token.
 ask.reply.auth: none
-ask.reply.auth.header: x-forwarded-user
 ask.reply.auth.oauth2.issuer: '${ASK_OIDC_ISSUER:}'
 ask.reply.auth.oauth2.audience: '${ASK_OIDC_AUDIENCE:}'
 ask.reply.auth.oauth2.jwks-url: '${ASK_OIDC_JWKS_URL:}'
+ask.reply.auth.oauth2.client-id: '${ASK_OIDC_CLIENT_ID:}'
+ask.reply.auth.oauth2.scopes: 'openid profile email'
 # the bearer a channel app presents when it invokes the link on a person's behalf (decided_by)
 ask.reply.auth.token: '${ASK_REPLY_TOKEN:}'
+
+# --- the question record --------------------------------------------------------------------------
+#
+# The main flow records and the channels deliver: every wait and advice person.ask sends, whatever channel
+# delivers it, and every answer the reply endpoint brings back - who decided, when, the engine's outcome -
+# is written to the question record, part of the transcript audit log (RFC-0014 round 4), by question.audit,
+# a private function of this process behind local events. memory (tests; a restart forgets, nothing else
+# reads it) | postgres (a deployment: the schema is schema/postgres.sql, applied once; pip install
+# 'mercury-composable[postgres]'). The connection keys follow the transcript audit store; the credential is
+# a reference, resolved from the environment and never logged.
+ask.audit: memory
+ask.audit.postgres.host: '${POSTGRES_HOST:127.0.0.1}'
+ask.audit.postgres.port: '${POSTGRES_PORT:5432}'
+ask.audit.postgres.database: '${POSTGRES_DB:mercury}'
+ask.audit.postgres.username: '${POSTGRES_USER:mercury}'
+ask.audit.postgres.password: '${POSTGRES_PASSWORD:}'
+ask.audit.postgres.ssl: true
+# the connect timeout and the server-side bound on a statement
+ask.audit.postgres.timeout.ms: 5000
+# how often open waits past their expiry are marked expired
+ask.audit.sweep: 30s
+# the recorder's workers: its writes are order-independent, so more than one is safe
+ask.audit.instances: 1
+# how long a write may take before the hold or the reply goes on without it (logged by type)
+ask.audit.timeout: 5s
 
 # The allowlist: the graphs a reply may resume, each with the engine entry the resume is sent to.
 # The reply endpoint never posts to an address a message told it.
