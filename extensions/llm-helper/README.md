@@ -209,7 +209,7 @@ output_tokens, cache_creation_input_tokens, cache_read_input_tokens}` and `reque
 ### The transcript store
 
 `llm.transcript.store` names it, and a loop turn without one is a `503 transcript store not configured`. A request
-without `tools` never touches it.
+without `tools` never touches it, unless single calls are audited (see The audit of a single call).
 
 | `llm.transcript.store` | For |
 |---|---|
@@ -263,6 +263,31 @@ stopped and the writes a dying process lost. The mark is a third hash field, `au
 the compare-and-set never touches it. Without an audit store nothing of this runs and `retention` applies at the
 close as before.
 
+**The audit of a single call.** A call without `tools` - the bounded AI node of a graph, on `llm.chat` or
+`llm.stream` - keeps no working record, so by default the audit holds an agent loop's turns only. With
+`llm.transcript.audit.single: true` it is recorded as a conversation of **one turn**, carried the way a loop's turns
+are (RFC-0015 in mercury-composable): once the model has answered, the helper saves a closed record under a new
+reference - the messages as sent, the assistant's content blocks as returned, the system prompt, no tools, the turn's
+facts - with the audit's grace as its time to live, and sends the one event a closed record needs, the check.
+`transcript.audit` is the function above, unchanged: the check writes the conversation row and the turn row and
+releases the record, which deletes it, and a check that fails leaves the record for the sweep. The reply never waits
+for the save; a working store that fails is logged by type, and that call is not audited.
+
+- **Telling the two apart.** A single call's row has `turns` 1 and `tools` null, which a loop's row never has:
+  `WHERE tools IS NULL` selects the single calls, `IS NOT NULL` the loops. The reference is not returned to the
+  caller; the trace id and the correlation id find the row.
+- **What is recorded is what the model did.** `status` is the model's outcome - `done`, `refusal`, or `cap` for a
+  reply cut off at `max_tokens` or at the context window; any other stop reason is `done`, with the provider's word in
+  `stop_reason` - and `model` is the model that answered, which a server-side fallback may have changed. A call the
+  model answered is recorded whatever the caller then received: a refusal, a cut-off reply and a reply the helper
+  judged unusable (its 422) are in the store with their cost. A call that failed before the model answered leaves no
+  row, and neither does a stream the provider broke.
+- **It needs the working store.** `llm.transcript.store` holds the record until its check (`memory` suits a single
+  call on any number of replicas, since the save and the check run in the process that took the call); the switch
+  without a store stops the application at start, by name.
+- **It is off by default,** because switching it on multiplies what the audit store holds: every bounded call's
+  prompt and reply, kept for `llm.transcript.audit.retention`.
+
 **Retention and purge are the installation's.** `expires_at` is written as the first turn's start plus
 `llm.transcript.audit.retention` (default `365d`); the helper runs no purge. `schema/purge.sql` holds the two
 statements a purge is, `dev/audit-purge.sh` runs them against the development container by hand (`--dry-run` counts,
@@ -310,6 +335,7 @@ installation's, applied on read.
 | `llm.transcript.audit.retention` | `365d` | Written as a conversation's `expires_at`; the purge is the installation's. |
 | `llm.transcript.audit.grace` | `1d` | How long a closed working record waits for its integrity check before it expires unreleased. |
 | `llm.transcript.audit.sweep.ms` | `60000` | The sweep that repairs lost events and stopped runs; `0` disables it. |
+| `llm.transcript.audit.single` | `false` | `true`: record a call without `tools` as a conversation of one turn (see The audit of a single call). Needs `llm.transcript.store`. |
 | `llm.transcript.audit.postgres.host`, `.port`, `.database`, `.username`, `.password`, `.ssl`, `.timeout.ms` | `127.0.0.1`, `5432`, `mercury`, none, none, `true`, `5000` | The PostgreSQL connection, the engines' convention under this store's prefix. The shipped `application.yml` sets the user and the password from the environment (`${POSTGRES_USER:mercury}`, `${POSTGRES_PASSWORD}`); `ssl` `true` is `sslmode=require`, `false` `sslmode=disable`; `timeout.ms` bounds a connection attempt, a wait for the pool and, on the server, a statement (`statement_timeout`). |
 
 The credential is never configured here. `ANTHROPIC_API_KEY` (or whatever the SDK resolves: an
@@ -399,7 +425,11 @@ compare-and-set and connection settings). No token is spent and no credential is
 behind a turn and the grace, the function driven through its mailbox (a write that fails, the check that repairs it
 before the release, an open record only filled), the sweep, the audited mark on Redis, and the PostgreSQL store on a
 recording fake of the pool that pins every statement and its parameters; the loop vector file gains no case, because
-the audit is a side effect of a turn, not part of the loop contract.
+the audit is a side effect of a turn, not part of the loop contract. The audit of a single call has a shared file of
+its own, `tests/vectors/llm-audit-vectors.json` (25 cases: the two rows a call without `tools` leaves on either route,
+and when it leaves none), each run through the save, the check event and the function behind its mailbox; the tests
+beside it pin that the reply does not wait for the save, that a failed write is repaired by the sweep, and that a
+loop turn is untouched by the switch.
 
 ```bash
 pip install -e '.[dev]'

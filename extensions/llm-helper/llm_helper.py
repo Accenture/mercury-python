@@ -15,8 +15,9 @@ bedrock), llm.aws.api (mantle or runtime), llm.aws.region, llm.model, llm.max.to
 llm.timeout.ms, llm.max.retries, llm.fallbacks, llm.effort, and for the agent loop's turns
 llm.transcript.store (memory or redis), llm.transcript.ttl, llm.transcript.retention and the
 llm.transcript.redis.* connection keys; the optional transcript audit store (RFC-0012) adds
-llm.transcript.audit (postgres), llm.transcript.audit.retention, .grace, .sweep.ms and the
-llm.transcript.audit.postgres.* connection keys. The contract, the keys and the backends are
+llm.transcript.audit (postgres), llm.transcript.audit.retention, .grace, .sweep.ms, .single (a
+call without tools recorded too, RFC-0015) and the llm.transcript.audit.postgres.* connection
+keys. The contract, the keys and the backends are
 documented in README.md next to this file. The Node.js twin (mercury-nodejs
 extensions/llm-helper) speaks the same contract, and both are pinned by shared vector files.
 
@@ -156,6 +157,13 @@ AUDIT_SWEEP_LOCK = TRANSCRIPT_PREFIX + "audit:sweep"
 GRAPH_ID_HEADER = "x-graph-id"
 NODE_HEADER = "x-node"
 MISSING_AUDIT = "transcript audit store not configured - set llm.transcript.audit (postgres)"
+# a call without tools in the audit store (RFC-0015): a conversation of one turn, recorded only
+# where the installation switched it on - on by itself it would multiply what the store holds
+AUDIT_SINGLE = "llm.transcript.audit.single"
+MISSING_SINGLE_STORE = (
+    "llm.transcript.audit.single needs the working store - set llm.transcript.store "
+    "(redis, or memory for a single process)"
+)
 MISSING_POSTGRES_SDK = (
     "The postgres transcript audit store needs psycopg - pip install 'mercury-composable[postgres]'"
 )
@@ -1694,6 +1702,96 @@ async def _notify_audit(conversation: str, turn: int, closed: bool) -> None:
         await _audit_send({"conversation": conversation, "check": True})
 
 
+# --- a single call in the audit store (RFC-0015) ------------------------------------------------
+#
+# A call without tools keeps no working record, so the audit had nothing to read. With
+# llm.transcript.audit.single on, the call becomes a conversation of ONE turn carried the way a
+# loop's turns are: a closed version 2 record saved under a new reference with the audit's grace,
+# and the one event a closed record needs, the check. transcript.audit is unchanged - the check
+# writes the two rows from the record and releases it, and the sweep re-sends a check that failed.
+# No content crosses the bus, and the reply never waits for the save.
+
+
+def audit_single_configured() -> bool:
+    return audit_configured() and str(_prop(AUDIT_SINGLE, "false")).lower() == "true"
+
+
+def _single_status(stop_reason: str) -> str:
+    """A single call's status by the loop's table: a refusal, a reply cut off at a limit, else
+    done - the model's outcome, whatever the caller then received; the provider's own word stays
+    in stop_reason."""
+    if stop_reason == "refusal":
+        return "refusal"
+    return "cap" if stop_reason in CAPS else "done"
+
+
+def _single_record(
+    headers: dict[str, str], request: LlmRequest, done: Completion, bounds: tuple[str, str]
+) -> Transcript:
+    """The closed record of a single call: the messages as sent and the assistant's content
+    blocks as returned, the model that answered (a server-side fallback may have), no tools -
+    which a loop's record never lacks, so the audit row tells the two apart - and the one turn's
+    facts. Retention zero: the check deletes the record once the audit holds the turn."""
+    messages: list[dict[str, Any]] = [dict(turn) for turn in request.messages]
+    facts = _turn_facts(
+        1, _single_status(done.stop_reason), done, bounds, headers, [0, len(messages)]
+    )
+    return Transcript(
+        done.model,
+        [*messages, {"role": "assistant", "content": done.content}],
+        1,
+        [],
+        closed=True,
+        correlation_id=_correlation_id(headers),
+        graph_id=headers.get(GRAPH_ID_HEADER) or None,
+        node=headers.get(NODE_HEADER) or None,
+        system=request.system,
+        turns=[facts],
+    )
+
+
+# the saves in flight: a task is held here until it ends, so it cannot be collected mid-save
+_single_saves: set[asyncio.Task[None]] = set()
+
+
+async def _save_single(record: Transcript) -> None:
+    """Save the record under a new reference and send its check. Nothing here may fail the call:
+    a store that is missing or unreachable is logged by type, and that call is not audited."""
+    conversation = _new_conversation_id()
+    try:
+        saved = await get_store().save(conversation, 0, record, _audit_grace_s())
+    except Exception as exc:  # noqa: BLE001 - off the call's path: logged, never raised
+        log.warning("%s single call not saved - %s", AUDIT_ROUTE, _audit_failure(exc))
+        return
+    if not saved:  # a new reference never meets a record; named for the day one does
+        log.warning("%s single call not saved - conversation %s exists", AUDIT_ROUTE, conversation)
+        return
+    await _audit_send({"conversation": conversation, "check": True})
+
+
+def _audit_single(
+    headers: dict[str, str], request: LlmRequest, done: Completion, bounds: tuple[str, str]
+) -> None:
+    """Record a call the model answered, off the call's path: the record is built here, where the
+    call's trace is, and saved by a task the reply does not wait for."""
+    try:
+        record = _single_record(headers, request, done, bounds)
+        task = asyncio.get_running_loop().create_task(
+            _save_single(record), name="transcript-audit-single"
+        )
+    except Exception as exc:  # noqa: BLE001 - the audit is a side effect; the call answers
+        log.warning("%s single call not recorded - %s", AUDIT_ROUTE, type(exc).__name__)
+        return
+    _single_saves.add(task)
+    task.add_done_callback(_single_saves.discard)
+
+
+async def audit_single_idle() -> None:
+    """Wait for the saves in flight - the shutdown's drain, and the tests' seam."""
+    while _single_saves:
+        await asyncio.gather(*list(_single_saves), return_exceptions=True)
+
+
 def _plus_seconds(stamp: str, seconds: int) -> str:
     """An ISO-8601 UTC stamp moved by seconds (the conversation row's expires_at)."""
     moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
@@ -1871,6 +1969,10 @@ async def audit_boot() -> None:
     except AppException as exc:
         log.error("transcript audit store cannot start - %s", exc.message)
         raise SystemExit(1) from exc
+    if audit_single_configured() and not _prop("llm.transcript.store"):
+        # a single call's record waits in the working store for its check: a deployment error
+        log.error("transcript audit store cannot start - %s", MISSING_SINGLE_STORE)
+        raise SystemExit(1)
     if not default_registry.exists(AUDIT_ROUTE):
         default_registry.register(AUDIT_ROUTE, transcript_audit, instances=1, private=True)
         log.info("Loaded PRIVATE %s, instances=1 - audit store %s", AUDIT_ROUTE, audit.name)
@@ -1897,6 +1999,7 @@ async def audit_shutdown() -> None:
     if task is not None:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+    await audit_single_idle()  # a single call's save in flight reaches the store before it closes
     audit = _audit
     if audit is not None:
         await audit.close()
@@ -1933,6 +2036,7 @@ async def llm_chat(headers: dict[str, str], body: Body) -> dict[str, Any]:
         return await _loop_turn(headers, body)
     request = prepare(body, streaming=False)
     started = time.perf_counter()
+    started_at = iso_utc()
     try:
         done = await asyncio.wait_for(
             _complete(request, get_backend()), timeout=request.timeout_ms / 1000
@@ -1943,6 +2047,10 @@ async def llm_chat(headers: dict[str, str], body: Body) -> dict[str, Any]:
             raise
         log.warning("llm.chat failed - status=%d", failure.status)
         raise failure from exc
+    if audit_single_configured():
+        # before the reply is judged: a refusal, a cut-off reply and a reply that is a 422 below
+        # were answered by the model and cost tokens, so they are recorded too
+        _audit_single(headers, request, done, (started_at, iso_utc()))
     data = _judge(request, done, has_content=bool(done.text))
     _annotate(done)
     _summary("llm.chat", done, started)
@@ -2002,8 +2110,12 @@ async def llm_stream(headers: dict[str, str], event: EventEnvelope) -> None:
             elapsed = round((time.perf_counter() - started) * 1000)
             log.info("llm.stream batch=%d chars=%d t_ms=%d", frames, len(text), elapsed)
 
+    started_at = iso_utc()
     try:
         done = await _complete(request, backend, on_text=forward)
+        if audit_single_configured():
+            # a stream the model completed is a single call like any other (RFC-0015)
+            _audit_single(headers, request, done, (started_at, iso_utc()))
         _judge(request, done, has_content=frames > 0)
     except Exception as exc:  # anything unmapped is re-raised below
         failure = _failure(exc, request.timeout_ms)

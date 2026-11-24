@@ -77,6 +77,10 @@ llm.transcript.store: 'memory'
 # llm.transcript.audit.grace: '1d'
 # the sweep that repairs lost events and stopped runs; 0 disables it
 # llm.transcript.audit.sweep.ms: 60000
+# also record a call without tools (the bounded AI node of a graph, llm.chat or llm.stream) as a
+# conversation of one turn. Off by default: it multiplies what the audit store holds. It needs the
+# working store above, which keeps the call's record until its check
+# llm.transcript.audit.single: true
 # the connection: the engines' convention under this store's prefix. The user and the password come
 # from the environment, never from this file (the two keys are active, inert without the audit, so
 # the development setup needs no credential on a command line); ssl true is sslmode=require, false
