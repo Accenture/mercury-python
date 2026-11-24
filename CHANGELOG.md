@@ -216,6 +216,32 @@
     `llm.transcript.store` must be set (the shipped `application.yml` sets `memory`), or the application stops at
     start by name.
 
+12. **Attachments on a single `llm.chat` call: images and PDF pages named by reference and read by the helper
+    (RFC-0016 in mercury-composable, build plan step 1; issue #78).** A bounded AI node that has to read a page - a
+    scanned form, a table printed as an image, a chart, chosen pages of a long PDF - could not give the model what it
+    had to read: `llm.chat` took text only. A request may now carry `attachments`, a non-empty list whose entries are a
+    path inside `llm.attachments.root` or `{path, pages}`. The request names a file and never carries one: the helper
+    reads the file in its folder and sends its bytes to the model as an `image` block (PNG, JPEG, GIF, WebP) or a
+    `document` block (PDF) before the text of the last turn, the kind decided by the file's first bytes and never by
+    its name. `pages` (`13`, `1-3,7`) sends a new PDF with only those pages, in the order named (the `documents`
+    extra's pypdf). The folder is one, resolved once at start, with the agent tools' workspace rules: a relative path,
+    the resolved path inside the folder - so a path that climbs out and a link that leads out are refused - no hidden
+    entry, a regular file. The helper refuses before any model call what the provider would refuse, by name: more
+    files than `llm.attachments.max.count` (20), more bytes of files than `llm.attachments.max.bytes` (20 MB, from the
+    files' sizes before they are read), an image over the backend's limit base64-encoded (10 MB on the Claude API, 5 MB
+    on Amazon Bedrock), an encrypted or unreadable PDF, a page the document does not have. No folder configured is a
+    503 that names the key; a folder that is not one stops the application at start; `pages` without the extra is a 503
+    that names it. The files are read off the event loop and inside the call's deadline (`params.timeout_ms`); a log
+    line and the trace carry the count and the bytes (`llm_attachments`, `llm_attachment_bytes`), never a path or a
+    file's content. With the audit of a single call switched on, the turn's `request` keeps each file as a reference
+    with the size and the SHA-256 of the source file as it was read, never its bytes. Not on `llm.stream` and not on a
+    loop turn (400). Pinned by the new shared file `tests/vectors/llm-attachments-vectors.json` (48 cases) over the
+    fixture files of `tests/fixtures/attachments`, and six tests beside it; thirty-one mutations of the code, the
+    vector file and a fixture were each caught by a test. The Node twin follows in lockstep. **Read:** the folder is
+    readable through the model by every caller that can reach the helper, and its files are sent to the provider -
+    choose it as deployment configuration and give it only what a graph may show a model. **Upgrade note:** none
+    without `attachments`; a call without the field reads no folder and sends text as before.
+
 ### Fixed
 
 1. **The agent-question app keeps the first accepted decision when two devices decide one card at the same moment**

@@ -48,6 +48,17 @@ llm.fallbacks: 'default'
 # its text), so the hop that holds batches back can be told apart from the one that forwards them
 # llm.log.batches: true
 
+# --- attachments on a single llm.chat call (RFC-0016): images and PDF pages by reference ----
+# the one folder whose files a request may name in `attachments`; unset, every attachment is a
+# 503. Files are put there before a graph runs (an upload, a mounted volume, a script that
+# downloads from an object store). Every caller of this app can have a file of the folder sent
+# to the provider and read back in the reply: give it only what a graph may show a model
+# llm.attachments.root: '/srv/attachments'
+# files per call (20 is the most before the provider tightens each image's dimension limit)
+# llm.attachments.max.count: 20
+# bytes of files per call, counted from the files' sizes before they are read (20 MB)
+# llm.attachments.max.bytes: 20971520
+
 # --- the agent loop's turns (llm.chat with tools): the transcript store -------------------
 # memory keeps the transcripts in this process - development and a single replica. With more
 # than one replica a turn may land on any of them: set redis (the [redis] extra)

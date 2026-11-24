@@ -96,6 +96,7 @@ token batches as they are produced.
 | `prompt` or `messages` | A single user turn, or conversation turns `[{role: user\|assistant, content}]`. `messages` wins when both are given. Content is plain text. |
 | `system` | Optional system prompt (text). |
 | `schema` | `llm.chat` only. A JSON schema; the reply is then structured output, returned parsed as `data`. `additionalProperties` defaults to `false`. A schema on `llm.stream` is a 400. |
+| `attachments` | `llm.chat` only, and never a loop turn. Files for the model to look at, named by reference: a non-empty list whose entries are a path inside `llm.attachments.root`, or `{path, pages}` for pages of a PDF, such as `13` or `1-3,7`. See Attachments. |
 | `params.model` | The model. Default `claude-opus-5-5` (`llm.model`). On Bedrock's default surface a bare id is sent with the `anthropic.` prefix and an id already spelled for Bedrock as written; on the classic runtime surface every id is sent as written, an inference profile id as the account lists it. |
 | `params.max_tokens` | Output cap. Default 16000 (`llm.max.tokens`). |
 | `params.timeout_ms` | `llm.chat`: a deadline for the whole call, SDK retries included. `llm.stream`: the idle allowance between events. Default 60000 (`llm.timeout.ms`). |
@@ -154,6 +155,101 @@ the model refused. A stream that ends before its first token fails with a 422 in
 200. Opus 5.5 thinks before it answers, and thinking tokens count against `max_tokens`, so a budget that
 is too small for the question can end with no text at all (seen live with a 120-token budget): that is
 the 422 above, not an empty stream. Raise `params.max_tokens` or lower `params.effort`.
+
+## Attachments
+
+A bounded AI node sometimes has to read a page, not a text: a scanned form, a table printed as an image, a chart, a
+screenshot, chosen pages of a long PDF. A single `llm.chat` call may name such files in `attachments` (RFC-0016 in
+mercury-composable). **The request names a file and never carries one,** so the event stays small and a file's bytes
+reach no log, trace or stored record.
+
+```text
+graph node ── a path ──> llm-helper ── reads the file in its folder ── the file's bytes ──> the model
+```
+
+**Who reads the file.** The helper does. The model is a remote service and reads nothing on this host: the node
+passes a path to the helper, the helper reads the file and sends its bytes to the model inside the request, as an
+image or a document block before the text of the last turn. The path never reaches the model, and the file's content
+leaves for the provider, as a prompt's text does.
+
+**The shared folder.** `llm.attachments.root` names the one folder a request may read in; unset, every attachment is
+refused. Whatever puts the files there does so before the graph runs: an upload, a copy, a mounted volume, or a
+script that downloads them from an object store (the helper downloading from one itself is a later iteration). A
+node names a file by its path inside the folder, sub-folders included:
+
+```
+create node read-page
+with type Module
+with properties
+skill=graph.task
+task=llm.chat
+input[]=text(Return the blocks of the attached page.) -> prompt
+input[]=model.page_schema -> schema
+input[]=model.page_ref -> attachments[0].path
+input[]=model.page_number -> attachments[0].pages
+output[]=result.data -> model.page_reading
+```
+
+A mapping whose source is null supplies no parameter, so a node with no `model.page_ref` sends a text-only call that
+still answers: guard the node with a decision on the reference when the page is required.
+
+**What the helper does.**
+
+- **Stays inside the folder.** A path is relative; the folder is resolved once at start, and a file is read only when
+  its resolved path lies inside it, so a path that climbs out and a link that leads out are refused. Hidden entries
+  (a name that starts with a dot) are refused, and only a regular file is read. These are the rules of the agent
+  tools' workspace (`tools.file.root`).
+- **Decides the kind by the first bytes, never by the name.** PNG, JPEG, GIF or WebP becomes an `image` block; a PDF
+  a `document` block, from which the model reads both the text and the page image.
+- **Cuts a PDF to the pages asked for.** With `pages`, the helper writes a new PDF that holds only those pages, in the
+  order named, each named once, so a long document costs the pages asked for. This needs the `documents` extra
+  (`pip install 'mercury-composable[llm,documents]'`, pypdf). With the extra installed a whole document is also
+  checked; without it a whole document goes as it is and the provider judges it.
+- **Refuses before any model call** what the provider would refuse, with a status that names the rule, so a caller
+  learns its mistake without spending a token.
+- **Reads off the event loop and inside the call's deadline:** `params.timeout_ms` covers the files and the model.
+
+| Case | Status |
+|---|---|
+| `attachments` on `llm.stream`, or on a loop turn; a last turn that is not the user's | 400 |
+| Not a non-empty list; an entry that is neither a path nor `{path, pages}`; `pages` that are malformed, run backward or name a page twice | 400 |
+| More files than `llm.attachments.max.count`, or more bytes of files than `llm.attachments.max.bytes` (taken from each file's size before it is read) | 400 |
+| An absolute path, a path or a link that leads out of the folder, a hidden entry, a missing file, a folder | 400 |
+| A file that is not PNG, JPEG, GIF, WebP or PDF; `pages` on an image; a page the document does not have; an encrypted or unreadable PDF | 400 |
+| An image larger than the backend takes, base64-encoded: 10 MB on the Claude API, 5 MB on Amazon Bedrock | 400 |
+| No `llm.attachments.root` configured | 503 |
+| `pages` without the `documents` extra | 503, naming the extra |
+| A configured `llm.attachments.root` that is not a folder | the application stops at start (a request that meets it later is a 500) |
+
+**Limits that are the provider's.** The helper sends no more than 20 files by default because a request with more
+than 20 image and document blocks is held to a tighter limit on each image's dimensions. A request takes at most 600
+PDF pages, 100 on a model whose context window is under 1M tokens, and each page costs its text and its image in
+tokens: name `pages`. The helper sets no page limit of its own; a document over the provider's is the provider's 400,
+passed through. Both Bedrock surfaces take these blocks.
+
+**What it costs.** The file's content travels in every call that names it - nothing is kept at the provider between
+calls - and it counts as input tokens, by what the model sees and not by the file's size in bytes. An image costs one
+token per 28 by 28 pixel patch, capped by the model's resolution tier: at most 1,568 tokens on the standard tier and
+4,784 on the high-resolution tier of the newer models, so a full-page scan is a few thousand tokens at most whatever
+its megabytes. A PDF page costs its text, typically 1,500 to 3,000 tokens, plus its image, at most 1,568. `pages` is
+therefore the cost control: ten pages named cost ten pages, however long the document.
+
+**The folder is readable through the model.** Every caller that can reach this app can have a file of the folder
+sent to the provider and read back in the reply. Choose the folder as deployment configuration, give it only what a
+graph may show a model, and keep it out of reach of anything that is not trusted to write there.
+
+**In the audit store.** With the audit of a single call switched on, the turn's `request` keeps each attachment as a
+reference in place of its bytes - `{type: attachment, path, pages, media_type, bytes, sha256}`, the size and the
+SHA-256 of the source file as the helper read it - followed by the turn's text. It is the one block of the audit
+that is not the provider's format: the exchange is reconstructed from the record and the files, by hash. The hash
+tells whether a file is still the one the model saw; it cannot bring back a file that was changed or removed. Where
+an exchange must be reconstructable, keep the files unchanged for as long as the audit's retention
+(`llm.transcript.audit.retention`): write-once names in the folder, or versioned objects once an object store is the
+source. The prompt, the system prompt and the model's reply are in the audit in full, so what the model wrote about a
+file is kept even when the file is not.
+
+Not on `llm.stream`, where a reply carries no schema, and not on a loop turn: a transcript keeps every turn, so it
+would have to keep the files, or references whose files may change between turns.
 
 ## The loop contract
 
@@ -327,6 +423,9 @@ installation's, applied on read.
 | `llm.effort` | unset | The default effort. |
 | `llm.log.batches` | `false` | Log each streamed batch's number, size and arrival time (never its text). |
 | `llm.provider` | `anthropic` | Only `anthropic`; any other value is a 400. |
+| `llm.attachments.root` | unset | The one folder whose files a request may name in `attachments` (see Attachments). Unset, every attachment is a 503. |
+| `llm.attachments.max.count` | `20` | Files per call. |
+| `llm.attachments.max.bytes` | `20971520` | Bytes of files per call (20 MB), counted from the files' sizes before they are read. |
 | `llm.transcript.store` | unset | `memory` or `redis`; a loop turn needs one (see The transcript store). |
 | `llm.transcript.ttl` | `7d` | A loop turn's `ttl` when the request carries none. |
 | `llm.transcript.retention` | `0` | A loop turn's `retention` when the request carries none. |
@@ -362,7 +461,8 @@ section above gives each model's cadence.
 A call logs its model, `stop_reason`, token usage, `request_id` and elapsed time. A prompt, a
 system prompt or a completion never reaches a log. Usage also rides the call's trace record as
 annotations (`llm_model`, `llm_stop_reason`, `llm_input_tokens`, `llm_output_tokens`,
-`llm_request_id`), so telemetry shows what a call cost. With an audit store, the `transcript.audit` executions a turn
+`llm_request_id`), so telemetry shows what a call cost. A call with attachments also logs and annotates their count
+and bytes (`llm_attachments`, `llm_attachment_bytes`), never a path or a file's content. With an audit store, the `transcript.audit` executions a turn
 triggers show in the same trace as the function's own; their log lines carry the conversation reference, the turn
 numbers written and the failure's type, never the content.
 
@@ -404,11 +504,13 @@ for Opus 4.6 and earlier rejects it with a 400.
 
 ## What it does not do
 
-No tool ever runs here: the engines' agent loop dispatches each call to a route. No images or
-documents, no `system` turns inside `messages`, no sampling parameters, no prompt caching controls
-for a caller (a loop turn is cached by the helper), and no provider other than Claude. Those are
-deliberate: the helper is the bounded AI node of a graph and the model turn of an agent loop, not
-an agent runtime.
+No tool ever runs here: the engines' agent loop dispatches each call to a route. No file's bytes in
+a request (a single call names images and PDF pages by reference, see Attachments; other kinds of
+file, a loop turn and a stream take none), no `system` turns inside `messages`, no sampling
+parameters, no prompt caching controls for a caller (a loop turn is cached by the helper), and no
+provider other than Claude. Those are deliberate: the helper is the bounded AI node of a graph and
+the model turn of an agent loop, not an agent runtime. A bounded node may look at files it is given
+by reference; it still decides nothing about control flow.
 
 ## Tests
 
@@ -431,9 +533,17 @@ and when it leaves none), each run through the save, the check event and the fun
 beside it pin that the reply does not wait for the save, that a failed write is repaired by the sweep, and that a
 loop turn is untouched by the switch.
 
+`tests/test_llm_attachments.py` pins the attachments with a third shared file,
+`tests/vectors/llm-attachments-vectors.json` (48 cases: the shape of the field, where it does not belong, the folder
+a request stays inside, the files refused before any model call, the blocks the model gets, the reference the audit
+keeps), over the fixture files of `tests/fixtures/attachments`, which both packs hold byte for byte. A cut PDF is
+checked page by page and never byte for byte, since two PDF libraries do not write the same bytes. The tests beside it
+pin an image's limit by backend, the helper without the PDF library, the deadline over the read, the worker thread,
+the log and the start with a folder that is not one.
+
 ```bash
 pip install -e '.[dev]'
-pytest tests/test_llm_helper.py tests/test_transcript_audit.py
+pytest tests/test_llm_helper.py tests/test_transcript_audit.py tests/test_llm_attachments.py
 LLM_TRANSCRIPT_REDIS_URL=redis://127.0.0.1:6379/15 pytest tests/test_llm_helper.py -k live_redis   # on a real Redis
 LLM_TRANSCRIPT_AUDIT_TEST_URL='postgres://mercury:...@127.0.0.1:5432/mercury?sslmode=disable' \
   pytest tests/test_transcript_audit.py -k live_postgres                                          # on a real PostgreSQL

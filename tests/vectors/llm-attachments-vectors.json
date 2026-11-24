@@ -1,0 +1,1624 @@
+{
+  "contract": "llm-attachments",
+  "version": 1,
+  "description": "Attachments on a single llm.chat call (RFC-0016 in mercury-composable). mercury-python and mercury-nodejs ship this file and the fixture files of tests/fixtures/attachments byte-identical and run every case against their own fake of the Anthropic SDK. For each case the harness makes a new folder with two folders in it, root and outside, sets llm.attachments.root to root (unless the case says root: false, which leaves the key unset) and fills them from files and outside: a relative path maps to the name of a fixture file to copy there, or to {link: target} for a symbolic link with that target, relative to the link's own folder. config adds the keys in force; body is the request; provider is what the fake provider does, kinds as in llm-helper-vectors.json. An expected error (status and message fragments) means the request was refused before any provider call: the harness checks that none was made. Otherwise result is a subset of the reply map and messages is the exact messages parameter of the one provider call, with the last turn's blocks written short: {image: fixture, media_type} is an image block whose base64 source holds that fixture's bytes; {document: fixture} a document block of media type application/pdf whose base64 source holds the fixture's bytes; {document: fixture, pages: [n, ...]} such a block holding a PDF cut from the fixture, which the harness opens with its own PDF library and checks page by page - three-pages.pdf has three pages, page n being 100+n points wide, so the widths of the cut name its pages in order (two libraries do not write the same bytes, so a cut is never compared byte for byte); {text} is a text block. audit_request, where present, is the request column of the turn row the audit store holds for the call once the helper is idle (see llm-audit-vectors.json): references with the source file's size and SHA-256, never a file's bytes.",
+  "fixtures": {
+    "pixel.png": "a 1x1 PNG",
+    "pixel.jpg": "the same pixel as JPEG",
+    "pixel.gif": "as GIF",
+    "pixel.webp": "as WebP",
+    "three-pages.pdf": "three blank pages, 101, 102 and 103 points wide, under a title a cut does not carry",
+    "encrypted.pdf": "one page behind a user password",
+    "damaged.pdf": "a PDF header and no objects",
+    "notes.txt": "plain text"
+  },
+  "cases": [
+    {
+      "name": "shape/not-a-list",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "attachments": "page.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments must be a non-empty list of paths or {path, pages}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/an-empty-list",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "attachments": []
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments must be a non-empty list of paths or {path, pages}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/more-files-than-the-limit",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "a.png",
+          "b.png",
+          "c.png"
+        ]
+      },
+      "config": {
+        "llm.attachments.max.count": "2"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments: 3 files exceed llm.attachments.max.count (2)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/the-default-limit-is-twenty",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "p0.png",
+          "p1.png",
+          "p2.png",
+          "p3.png",
+          "p4.png",
+          "p5.png",
+          "p6.png",
+          "p7.png",
+          "p8.png",
+          "p9.png",
+          "p10.png",
+          "p11.png",
+          "p12.png",
+          "p13.png",
+          "p14.png",
+          "p15.png",
+          "p16.png",
+          "p17.png",
+          "p18.png",
+          "p19.png",
+          "p20.png"
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments: 21 files exceed llm.attachments.max.count (20)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/an-entry-that-is-neither-a-path-nor-a-map",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png",
+          7
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[1] must be a path or {path, pages}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/a-map-with-an-unknown-key",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "page.png",
+            "page": 1
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: unsupported keys: page - supported: path, pages"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/a-map-without-a-path",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "pages": "1"
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].path must be a path inside llm.attachments.root"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/a-blank-path",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "  "
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].path must be a path inside llm.attachments.root"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/pages-that-are-not-pages",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "first"
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages must name pages from 1, such as 13 or 1-3,7"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/pages-with-an-open-range",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "2-"
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages must name pages from 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/pages-running-backward",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "3-1"
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages must name pages from 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/page-zero",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": 0
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages must name pages from 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/pages-as-true",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": true
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages must name pages from 1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/a-page-named-twice",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "1-3,2"
+          }
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages names a page twice"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shape/the-shape-is-checked-after-the-schema",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "schema": "not a map",
+        "attachments": "page.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "schema must be a JSON schema map"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route/not-on-the-streaming-route",
+      "route": "llm.stream",
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments are not part of the streaming contract - use llm.chat"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route/not-on-a-loop-turn",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "x",
+        "attachments": [
+          "page.png"
+        ],
+        "tools": [
+          {
+            "name": "t",
+            "description": "d",
+            "input_schema": {
+              "type": "object"
+            }
+          }
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "config": {
+        "llm.transcript.store": "memory"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments are not part of the loop contract - a loop turn carries text"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route/the-last-turn-must-be-the-users",
+      "route": "llm.chat",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read it."
+          },
+          {
+            "role": "assistant",
+            "content": "Reading."
+          }
+        ],
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments go with the last turn, which must be the user's"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route/no-root-configured-is-a-503-that-names-the-key",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "root": false,
+      "expect": {
+        "error": {
+          "status": 503,
+          "message_contains": [
+            "attachments not configured - set llm.attachments.root"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/an-absolute-path",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "/etc/hosts"
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: an absolute path - name a file inside the root"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/a-home-path",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "~/page.png"
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: an absolute path - name a file inside the root"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/a-path-that-climbs-out",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "../outside/pixel.png"
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "outside": {
+        "pixel.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: outside llm.attachments.root"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/a-link-that-leads-out",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png",
+          "shortcut.png"
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png",
+        "shortcut.png": {
+          "link": "../outside/pixel.png"
+        }
+      },
+      "outside": {
+        "pixel.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[1]: outside llm.attachments.root"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/a-hidden-entry",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          ".scans/page.png"
+        ]
+      },
+      "files": {
+        ".scans/page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: a hidden entry, which the root does not expose"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/a-link-to-a-hidden-entry",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "files": {
+        ".scans/page.png": "pixel.png",
+        "page.png": {
+          "link": ".scans/page.png"
+        }
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: a hidden entry, which the root does not expose"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/a-file-that-is-not-there",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "missing.png"
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: not found"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/a-folder",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "scans"
+        ]
+      },
+      "files": {
+        "scans/page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: not a file"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root/the-root-itself",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "."
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: not a file"
+          ]
+        }
+      }
+    },
+    {
+      "name": "file/a-kind-the-model-does-not-take-whatever-its-name",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "files": {
+        "page.png": "notes.txt"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: not a PNG, JPEG, GIF, WebP or PDF file"
+          ]
+        }
+      }
+    },
+    {
+      "name": "file/pages-of-an-image",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "page.png",
+            "pages": "1"
+          }
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages needs a PDF - the file is image/png"
+          ]
+        }
+      }
+    },
+    {
+      "name": "file/a-page-the-document-does-not-have",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "2-4"
+          }
+        ]
+      },
+      "files": {
+        "form.pdf": "three-pages.pdf"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0].pages names page 4 of a document of 3"
+          ]
+        }
+      }
+    },
+    {
+      "name": "file/an-encrypted-pdf",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "locked.pdf"
+        ]
+      },
+      "files": {
+        "locked.pdf": "encrypted.pdf"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: an encrypted PDF - the provider takes none"
+          ]
+        }
+      }
+    },
+    {
+      "name": "file/a-damaged-pdf",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "1"
+          }
+        ]
+      },
+      "files": {
+        "form.pdf": "damaged.pdf"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments[0]: not a readable PDF"
+          ]
+        }
+      }
+    },
+    {
+      "name": "file/more-bytes-than-the-limit",
+      "route": "llm.chat",
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png",
+          "form.pdf"
+        ]
+      },
+      "files": {
+        "page.png": "pixel.png",
+        "form.pdf": "three-pages.pdf"
+      },
+      "config": {
+        "llm.attachments.max.bytes": "700"
+      },
+      "expect": {
+        "error": {
+          "status": 400,
+          "message_contains": [
+            "attachments: more than 700 bytes of files - llm.attachments.max.bytes (700)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "send/an-image-goes-before-the-text",
+      "route": "llm.chat",
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/the-kind-is-decided-by-the-first-bytes-not-the-name",
+      "route": "llm.chat",
+      "files": {
+        "page.txt": "pixel.png"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.txt"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/every-image-kind-with-its-media-type",
+      "route": "llm.chat",
+      "files": {
+        "a.png": "pixel.png",
+        "b.jpg": "pixel.jpg",
+        "c.gif": "pixel.gif",
+        "d.webp": "pixel.webp"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "a.png",
+          "b.jpg",
+          "c.gif",
+          "d.webp"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "image": "pixel.jpg",
+                "media_type": "image/jpeg"
+              },
+              {
+                "image": "pixel.gif",
+                "media_type": "image/gif"
+              },
+              {
+                "image": "pixel.webp",
+                "media_type": "image/webp"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/a-whole-pdf-is-a-document-block-with-the-files-bytes",
+      "route": "llm.chat",
+      "files": {
+        "forms/form.pdf": "three-pages.pdf"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "forms/form.pdf"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "document": "three-pages.pdf"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/one-page-of-a-pdf",
+      "route": "llm.chat",
+      "files": {
+        "form.pdf": "three-pages.pdf"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": 2
+          }
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "document": "three-pages.pdf",
+                "pages": [
+                  2
+                ]
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/pages-in-the-order-named",
+      "route": "llm.chat",
+      "files": {
+        "form.pdf": "three-pages.pdf"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "3,1"
+          }
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "document": "three-pages.pdf",
+                "pages": [
+                  3,
+                  1
+                ]
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/a-range-of-pages-with-spaces",
+      "route": "llm.chat",
+      "files": {
+        "form.pdf": "three-pages.pdf"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": " 2 - 3 , 1 "
+          }
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "document": "three-pages.pdf",
+                "pages": [
+                  2,
+                  3,
+                  1
+                ]
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/the-files-keep-the-order-of-the-list",
+      "route": "llm.chat",
+      "files": {
+        "page.png": "pixel.png",
+        "form.pdf": "three-pages.pdf"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "1"
+          },
+          "page.png"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "document": "three-pages.pdf",
+                "pages": [
+                  1
+                ]
+              },
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/a-link-that-stays-inside-the-root",
+      "route": "llm.chat",
+      "files": {
+        "scans/page.png": "pixel.png",
+        "latest.png": {
+          "link": "scans/page.png"
+        }
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "latest.png"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/only-the-last-turn-gets-the-blocks",
+      "route": "llm.chat",
+      "files": {
+        "form.pdf": "three-pages.pdf"
+      },
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Here is a form."
+          },
+          {
+            "role": "assistant",
+            "content": "What should I read?"
+          },
+          {
+            "role": "user",
+            "content": "The first page."
+          }
+        ],
+        "attachments": [
+          {
+            "path": "form.pdf",
+            "pages": "1"
+          }
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": "Here is a form."
+          },
+          {
+            "role": "assistant",
+            "content": "What should I read?"
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "document": "three-pages.pdf",
+                "pages": [
+                  1
+                ]
+              },
+              {
+                "text": "The first page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/a-file-exactly-at-the-limit-passes",
+      "route": "llm.chat",
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "config": {
+        "llm.attachments.max.bytes": "69"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/on-bedrock-the-same-blocks",
+      "route": "llm.chat",
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "config": {
+        "llm.backend": "bedrock"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "send/with-a-schema-the-reply-is-still-structured",
+      "route": "llm.chat",
+      "files": {
+        "page.png": "pixel.png"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png"
+        ],
+        "schema": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "{\"kind\":\"form\"}"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"kind\":\"form\"}"
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "data": {
+            "kind": "form"
+          }
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "audit/the-record-keeps-a-reference-to-each-file",
+      "route": "llm.chat",
+      "files": {
+        "page.png": "pixel.png",
+        "form.pdf": "three-pages.pdf"
+      },
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "Read the page.",
+        "attachments": [
+          "page.png",
+          {
+            "path": "form.pdf",
+            "pages": "3,1"
+          }
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "A page."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "A page."
+          }
+        ],
+        "usage": {
+          "input_tokens": 900,
+          "output_tokens": 4
+        },
+        "request_id": "req_attach_1"
+      },
+      "expect": {
+        "result": {
+          "text": "A page."
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "image": "pixel.png",
+                "media_type": "image/png"
+              },
+              {
+                "document": "three-pages.pdf",
+                "pages": [
+                  3,
+                  1
+                ]
+              },
+              {
+                "text": "Read the page."
+              }
+            ]
+          }
+        ],
+        "audit_request": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "attachment",
+                "path": "page.png",
+                "media_type": "image/png",
+                "bytes": 69,
+                "sha256": "b1ff9c8ea3a780bad09b346c423d2d0e46815926879b18e841d928376a946640"
+              },
+              {
+                "type": "attachment",
+                "path": "form.pdf",
+                "pages": "3,1",
+                "media_type": "application/pdf",
+                "bytes": 734,
+                "sha256": "c609d99e859256615fe1fe853eb4fe6c449de56a859bbb6b6b66e0ac8c086416"
+              },
+              {
+                "type": "text",
+                "text": "Read the page."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

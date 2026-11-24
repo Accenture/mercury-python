@@ -17,8 +17,9 @@ llm.transcript.store (memory or redis), llm.transcript.ttl, llm.transcript.reten
 llm.transcript.redis.* connection keys; the optional transcript audit store (RFC-0012) adds
 llm.transcript.audit (postgres), llm.transcript.audit.retention, .grace, .sweep.ms, .single (a
 call without tools recorded too, RFC-0015) and the llm.transcript.audit.postgres.* connection
-keys. The contract, the keys and the backends are
-documented in README.md next to this file. The Node.js twin (mercury-nodejs
+keys; llm.attachments.root, .max.count and .max.bytes let a single llm.chat call name images and
+PDF pages by reference (RFC-0016). The contract, the keys and the backends are documented in
+README.md next to this file. The Node.js twin (mercury-nodejs
 extensions/llm-helper) speaks the same contract, and both are pinned by shared vector files.
 
 Then map the routes from a Mercury engine application (event-over-http.yaml):
@@ -34,7 +35,10 @@ Then map the routes from a Mercury engine application (event-over-http.yaml):
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import importlib.util
+import io
 import json
 import re
 import time
@@ -42,6 +46,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Protocol
 
 try:
@@ -142,6 +147,30 @@ MISSING_REDIS_SDK = (
 )
 STREAM_LOOP = "tools and the loop fields are not part of the streaming contract - use llm.chat"
 
+# --- attachments on a single llm.chat call (RFC-0016) ------------------------------------------
+# a request names a file inside one configured root and never carries one: the helper reads it,
+# decides its kind by its first bytes and sends it as an image or a document block
+ATTACHMENTS_ROOT = "llm.attachments.root"
+ATTACHMENTS_MAX_COUNT = "llm.attachments.max.count"
+ATTACHMENTS_MAX_BYTES = "llm.attachments.max.bytes"
+# 20: the most image and document blocks a request carries before the provider tightens each
+# image's dimension limit
+DEFAULT_ATTACHMENTS_MAX_COUNT = 20
+DEFAULT_ATTACHMENTS_MAX_BYTES = 20 * 1024 * 1024
+ATTACHMENT_KEYS = ("path", "pages")
+PAGES = re.compile(r"\d+(-\d+)?(,\d+(-\d+)?)*")
+PDF_MEDIA_TYPE = "application/pdf"
+# an image's limit as the provider counts it, base64-encoded: by the route to the models
+IMAGE_MAX_ENCODED = 10 * 1024 * 1024
+BEDROCK_IMAGE_MAX_ENCODED = 5 * 1024 * 1024
+STREAM_ATTACHMENTS = "attachments are not part of the streaming contract - use llm.chat"
+LOOP_ATTACHMENTS = "attachments are not part of the loop contract - a loop turn carries text"
+ATTACHMENTS_SHAPE = "attachments must be a non-empty list of paths or {path, pages}"
+MISSING_ATTACHMENTS_ROOT = "attachments not configured - set llm.attachments.root"
+MISSING_PDF_SDK = (
+    "attachments: pages needs pypdf - pip install 'mercury-composable[documents]'"
+)
+
 # --- the transcript audit store's defaults and limits (RFC-0012) ----------------------------
 # a durable, queryable record of every model turn, written by the transcript.audit function behind
 # a local event, never on the turn's path; PostgreSQL is the reference store, its schema published
@@ -177,6 +206,16 @@ def _prop(key: str, default: str | None = None) -> str | None:
 
 
 @dataclass(frozen=True)
+class Attachment:
+    """A file a single call names (RFC-0016): its path inside the root and, for a PDF, the pages
+    to send - ranges as the request named them, in its order - with the request's own text."""
+
+    path: str
+    pages: tuple[tuple[int, int], ...] | None = None
+    pages_text: str | None = None
+
+
+@dataclass(frozen=True)
 class LlmRequest:
     """A validated request. The contract's one request surface, shared by both routes."""
 
@@ -184,13 +223,14 @@ class LlmRequest:
     max_tokens: int
     timeout_ms: int
     max_retries: int
-    messages: list[dict[str, str]]
+    messages: list[dict[str, Any]]  # text turns; a turn with attachments holds content blocks
     system: str | None
     effort: str | None
     stop_sequences: list[str] | None
     schema: dict[str, Any] | None
     fallbacks: bool
     tools: list[dict[str, Any]] | None = None  # a loop turn's tools, as the API takes them
+    attachments: tuple[Attachment, ...] = ()  # llm.chat only, never a loop turn
 
 
 def _whole_number(name: str, value: Any, minimum: int) -> int:
@@ -286,6 +326,76 @@ def _schema(body: dict[str, Any], streaming: bool) -> dict[str, Any] | None:
     return {"additionalProperties": False, **schema}
 
 
+def _pages(index: int, raw: Any) -> tuple[tuple[tuple[int, int], ...], str]:
+    """The pages of a PDF to send, as ranges in the order named, with the text as written. A
+    mapping may carry a page number as a number. Whether a page exists is the document's to say,
+    when it is read."""
+    text = "".join(raw.split()) if isinstance(raw, str) else None
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        text = str(raw)
+    malformed = AppException(
+        400, f"attachments[{index}].pages must name pages from 1, such as 13 or 1-3,7"
+    )
+    if text is None or not PAGES.fullmatch(text):
+        raise malformed
+    ranges: list[tuple[int, int]] = []
+    for part in text.split(","):
+        first, _, last = part.partition("-")
+        low, high = int(first), int(last or first)
+        if low < 1 or high < low:
+            raise malformed
+        if any(low <= held_high and held_low <= high for held_low, held_high in ranges):
+            raise AppException(400, f"attachments[{index}].pages names a page twice")
+        ranges.append((low, high))
+    return tuple(ranges), text
+
+
+def _attachment(index: int, entry: Any) -> Attachment:
+    """One attachment: a path, or a map with a path and the pages of a PDF."""
+    pages: Any = None
+    if isinstance(entry, str):
+        path: Any = entry
+    elif isinstance(entry, dict):
+        unknown = sorted(str(key) for key in entry if key not in ATTACHMENT_KEYS)
+        if unknown:
+            raise AppException(
+                400,
+                f"attachments[{index}]: unsupported keys: {', '.join(unknown)} - "
+                f"supported: {', '.join(ATTACHMENT_KEYS)}",
+            )
+        path, pages = entry.get("path"), entry.get("pages")
+    else:
+        raise AppException(400, f"attachments[{index}] must be a path or {{path, pages}}")
+    if not isinstance(path, str) or not path.strip():
+        raise AppException(
+            400, f"attachments[{index}].path must be a path inside {ATTACHMENTS_ROOT}"
+        )
+    if pages is None:
+        return Attachment(path)
+    ranges, text = _pages(index, pages)
+    return Attachment(path, ranges, text)
+
+
+def _attachments(body: dict[str, Any]) -> tuple[Attachment, ...]:
+    """The files a single call names (RFC-0016): the shape only. The files themselves are read
+    by attach(), after every other check of the request has passed."""
+    raw = body.get("attachments")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not raw:
+        raise AppException(400, ATTACHMENTS_SHAPE)
+    limit = _whole_number(
+        ATTACHMENTS_MAX_COUNT,
+        _prop(ATTACHMENTS_MAX_COUNT, str(DEFAULT_ATTACHMENTS_MAX_COUNT)),
+        1,
+    )
+    if len(raw) > limit:
+        raise AppException(
+            400, f"attachments: {len(raw)} files exceed {ATTACHMENTS_MAX_COUNT} ({limit})"
+        )
+    return tuple(_attachment(index, entry) for index, entry in enumerate(raw))
+
+
 def _fallbacks_enabled() -> bool:
     mode = str(_prop("llm.fallbacks", "default")).lower()
     if mode not in ("default", "off"):
@@ -297,12 +407,15 @@ def prepare(body: Body, *, streaming: bool, continuation: bool = False) -> LlmRe
     """Validate a request body into an LlmRequest, or raise AppException(400).
 
     The checks run in a fixed order, the same in the Node.js twin: the loop fields on the
-    streaming route, body, params and provider, the numbers, the turns, system, effort, stop
-    sequences, schema, the fallbacks switch. A loop turn after the first (``continuation``)
-    carries no turns of its own: the transcript holds them.
+    streaming route and then attachments on it, body, params and provider, the numbers, the
+    turns, system, effort, stop sequences, schema, the attachments' shape, the fallbacks switch.
+    A loop turn after the first (``continuation``) carries no turns of its own: the transcript
+    holds them.
     """
     if streaming and isinstance(body, dict) and any(key in body for key in LOOP_KEYS):
         raise AppException(400, STREAM_LOOP)
+    if streaming and isinstance(body, dict) and "attachments" in body:
+        raise AppException(400, STREAM_ATTACHMENTS)
     turns = body.get("messages") if isinstance(body, dict) else None
     has_turns = isinstance(turns, list) and bool(turns)
     if not isinstance(body, dict) or not (continuation or body.get("prompt") or has_turns):
@@ -333,6 +446,7 @@ def prepare(body: Body, *, streaming: bool, continuation: bool = False) -> LlmRe
         effort=_effort(params),
         stop_sequences=_stop_sequences(params),
         schema=_schema(body, streaming),
+        attachments=_attachments(body),
         fallbacks=_fallbacks_enabled(),
     )
 
@@ -561,6 +675,7 @@ class Backend:
     provider_model: Callable[[str], str] = _same_model
     credentials: Callable[[Any], str | None] = _anthropic_credentials
     api: str | None = None  # the Bedrock surface in use, reported by llm.health
+    image_max_encoded: int = IMAGE_MAX_ENCODED  # an attached image's limit, base64-encoded
 
     def credential_problem(self) -> str | None:
         """What is missing for a call to be sent, or None. No token is spent."""
@@ -578,6 +693,7 @@ def backend_for(name: str, client: Any, aws_api: str = AWS_API_MANTLE) -> Backen
             provider_model=_bedrock_model if aws_api == AWS_API_MANTLE else _same_model,
             credentials=_bedrock_credentials,
             api=aws_api,
+            image_max_encoded=BEDROCK_IMAGE_MAX_ENCODED,
         )
     return Backend(DEFAULT_BACKEND, client, supports_fallbacks=True)
 
@@ -671,6 +787,211 @@ def _plan(request: LlmRequest, backend: Backend) -> tuple[Any, dict[str, Any]]:
         kwargs["fallbacks"] = "default"
         return client.beta.messages, kwargs
     return client.messages, kwargs
+
+
+# --- attachments: the files a single call names (RFC-0016) --------------------------------------
+#
+# The request names a file and never carries one, so an event stays small and a file's bytes reach
+# no log, trace or stored record. One root, with the agent tools' workspace rules: resolved once,
+# a relative path only, the resolved path inside it, no hidden entry, a regular file. Every caller
+# that can reach this app can have a file under the root sent to the provider and read back in
+# the reply: the root is deployment configuration, certified with the deployment.
+
+_attachments_root: Path | None = None  # resolved on first use - module-level so tests can inject
+
+
+def attachments_root() -> Path:
+    """The one folder a request may name files in. Unset, every attachment is refused."""
+    global _attachments_root
+    root = _attachments_root
+    if root is None:
+        configured = _prop(ATTACHMENTS_ROOT)
+        if not configured:
+            raise AppException(503, MISSING_ATTACHMENTS_ROOT)
+        root = Path(str(configured)).expanduser().resolve()
+        if not root.is_dir():
+            raise AppException(500, f"{ATTACHMENTS_ROOT} is not a folder")
+        _attachments_root = root
+    return root
+
+
+def _hidden(parts: tuple[str, ...]) -> bool:
+    return any(part.startswith(".") and part not in (".", "..") for part in parts)
+
+
+def _attachment_file(root: Path, index: int, path: str) -> Path:
+    """The file a request names, or a 400 that names the rule it breaks - never the host's own
+    path. The resolved path decides, so a link that leads out of the root is outside it."""
+    where = f"attachments[{index}]"
+    named = Path(path)
+    if named.is_absolute() or path.startswith("~"):
+        raise AppException(400, f"{where}: an absolute path - name a file inside the root")
+    try:
+        resolved = (root / named).resolve()
+    except (OSError, RuntimeError, ValueError) as exc:  # a loop of links, a null byte
+        raise AppException(400, f"{where}: not found") from exc
+    if not resolved.is_relative_to(root):
+        raise AppException(400, f"{where}: outside {ATTACHMENTS_ROOT}")
+    if _hidden(named.parts) or _hidden(resolved.relative_to(root).parts):
+        raise AppException(400, f"{where}: a hidden entry, which the root does not expose")
+    if not resolved.exists():
+        raise AppException(400, f"{where}: not found")
+    if not resolved.is_file():
+        raise AppException(400, f"{where}: not a file")
+    return resolved
+
+
+def _media_type(head: bytes) -> str | None:
+    """A file's kind by its first bytes, never by its name."""
+    if head.startswith(b"%PDF-"):
+        return PDF_MEDIA_TYPE
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if head.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _pdf(index: int, data: bytes, pages: tuple[tuple[int, int], ...] | None) -> bytes:
+    """The PDF to send: the file as it is, or a new one that holds only the pages named, in the
+    order named, so a long document costs the pages asked for. The library (the documents extra)
+    is needed to cut; with it a whole document is also checked, and without it a whole document
+    goes as it is and the provider judges it."""
+    where = f"attachments[{index}]"
+    if importlib.util.find_spec("pypdf") is None:
+        if pages is None:
+            return data
+        raise AppException(503, MISSING_PDF_SDK)
+    import pypdf  # the [documents] extra; checked above
+
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            raise AppException(400, f"{where}: an encrypted PDF - the provider takes none")
+        if pages is None:
+            return data
+        count = len(reader.pages)
+        beyond = next((high for _low, high in pages if high > count), None)
+        if beyond is not None:
+            raise AppException(
+                400, f"{where}.pages names page {beyond} of a document of {count}"
+            )
+        writer = pypdf.PdfWriter()
+        for low, high in pages:
+            for number in range(low, high + 1):
+                writer.add_page(reader.pages[number - 1])
+        cut = io.BytesIO()
+        writer.write(cut)
+        return cut.getvalue()
+    except AppException:
+        raise
+    except Exception as exc:  # the library's own errors for a damaged file, of several types
+        raise AppException(400, f"{where}: not a readable PDF") from exc
+
+
+def _load_attachments(
+    specs: tuple[Attachment, ...], root: Path, max_bytes: int, image_max_encoded: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Read the files (in a worker thread): the blocks the model gets, the references the audit
+    keeps - the path, the kind, the size and the SHA-256 of the source file as it was read,
+    never its bytes - and the bytes read. A file's size is taken before it is read, so a file
+    over the limit is refused unread."""
+    blocks: list[dict[str, Any]] = []
+    references: list[dict[str, Any]] = []
+    total = 0
+    over = "attachments: more than {} bytes of files - {} ({})"
+    for index, spec in enumerate(specs):
+        where = f"attachments[{index}]"
+        file = _attachment_file(root, index, spec.path)
+        if total + file.stat().st_size > max_bytes:
+            raise AppException(400, over.format(max_bytes, ATTACHMENTS_MAX_BYTES, max_bytes))
+        with file.open("rb") as handle:
+            data = handle.read(max_bytes - total + 1)  # bounded: a file may grow under the read
+        total += len(data)
+        if total > max_bytes:
+            raise AppException(400, over.format(max_bytes, ATTACHMENTS_MAX_BYTES, max_bytes))
+        media_type = _media_type(data[:16])
+        if media_type is None:
+            raise AppException(400, f"{where}: not a PNG, JPEG, GIF, WebP or PDF file")
+        reference: dict[str, Any] = {"type": "attachment", "path": spec.path}
+        if spec.pages_text is not None:
+            reference["pages"] = spec.pages_text
+        reference.update(
+            media_type=media_type, bytes=len(data), sha256=hashlib.sha256(data).hexdigest()
+        )
+        if media_type == PDF_MEDIA_TYPE:
+            kind, sent = "document", _pdf(index, data, spec.pages)
+        else:
+            if spec.pages is not None:
+                raise AppException(400, f"{where}.pages needs a PDF - the file is {media_type}")
+            encoded = 4 * ((len(data) + 2) // 3)
+            if encoded > image_max_encoded:
+                raise AppException(
+                    400,
+                    f"{where}: an image of {encoded} bytes base64-encoded - the backend's "
+                    f"limit is {image_max_encoded}",
+                )
+            kind, sent = "image", data
+        source = {
+            "type": "base64",
+            "media_type": media_type,
+            "data": base64.b64encode(sent).decode("ascii"),
+        }
+        blocks.append({"type": kind, "source": source})
+        references.append(reference)
+    return blocks, references, total
+
+
+@dataclass(frozen=True)
+class Attached:
+    """A request with its files read: what the model gets, and what the audit may keep."""
+
+    request: LlmRequest  # the last turn holds the blocks, then the turn's text
+    recorded: LlmRequest  # the same turn with a reference in place of each file
+    count: int
+    size: int
+
+
+async def attach(request: LlmRequest, backend: Backend) -> Attached:
+    """Read the files a call names and put them before the text of the last turn, which must be
+    the user's. The files are read off the event loop; the caller's deadline covers the read."""
+    last = request.messages[-1]
+    if last["role"] != "user":
+        raise AppException(400, "attachments go with the last turn, which must be the user's")
+    root = attachments_root()
+    max_bytes = _whole_number(
+        ATTACHMENTS_MAX_BYTES,
+        _prop(ATTACHMENTS_MAX_BYTES, str(DEFAULT_ATTACHMENTS_MAX_BYTES)),
+        1,
+    )
+    blocks, references, size = await asyncio.to_thread(
+        _load_attachments, request.attachments, root, max_bytes, backend.image_max_encoded
+    )
+    text = {"type": "text", "text": last["content"]}
+    before = request.messages[:-1]
+    return Attached(
+        replace(request, messages=[*before, {"role": "user", "content": [*blocks, text]}]),
+        replace(request, messages=[*before, {"role": "user", "content": [*references, text]}]),
+        len(blocks),
+        size,
+    )
+
+
+async def attachments_boot() -> None:
+    """A root that is configured and is not a folder is a deployment error: stop by name at
+    start, before a request finds it."""
+    if not _prop(ATTACHMENTS_ROOT):
+        return
+    try:
+        attachments_root()
+    except AppException as exc:
+        log.error("attachments cannot start - %s", exc.message)
+        raise SystemExit(1) from exc
+    log.info("attachments ready - %s is set", ATTACHMENTS_ROOT)
 
 
 # --- one provider call, shared by both routes ------------------------------------------
@@ -1340,6 +1661,10 @@ async def _loop_turn(headers: dict[str, str], body: dict[str, Any]) -> dict[str,
     """One model turn of an agent loop: load and check the record, append the tool results, call
     the model, append its turn and its facts, save under the compare-and-set, and tell the audit
     function when one is configured - off the turn's path."""
+    if "attachments" in body:
+        # a transcript keeps every turn, so it would have to keep the files or references whose
+        # files may change between turns: a single call only (RFC-0016)
+        raise AppException(400, LOOP_ATTACHMENTS)
     loop = prepare_loop(body)
     request = prepare(body, streaming=False, continuation=loop.conversation is not None)
     store = get_store()
@@ -2008,6 +2333,13 @@ async def audit_shutdown() -> None:
 # --- the functions -----------------------------------------------------------------------
 
 
+async def _answer(request: LlmRequest, backend: Backend) -> tuple[Attached | None, Completion]:
+    """A single call's work under its one deadline: the files it names, then the model. A file
+    that is refused is refused here, before any token is spent."""
+    attached = await attach(request, backend) if request.attachments else None
+    return attached, await _complete(attached.request if attached else request, backend)
+
+
 @preload(route="llm.chat", instances=50)
 async def llm_chat(headers: dict[str, str], body: Body) -> dict[str, Any]:
     """Single-shot completion - the AI node a graph's ``graph.task`` or a flow's task calls.
@@ -2018,12 +2350,16 @@ async def llm_chat(headers: dict[str, str], body: Body) -> dict[str, Any]:
       schema              optional JSON schema -> structured output (the graph needs parseable
                           verdicts for decision routing; additionalProperties defaults to false)
       params              model, max_tokens, timeout_ms, effort, stop_sequences, provider
+      attachments         optional files for the model to look at, named by reference inside
+                          llm.attachments.root: a path, or {path, pages} for pages of a PDF
+                          (RFC-0016; README.md, "Attachments"). Never on a loop turn.
 
     Output (map): text | data, model, stop_reason, usage {input_tokens, output_tokens},
     request_id; stop_details when the model refused.
 
-    ``params.timeout_ms`` bounds the whole call, SDK retries included - the x-ttl pattern.
-    A reply that carries nothing usable (refused, empty, or a schema reply cut off) is a 422.
+    ``params.timeout_ms`` bounds the whole call, SDK retries included - the x-ttl pattern -
+    and the reading of the attachments. A reply that carries nothing usable (refused, empty, or
+    a schema reply cut off) is a 422.
 
     A request that carries ``tools`` is one turn of an agent loop (RFC-0011): ``conversation``,
     ``turn``, ``results``, ``ttl`` and ``retention`` come with it, and the reply carries
@@ -2038,8 +2374,8 @@ async def llm_chat(headers: dict[str, str], body: Body) -> dict[str, Any]:
     started = time.perf_counter()
     started_at = iso_utc()
     try:
-        done = await asyncio.wait_for(
-            _complete(request, get_backend()), timeout=request.timeout_ms / 1000
+        attached, done = await asyncio.wait_for(
+            _answer(request, get_backend()), timeout=request.timeout_ms / 1000
         )
     except Exception as exc:  # anything unmapped is re-raised below
         failure = _failure(exc, request.timeout_ms)
@@ -2049,10 +2385,17 @@ async def llm_chat(headers: dict[str, str], body: Body) -> dict[str, Any]:
         raise failure from exc
     if audit_single_configured():
         # before the reply is judged: a refusal, a cut-off reply and a reply that is a 422 below
-        # were answered by the model and cost tokens, so they are recorded too
-        _audit_single(headers, request, done, (started_at, iso_utc()))
+        # were answered by the model and cost tokens, so they are recorded too. With attachments
+        # the record keeps a reference to each file, never its bytes
+        recorded = attached.recorded if attached else request
+        _audit_single(headers, recorded, done, (started_at, iso_utc()))
     data = _judge(request, done, has_content=bool(done.text))
     _annotate(done)
+    if attached:
+        annotate_trace("llm_attachments", str(attached.count))
+        annotate_trace("llm_attachment_bytes", str(attached.size))
+        # the count and the bytes only - a path or a file's content never reaches a log
+        log.info("llm.chat attachments=%d bytes=%d", attached.count, attached.size)
     _summary("llm.chat", done, started)
     result: dict[str, Any] = {
         "model": done.model,
@@ -2175,6 +2518,7 @@ async def llm_health(headers: dict[str, str], _body: Body) -> Any:
 
 # the audit starts inside the serving loop, before the first request, when it is configured
 platform.on_startup(audit_boot)
+platform.on_startup(attachments_boot)  # a configured root that is not a folder stops the start
 platform.on_cleanup(audit_shutdown)
 
 if __name__ == "__main__":
