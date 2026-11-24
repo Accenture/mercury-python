@@ -22,9 +22,10 @@
     that is not a folder as a stop at start; hidden entries refused with no switch; an image's limit taken as 10 and
     5 times 1,048,576 bytes base64-encoded.
   - **Not done:** the measurement of a PDF cut beside a running stream; a live call (no token was spent).
-  - **Next:** the Node twin (it needs a PDF library, and asserts a cut by
-    its pages, not its bytes); the READMEs' twin and the schema page in mercury-composable; a live drive on both
-    backends.
+  - **The Node twin MERGED 2026-11-24** (mercury-nodejs #145), from the same vector file and fixtures with no case
+    or message changed; its PDF library is `@cantoo/pdf-lib`, the maintainer's choice, and a cut is asserted by its
+    pages, not its bytes. RFC-0016's entry records both steps (mercury-composable #669 and #670).
+  - **Next:** the schema page in mercury-composable; a live drive on both backends.
   → proposal: RFC-0016 (mercury-composable)
   → serves: vision-mercury-python
   <!-- id: bp-llm-attachments-python | created: 2026-11-24 | last_used: 2026-11-24 | uses: 1 | tier: working | origin: 2026-11-24-055310 -->

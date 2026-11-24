@@ -11,7 +11,9 @@
   - **Defaults set without a ruling (RFC-0015's open questions):** the switch off by default; `llm.stream` recorded
     under the same switch; `model` the model that answered; a stop reason outside the loop's table recorded as `done`;
     the reply not waiting for the save; the switch without `llm.transcript.store` stopping the application at start.
-  - **Next:** the Node twin from the same vector file; the schema page in
+  - **The Node twin MERGED 2026-11-24** (mercury-nodejs #144), from the same vector file with no case changed;
+    RFC-0015's entry records both steps (mercury-composable #669 and #670).
+  - **Next:** the schema page in
     mercury-composable; the reader's filter on the kind of row (`tools IS NULL`) in the agent-question backend and
     its UI; a live drive with the database stopped and stalled.
   → proposal: RFC-0015 (mercury-composable)
