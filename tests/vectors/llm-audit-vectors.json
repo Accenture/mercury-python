@@ -1,0 +1,1753 @@
+{
+  "contract": "llm-audit-single",
+  "version": 1,
+  "description": "A single call in the transcript audit store (RFC-0015 in mercury-composable). mercury-python and mercury-nodejs ship this file byte-identical and run every case against their own fake of the Anthropic SDK, with the memory working store and the reference audit store. A case names the route, the config keys in force, the headers and the trace of the call (trace_id and trace_path; none: the call runs outside a trace), the request body and what the fake provider does - provider kinds as in llm-helper-vectors.json, with content as the assistant's blocks exactly as the API returned them. The expectation is what the caller receives (a subset of the reply map, the stream's frames, or the error) and the two rows the audit store holds once the call's saves and the function's mailbox are idle - or null for both when nothing is recorded, in which case no event was sent and no record saved. A row lists every column but the ones a run decides: the harness checks that conversation is the same 32 hexadecimal reference in both rows, that started_at and ended_at are ISO-8601 UTC stamps with milliseconds, equal in both rows and in order, that updated_at is such a stamp, and that expires_at is started_at plus expires_after_s. When rows are expected, exactly one event was sent, {conversation, check: true}, and the working record is gone after the check.",
+  "cases": [
+    {
+      "name": "single/a-call-is-a-conversation-of-one-turn",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "headers": {
+        "x-graph-id": "ticket-triage",
+        "x-node": "classify",
+        "my_correlation_id": "corr-41"
+      },
+      "trace": {
+        "trace_id": "5a1c5a1c5a1c5a1c5a1c5a1c5a1c5a1c",
+        "trace_path": "POST /api/graph/ticket-triage"
+      },
+      "body": {
+        "prompt": "The app crashes when I upload a file",
+        "system": "You label tickets."
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "bug"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "bug"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "bug",
+            "stop_reason": "end_turn"
+          }
+        },
+        "conversation": {
+          "correlation_id": "corr-41",
+          "graph_id": "ticket-triage",
+          "node": "classify",
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": "You label tickets.",
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": "5a1c5a1c5a1c5a1c5a1c5a1c5a1c5a1c",
+          "trace_path": "POST /api/graph/ticket-triage",
+          "correlation_id": "corr-41",
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "The app crashes when I upload a file"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "bug"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/no-headers-and-no-trace-leave-the-identity-null",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "hello"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Hello."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "Hello."
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        }
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "Hello.",
+            "stop_reason": "end_turn"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "Hello."
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/the-correlation-id-comes-from-the-header-view-without-a-trace",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "headers": {
+        "my_correlation_id": "corr-77"
+      },
+      "body": {
+        "prompt": "hello"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Hello."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "Hello."
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "Hello.",
+            "stop_reason": "end_turn"
+          }
+        },
+        "conversation": {
+          "correlation_id": "corr-77",
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": "corr-77",
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "Hello."
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/a-conversation-history-is-the-request",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "What is the limit?"
+          },
+          {
+            "role": "assistant",
+            "content": "Of which customer?"
+          },
+          {
+            "role": "user",
+            "content": "C-1"
+          }
+        ]
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "500."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "500."
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "500.",
+            "stop_reason": "end_turn"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "What is the limit?"
+            },
+            {
+              "role": "assistant",
+              "content": "Of which customer?"
+            },
+            {
+              "role": "user",
+              "content": "C-1"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "500."
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/a-schema-reply-is-recorded-as-blocks-never-as-data",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "Label it.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ]
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "{\"label\":\"bug\"}"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"label\":\"bug\"}"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "data": {
+              "label": "bug"
+            },
+            "stop_reason": "end_turn"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "Label it."
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "{\"label\":\"bug\"}"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/thinking-blocks-are-recorded-as-returned",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "Think, then answer."
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Done."
+        ],
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "",
+            "signature": "sig-single-1"
+          },
+          {
+            "type": "text",
+            "text": "Done."
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "Done.",
+            "stop_reason": "end_turn"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "Think, then answer."
+            }
+          ],
+          "response": [
+            {
+              "type": "thinking",
+              "thinking": "",
+              "signature": "sig-single-1"
+            },
+            {
+              "type": "text",
+              "text": "Done."
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/a-refusal-with-no-text-is-recorded-and-the-caller-gets-422",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "refusal",
+        "deltas": [],
+        "content": [],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 0
+        },
+        "request_id": "req_single_1",
+        "stop_details": {
+          "category": "cyber",
+          "explanation": "declined"
+        }
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 422,
+            "message_contains": [
+              "LLM refused the request"
+            ]
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "refusal",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 5,
+          "output_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "refusal",
+          "status": "refusal",
+          "request_id": "req_single_1",
+          "input_tokens": 5,
+          "output_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "x"
+            }
+          ],
+          "response": [],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/a-reply-cut-off-at-max-tokens-is-a-cap",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "Tell me a long story.",
+        "params": {
+          "max_tokens": 16
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "max_tokens",
+        "deltas": [
+          "Once upon a"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "Once upon a"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "Once upon a",
+            "stop_reason": "max_tokens"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "cap",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "max_tokens",
+          "status": "cap",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "Tell me a long story."
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "Once upon a"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/a-reply-cut-off-before-any-text-is-a-cap-and-the-caller-gets-422",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "Think hard.",
+        "params": {
+          "max_tokens": 16
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "max_tokens",
+        "deltas": [],
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "",
+            "signature": "sig-single-1"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 422,
+            "message_contains": [
+              "LLM reply is empty"
+            ]
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "cap",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "max_tokens",
+          "status": "cap",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "Think hard."
+            }
+          ],
+          "response": [
+            {
+              "type": "thinking",
+              "thinking": "",
+              "signature": "sig-single-1"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/the-context-window-is-a-cap",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "Summarize."
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "model_context_window_exceeded",
+        "deltas": [
+          "In sho"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "In sho"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "In sho",
+            "stop_reason": "model_context_window_exceeded"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "cap",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "model_context_window_exceeded",
+          "status": "cap",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "Summarize."
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "In sho"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/an-empty-reply-is-done-and-the-caller-gets-422",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [],
+        "content": [],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 422,
+            "message_contains": [
+              "LLM reply is empty"
+            ]
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "x"
+            }
+          ],
+          "response": [],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/a-schema-reply-that-is-not-json-is-done-and-the-caller-gets-422",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "Label it.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ]
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "It is a bug."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "It is a bug."
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 422,
+            "message_contains": [
+              "not valid JSON"
+            ]
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "Label it."
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "It is a bug."
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/a-stop-reason-outside-the-table-is-done-with-the-providers-word-kept",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "pause_turn",
+        "deltas": [
+          "Partly."
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "Partly."
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "Partly.",
+            "stop_reason": "pause_turn"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "pause_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "x"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "Partly."
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/the-model-that-answered-is-recorded-not-the-one-asked-for",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x",
+        "params": {
+          "model": "claude-opus-5-5"
+        }
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-4-8",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "ok"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "ok",
+            "model": "claude-opus-4-8"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-4-8",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "x"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/cache-usage-is-recorded",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "ok"
+          }
+        ],
+        "usage": {
+          "input_tokens": 40,
+          "output_tokens": 7,
+          "cache_creation_input_tokens": 30,
+          "cache_read_input_tokens": 12
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "ok"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 40,
+          "output_tokens": 7,
+          "cache_creation_input_tokens": 30,
+          "cache_read_input_tokens": 12,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 40,
+          "output_tokens": 7,
+          "cache_creation_input_tokens": 30,
+          "cache_read_input_tokens": 12,
+          "request": [
+            {
+              "role": "user",
+              "content": "x"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/the-audit-retention-sets-expires-at",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true",
+        "llm.transcript.audit.retention": "30d"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "ok"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "ok"
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 2592000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "x"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/off-unless-switched-on",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "ok"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "ok"
+          }
+        },
+        "conversation": null,
+        "turn": null
+      }
+    },
+    {
+      "name": "single/switched-off-by-name",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "false"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "ok"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "ok"
+          }
+        },
+        "conversation": null,
+        "turn": null
+      }
+    },
+    {
+      "name": "single/the-switch-without-an-audit-store-records-nothing",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "ok"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "ok"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "result": {
+            "text": "ok"
+          }
+        },
+        "conversation": null,
+        "turn": null
+      }
+    },
+    {
+      "name": "single/a-request-the-helper-refused-leaves-no-row",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {},
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 400,
+            "message_contains": [
+              "missing 'prompt' or 'messages'"
+            ]
+          }
+        },
+        "conversation": null,
+        "turn": null
+      }
+    },
+    {
+      "name": "single/a-call-the-provider-failed-leaves-no-row",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 500,
+        "type": "api_error",
+        "message": "boom",
+        "request_id": "req_err_1"
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 500,
+            "message_contains": [
+              "LLM provider error - 500"
+            ]
+          }
+        },
+        "conversation": null,
+        "turn": null
+      }
+    },
+    {
+      "name": "single/a-call-that-timed-out-leaves-no-row",
+      "route": "llm.chat",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "timeout"
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 408,
+            "message_contains": [
+              "LLM request timed out"
+            ]
+          }
+        },
+        "conversation": null,
+        "turn": null
+      }
+    },
+    {
+      "name": "single/stream/a-completed-stream-is-recorded-like-a-call",
+      "route": "llm.stream",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "headers": {
+        "x-graph-id": "ticket-triage",
+        "x-node": "classify",
+        "my_correlation_id": "corr-41"
+      },
+      "trace": {
+        "trace_id": "5a1c5a1c5a1c5a1c5a1c5a1c5a1c5a1c",
+        "trace_path": "POST /api/graph/ticket-triage"
+      },
+      "body": {
+        "prompt": "greet me",
+        "system": "Be brief."
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "end_turn",
+        "deltas": [
+          "Hello ",
+          "wor",
+          "ld"
+        ],
+        "content": [
+          {
+            "type": "text",
+            "text": "Hello world"
+          }
+        ],
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 9
+        },
+        "request_id": "req_single_1"
+      },
+      "expect": {
+        "caller": {
+          "frames": [
+            "Hello ",
+            "wor",
+            "ld"
+          ]
+        },
+        "conversation": {
+          "correlation_id": "corr-41",
+          "graph_id": "ticket-triage",
+          "node": "classify",
+          "model": "claude-opus-5-5",
+          "status": "done",
+          "turns": 1,
+          "system": "Be brief.",
+          "tools": null,
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": "5a1c5a1c5a1c5a1c5a1c5a1c5a1c5a1c",
+          "trace_path": "POST /api/graph/ticket-triage",
+          "correlation_id": "corr-41",
+          "stop_reason": "end_turn",
+          "status": "done",
+          "request_id": "req_single_1",
+          "input_tokens": 120,
+          "output_tokens": 9,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "greet me"
+            }
+          ],
+          "response": [
+            {
+              "type": "text",
+              "text": "Hello world"
+            }
+          ],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/stream/a-stream-refused-before-any-token-is-recorded-and-fails-in-band",
+      "route": "llm.stream",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "message",
+        "model": "claude-opus-5-5",
+        "stop_reason": "refusal",
+        "deltas": [],
+        "content": [],
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 0
+        },
+        "request_id": "req_single_1",
+        "stop_details": {
+          "category": "cyber",
+          "explanation": "declined"
+        }
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 422,
+            "message_contains": [
+              "LLM refused the request"
+            ]
+          }
+        },
+        "conversation": {
+          "correlation_id": null,
+          "graph_id": null,
+          "node": null,
+          "model": "claude-opus-5-5",
+          "status": "refusal",
+          "turns": 1,
+          "system": null,
+          "tools": null,
+          "input_tokens": 5,
+          "output_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "expires_after_s": 31536000
+        },
+        "turn": {
+          "turn": 1,
+          "trace_id": null,
+          "trace_path": null,
+          "correlation_id": null,
+          "stop_reason": "refusal",
+          "status": "refusal",
+          "request_id": "req_single_1",
+          "input_tokens": 5,
+          "output_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "request": [
+            {
+              "role": "user",
+              "content": "x"
+            }
+          ],
+          "response": [],
+          "calls": null
+        }
+      }
+    },
+    {
+      "name": "single/stream/a-stream-the-provider-broke-leaves-no-row",
+      "route": "llm.stream",
+      "config": {
+        "llm.transcript.store": "memory",
+        "llm.transcript.audit": "postgres",
+        "llm.transcript.audit.single": "true"
+      },
+      "body": {
+        "prompt": "x"
+      },
+      "provider": {
+        "kind": "status",
+        "status": 529,
+        "type": "overloaded_error",
+        "message": "Overloaded",
+        "request_id": "req_err_2",
+        "after": 1,
+        "deltas": [
+          "Hel",
+          "lo"
+        ]
+      },
+      "expect": {
+        "caller": {
+          "error": {
+            "status": 529,
+            "message_contains": [
+              "LLM provider error - 529"
+            ]
+          }
+        },
+        "conversation": null,
+        "turn": null
+      }
+    }
+  ]
+}

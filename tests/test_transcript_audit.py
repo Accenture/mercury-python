@@ -13,16 +13,30 @@ contract the twins repeat; the twins are held to one schema file and to the vers
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from test_llm_helper import _TOOL, _TURN, _Clock, _fake_redis, _FakeClient, _install_backend, helper
+from test_llm_helper import (
+    _TOOL,
+    _TURN,
+    _assert_error,
+    _BrokenStore,
+    _Clock,
+    _event,
+    _fake_redis,
+    _FakeClient,
+    _install_backend,
+    _install_writer,
+    helper,
+)
 
 from mercury_composable import AppException, FunctionRegistry, PostOffice, trace_context
 
@@ -919,3 +933,249 @@ async def test_the_rows_land_on_a_live_postgres(monkeypatch: pytest.MonkeyPatch)
                     "DELETE FROM transcript WHERE conversation = %s", (conversation,)
                 )
         await audit.close()
+
+
+# --- a single call (RFC-0015): a conversation of one turn, carried by the working record ----------
+#
+# tests/vectors/llm-audit-vectors.json (byte-identical in mercury-nodejs) states the rows a call
+# without tools leaves and when it leaves none. Every case runs the real path: the call, the save
+# the reply does not wait for, the check event over the in-process bus, the unchanged function.
+
+_AUDIT_VECTORS = Path(__file__).resolve().parent / "vectors" / "llm-audit-vectors.json"
+# the Node.js twin pins the same digest: change the file in both packs or in neither
+_AUDIT_VECTORS_SHA256 = "d6f5ff9ba8d56d7397e13db406c9d31a146aaf7d4e5d69d219df8bc2ff8ab57f"
+AUDIT_VECTORS: dict[str, Any] = json.loads(_AUDIT_VECTORS.read_text(encoding="utf-8"))
+SINGLE_CASES: list[dict[str, Any]] = AUDIT_VECTORS["cases"]
+_SINGLE = {**_CONFIG, "llm.transcript.audit.single": "true"}
+_REFERENCE = re.compile(r"[0-9a-f]{32}")
+_STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z")
+_ANSWER = {
+    "kind": "message", "model": "claude-opus-5-5", "stop_reason": "end_turn",
+    "content": [{"type": "text", "text": "REPLY-MARKER-1"}],
+    "usage": {"input_tokens": 11, "output_tokens": 3}, "request_id": "req_single_test",
+}  # fmt: skip
+
+
+class _SingleRig:
+    """The real path under a single call: the function behind its mailbox, the memory working
+    store, the reference audit store, and every event the helper sends, kept in order."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, audit: Any = None, store: Any = None) -> None:
+        self.registry = FunctionRegistry()
+        self.registry.register(
+            helper.AUDIT_ROUTE, helper.transcript_audit, instances=1, private=True
+        )
+        monkeypatch.setattr(helper, "_post_office", PostOffice(registry=self.registry))
+        self.audit = audit or helper.MemoryAuditStore()
+        self.store = store or helper.MemoryStore()
+        monkeypatch.setattr(helper, "_audit", self.audit)
+        monkeypatch.setattr(helper, "_store", self.store)
+        self.events: list[dict[str, Any]] = []
+        deliver = helper._audit_send
+
+        async def recording(event: dict[str, Any]) -> None:
+            self.events.append(event)
+            await deliver(event)
+
+        monkeypatch.setattr(helper, "_audit_send", recording)
+
+    async def settled(self, done: Any) -> None:
+        """Wait for the saves in flight, then for the mailbox to reach ``done()``."""
+        await helper.audit_single_idle()
+        for _ in range(400):
+            if done():
+                return
+            await asyncio.sleep(0.005)
+        raise AssertionError("the audit function did not settle")
+
+    async def close(self) -> None:
+        await self.registry.bus.close()
+
+
+def test_the_audit_vector_file_is_the_one_the_node_twin_runs() -> None:
+    digest = hashlib.sha256(_AUDIT_VECTORS.read_bytes()).hexdigest()
+    assert digest == _AUDIT_VECTORS_SHA256, "the shared vector file changed - update both packs"
+    assert (AUDIT_VECTORS["contract"], AUDIT_VECTORS["version"]) == ("llm-audit-single", 1)
+    assert {case["route"] for case in SINGLE_CASES} == {"llm.chat", "llm.stream"}
+
+
+async def _single_call(case: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the case's call and check what the caller received."""
+    client = _FakeClient(case.get("provider"))
+    _install_backend(monkeypatch, client, case.get("config"))
+    wanted = case["expect"]["caller"]
+    headers = dict(case.get("headers", {}))
+    if case["route"] == "llm.stream":
+        out = _install_writer(monkeypatch)
+        await helper.llm_stream(headers, _event(case["body"]))
+        if "error" in wanted:
+            _assert_error(out.error, wanted["error"])
+        else:
+            assert out.error is None and out.segments == wanted["frames"]
+        return
+    try:
+        result = await helper.llm_chat(headers, case["body"])
+    except AppException as error:
+        assert "error" in wanted, error
+        _assert_error(error, wanted["error"])
+        return
+    assert "error" not in wanted, "an error was expected"
+    for key, value in wanted["result"].items():
+        assert result[key] == value, key
+    assert "conversation" not in result, "a single call's reply carries no reference"
+
+
+@pytest.mark.parametrize("case", SINGLE_CASES, ids=[c["name"] for c in SINGLE_CASES])
+async def test_single_call_audit_contract(
+    case: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _SingleRig(monkeypatch)
+    expect = case["expect"]
+    try:
+        trace = case.get("trace")
+        if trace:
+            with trace_context(trace["trace_id"], trace["trace_path"]):
+                await _single_call(case, monkeypatch)
+        else:
+            await _single_call(case, monkeypatch)
+        if expect["conversation"] is None:
+            await rig.settled(lambda: True)
+            assert expect["turn"] is None
+            assert rig.events == [] and rig.store._records == {}
+            assert rig.audit.conversations == {} and rig.audit.turn_rows == {}
+            return
+        await rig.settled(lambda: bool(rig.audit.conversations) and not rig.store._records)
+        ((conversation, row),) = rig.audit.conversations.items()
+        assert _REFERENCE.fullmatch(conversation) and row["conversation"] == conversation
+        assert rig.events == [{"conversation": conversation, "check": True}]
+        assert set(rig.audit.turn_rows[conversation]) == {1}
+        turn = rig.audit.turn_rows[conversation][1]
+        wanted = dict(expect["conversation"])
+        expires_after_s = wanted.pop("expires_after_s")
+        decided_by_the_run = ("conversation", "started_at", "updated_at", "ended_at", "expires_at")
+        assert {k: v for k, v in row.items() if k not in decided_by_the_run} == wanted
+        assert {
+            k: v for k, v in turn.items() if k not in ("conversation", "started_at", "ended_at")
+        } == expect["turn"]
+        assert turn["conversation"] == conversation
+        for stamp in (row["started_at"], row["updated_at"], row["ended_at"], row["expires_at"]):
+            assert _STAMP.fullmatch(stamp), stamp
+        assert (turn["started_at"], turn["ended_at"]) == (row["started_at"], row["ended_at"])
+        assert row["started_at"] <= row["ended_at"] <= row["updated_at"]
+        assert row["expires_at"] == helper._plus_seconds(row["started_at"], expires_after_s)
+    finally:
+        await rig.close()
+
+
+async def test_the_reply_does_not_wait_for_the_save_and_the_shutdown_drains_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The audit never sits on the call's path: with a working store that does not answer, the
+    call has replied; once the store answers, the save and the check follow, and a shutdown
+    waits for a save in flight before the audit store closes."""
+    gate = asyncio.Event()
+
+    class _SlowStore(helper.MemoryStore):
+        async def save(self, conversation: str, expected: int, record: Any, ttl_s: int) -> bool:
+            await gate.wait()
+            return await super().save(conversation, expected, record, ttl_s)
+
+    rig = _SingleRig(monkeypatch, store=_SlowStore())
+    monkeypatch.setattr(helper, "_sweep_task", None)
+    try:
+        _install_backend(monkeypatch, _FakeClient(_ANSWER), _SINGLE)
+        reply = await asyncio.wait_for(helper.llm_chat({}, {"prompt": "hello"}), timeout=1)
+        assert reply["text"] == "REPLY-MARKER-1"
+        assert len(helper._single_saves) == 1 and rig.events == [] and not rig.audit.conversations
+        shutdown = asyncio.get_running_loop().create_task(helper.audit_shutdown())
+        await asyncio.sleep(0.02)
+        assert not shutdown.done(), "the shutdown waits for the save in flight"
+        gate.set()
+        await shutdown
+        assert not helper._single_saves and len(rig.events) == 1
+    finally:
+        await rig.close()
+
+
+async def test_a_working_store_that_fails_is_logged_by_type_and_never_refuses_the_call(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A store that is down, or not configured, costs that call's audit and nothing else: the
+    call answers, no event is sent, and the log names the failure without a word of content."""
+    rig = _SingleRig(monkeypatch, store=_BrokenStore(save=ConnectionError("PROMPT-MARKER-1 down")))
+    caplog.set_level(logging.INFO)
+    try:
+        _install_backend(monkeypatch, _FakeClient(_ANSWER), _SINGLE)
+        reply = await helper.llm_chat({}, {"prompt": "PROMPT-MARKER-1"})
+        await rig.settled(lambda: True)
+        assert reply["text"] == "REPLY-MARKER-1" and rig.events == []
+        assert "transcript.audit single call not saved - ConnectionError" in caplog.text
+        monkeypatch.setattr(helper, "_store", None)  # and with no working store at all
+        _install_backend(monkeypatch, _FakeClient(_ANSWER), {**_SINGLE, "llm.transcript.store": ""})
+        assert (await helper.llm_chat({}, {"prompt": "PROMPT-MARKER-1"}))["text"] == "REPLY-MARKER-1"
+        await rig.settled(lambda: True)
+        assert "single call not saved - AppException: transcript store not configured" in caplog.text
+        assert rig.events == [] and not rig.audit.conversations
+        assert "REPLY-MARKER-1" not in caplog.text
+        assert caplog.text.count("PROMPT-MARKER-1") == 1, "only the store's own connection error"
+    finally:
+        await rig.close()
+
+
+async def test_a_failed_write_keeps_the_record_and_the_sweep_repairs_it(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """What a single call gains from the record as its carrier: a write the database refused is
+    not lost. The record waits with the grace, the sweep sends the check again, and only then is
+    the record released - and the log of the failure quotes no row."""
+    clock = _Clock()
+    rig = _SingleRig(monkeypatch, audit=_FlakyAudit(1), store=helper.MemoryStore(clock))
+    caplog.set_level(logging.INFO)
+    try:
+        _install_backend(monkeypatch, _FakeClient(_ANSWER), _SINGLE)
+        await helper.llm_chat(_HEADERS, {"prompt": "PROMPT-MARKER-1", "system": "SYSTEM-MARKER-1"})
+        await rig.settled(lambda: "check failed" in caplog.text)
+        ((conversation, entry),) = rig.store._records.items()
+        assert entry[0] - clock.now == 86400, "the record waits with the audit's grace (1d)"
+        assert not rig.audit.conversations and await rig.store.unaudited() == [conversation]
+        assert f"conversation={conversation} check failed - _RowError sqlstate=23514" in caplog.text
+        assert await helper.audit_sweep() == 1
+        await rig.settled(lambda: not rig.store._records)
+        assert rig.audit.conversations[conversation]["status"] == "done"
+        assert rig.audit.turn_rows[conversation][1]["request"] == [
+            {"role": "user", "content": "PROMPT-MARKER-1"}
+        ]
+        assert rig.events == [{"conversation": conversation, "check": True}] * 2
+        assert await helper.audit_sweep() == 0, "nothing lags once the record is released"
+        for marker in ("PROMPT-MARKER-1", "SYSTEM-MARKER-1", "REPLY-MARKER-1", "SECRET-MARKER-ROW"):
+            assert marker not in caplog.text, marker
+    finally:
+        await rig.close()
+
+
+async def test_a_loop_turn_is_not_a_single_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The switch changes nothing for a call with tools: a loop turn sends its own two kinds of
+    event and its conversation row keeps its catalog, the column that tells the kinds apart."""
+    rig = _SingleRig(monkeypatch)
+    try:
+        conversation = await _first_turn(monkeypatch, _SINGLE)
+        await rig.settled(lambda: conversation in rig.audit.conversations)
+        assert rig.events == [{"conversation": conversation, "turn": 1}]
+        assert not helper._single_saves
+        assert rig.audit.conversations[conversation]["tools"] == [_TOOL]
+        assert rig.audit.conversations[conversation]["status"] == "open"
+    finally:
+        await rig.close()
+
+
+async def test_single_calls_without_a_working_store_stop_the_application_by_name(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(helper, "_audit", helper.MemoryAuditStore())
+    monkeypatch.setattr(helper, "_sweep_task", None)
+    _configure(monkeypatch, **{"llm.transcript.audit.single": "true", "llm.transcript.store": ""})
+    caplog.set_level(logging.ERROR)
+    with pytest.raises(SystemExit):
+        await helper.audit_boot()
+    assert "llm.transcript.audit.single needs the working store" in caplog.text
+    assert helper._sweep_task is None
