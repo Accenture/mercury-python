@@ -1,7 +1,7 @@
 - [ ] **(blueprint) Attachments on a single `llm.chat` call in the LLM helper: RFC-0016 build plan step 1, Python
   first, the Node twin in lockstep (the maintainer, 2026-11-24: "proceed with implementation for RFC 0015 and 0016";
-  a field request, issue #78).** **Step 1 BUILT 2026-11-24 on `feat/llm-chat-attachments`, a pull request stacked on
-  the one of [[bp-llm-single-call-audit-python]] and opened on the maintainer's word:** `attachments` (a path, or `{path, pages}`) names files inside
+  a field request, issue #78).** **Step 1 BUILT 2026-11-24 as PR #82 (merge `c367951`, MERGED 2026-11-24), on top of
+  PR #81 of [[bp-llm-single-call-audit-python]]:** `attachments` (a path, or `{path, pages}`) names files inside
   `llm.attachments.root`; the helper reads them off the event loop and inside the call's deadline, decides the kind by
   the first bytes and sends base64 `image` and `document` blocks before the last user turn's text; `pages` cuts a PDF
   with pypdf (the `documents` extra); the audit of a single call keeps a reference with the source file's size and
@@ -22,8 +22,7 @@
     that is not a folder as a stop at start; hidden entries refused with no switch; an image's limit taken as 10 and
     5 times 1,048,576 bytes base64-encoded.
   - **Not done:** the measurement of a PDF cut beside a running stream; a live call (no token was spent).
-  - **Next:** the review and the merge, which are the maintainer's - after the first pull request is squashed, this
-    branch is rebased onto `main` (`git rebase --onto main feat/llm-chat-single-call-audit`); the Node twin (it needs a PDF library, and asserts a cut by
+  - **Next:** the Node twin (it needs a PDF library, and asserts a cut by
     its pages, not its bytes); the READMEs' twin and the schema page in mercury-composable; a live drive on both
     backends.
   → proposal: RFC-0016 (mercury-composable)
