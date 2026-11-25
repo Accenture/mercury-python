@@ -37,7 +37,7 @@
     `uploads/` inside the attachments root under new names and returns the references (`path`, the kind by the
     first bytes, the size, the SHA-256, `attachable`). Vectors version 2 (129 cases), 50 REST tests and
     `tests/test_llm_upload.py`; the gates clean; driven live (a PDF and an image uploaded to the running helper,
-    the saved bytes identical, the trace record left).
+    the saved bytes identical, the trace record left). **Raised as PR #84 against the step-1 branch, 2026-11-25.**
   - **Defaults set without a ruling (upload):** one bound for all the files of an upload, 16 MiB; the body absent on
     an upload (Java parity) and the bytes in the pack key `contents` in place of the stream routes; multipart on an
     entry without `upload` stays raw bytes; the intake's saved name `<id>-<the original name made safe>`, never
