@@ -18,7 +18,7 @@
     front of the host's routes: the trace and correlation ids, authentication, the RPC and the interceptor sink, SSE
     and chunked streaming, the built-in default entries, the static-content filter and no-cache pages), `server.py`
     and `actuator.py` wired, the demo's `hello.rest`; 126 shared vector cases and 45 tests; the three gates clean;
-    the demo driven live.
+    the demo driven live. **Raised as PR #83, 2026-11-25.**
   - **Defaults set without a ruling (open to the review):** `upload: true` refused at load rather than ignored; an
     unclaimed path answered by the edge with the engines' 404 in their header shape; `keep` takes precedence over
     `drop` (the Java rule, where the Rust port applies both); one `yaml.rest.automation` location, a missing or empty
