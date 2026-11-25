@@ -715,6 +715,8 @@
       
         
       
+        
+      
     
     
     
@@ -803,6 +805,34 @@
     
   
     Event Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rest-automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Automation
   
 
     
@@ -1187,6 +1217,17 @@
     <span class="md-ellipsis">
       
         HTTP surface (served by the host, no code needed)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rest-automation-serve-http-from-restyaml-no-engine-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST automation (serve HTTP from rest.yaml, no engine needed)
       
     </span>
   </a>
@@ -1595,6 +1636,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rest-automation-serve-http-from-restyaml-no-engine-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST automation (serve HTTP from rest.yaml, no engine needed)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#engine-side-wiring-for-completeness-authored-on-the-engine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1718,11 +1770,55 @@ authored on the engine — use the
 <h2 id="http-surface-served-by-the-host-no-code-needed">HTTP surface (served by the host, no code needed)<a class="headerlink" href="#http-surface-served-by-the-host-no-code-needed" title="Permanent link">&para;</a></h2>
 <p><code>POST /api/event</code> (envelope wire) · <code>GET /</code> <code>/info</code> <code>/info/routes</code> <code>/env</code> <code>/health</code>
 <code>/livenessprobe</code>. Shapes: <a href="../http-surface-reference/">HTTP Surface Reference</a>.</p>
+<h2 id="rest-automation-serve-http-from-restyaml-no-engine-needed">REST automation (serve HTTP from <code>rest.yaml</code>, no engine needed)<a class="headerlink" href="#rest-automation-serve-http-from-restyaml-no-engine-needed" title="Permanent link">&para;</a></h2>
+<p>Opt in with <code>rest.automation: true</code> in <code>resources/application.yml</code>; the router is
+<code>resources/rest.yaml</code> next to the application file, in the engines' grammar
+(<a href="https://accenture.github.io/mercury-composable/guides/rest-automation/rest-grammar/">REST grammar</a>,
+<a href="https://accenture.github.io/mercury-composable/guides/rest-automation/rest-automation.json"><code>rest-automation.json</code></a>).
+Narrative: <a href="../rest-automation/">REST Automation</a>.</p>
+<p>Pre-write checklist for an entry:</p>
+<ol>
+<li><code>service</code> is a function route of <strong>this</strong> application. Never <code>flow:</code> or
+   <code>service: http.flow.adapter</code> (flows run in the engines), never an <code>http(s)://</code> relay,
+   never a list of services — each is refused at load by name.</li>
+<li><code>methods</code> from <code>GET PUT POST DELETE HEAD PATCH</code> (<code>OPTIONS</code> is auto-added); <code>url</code> with
+   <code>{param}</code> segments or a trailing <code>*</code>; <code>timeout</code> 1 s–5 min (30 s default).</li>
+<li>The function reads <code>AsyncHttpRequest(body)</code> — never the bare HTTP body — and replies
+   with a value, an <code>EventEnvelope</code> (status, headers) or an <code>AppException</code> (the standard
+   error body). A <code>null</code> the client must see → serialize the JSON yourself and set
+   <code>content-type: application/json</code>.</li>
+<li><code>authentication: '&lt;route&gt;'</code> names a function that returns <code>True</code> (its reply headers
+   become <code>request.session_info(...)</code>) or raises <code>AppException(401, ...)</code>.</li>
+<li><code>stream: true</code> → an <code>interceptor=True</code> function writing through <code>EventStreamWriter</code>;
+   <code>upload: true</code> → a <code>POST</code> entry, the files in <code>request.files()</code>, within
+   <code>rest.upload.max.bytes</code>.</li>
+<li>Register the functions behind entries <code>private=True</code> when the edge is their only caller.</li>
+<li>A <code>cors:</code> or <code>headers:</code> value must match an <code>id</code> in the same file.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># resources/rest.yaml</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">rest</span><span class="p">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">service</span><span class="p">:</span><span class="w"> </span><span class="s">"order.enrich.rest"</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">methods</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">'POST'</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">"/api/orders/{id}/enrich"</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15s</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">tracing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mercury_composable</span><span class="w"> </span><span class="kn">import</span> <span class="n">AppException</span><span class="p">,</span> <span class="n">AsyncHttpRequest</span><span class="p">,</span> <span class="n">Body</span><span class="p">,</span> <span class="n">EventEnvelope</span><span class="p">,</span> <span class="n">preload</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nd">@preload</span><span class="p">(</span><span class="n">route</span><span class="o">=</span><span class="s2">"order.enrich.rest"</span><span class="p">,</span> <span class="n">instances</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">private</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">enrich_rest</span><span class="p">(</span><span class="n">_headers</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">body</span><span class="p">:</span> <span class="n">Body</span><span class="p">):</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">request</span> <span class="o">=</span> <span class="n">AsyncHttpRequest</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">order_id</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">path_parameter</span><span class="p">(</span><span class="s2">"id"</span><span class="p">)</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">payload</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">body</span>                                  <span class="c1"># the parsed JSON body</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        <span class="k">raise</span> <span class="n">AppException</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="s2">"the body must be a JSON map"</span><span class="p">)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="k">return</span> <span class="n">EventEnvelope</span><span class="p">()</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="mi">200</span><span class="p">)</span><span class="o">.</span><span class="n">set_body</span><span class="p">({</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">order_id</span><span class="p">,</span> <span class="s2">"enriched"</span><span class="p">:</span> <span class="kc">True</span><span class="p">})</span>
+</code></pre></div>
 <h2 id="engine-side-wiring-for-completeness-authored-on-the-engine">Engine-side wiring (for completeness; authored on the engine)<a class="headerlink" href="#engine-side-wiring-for-completeness-authored-on-the-engine" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># application.properties:  yaml.event.over.http=classpath:/event-over-http.yaml</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">event.http</span><span class="p">:</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">route</span><span class="p">:</span><span class="w"> </span><span class="s">'order.enrich'</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">'http://python-host:8086/api/event'</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># application.properties:  yaml.event.over.http=classpath:/event-over-http.yaml</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">event.http</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">route</span><span class="p">:</span><span class="w"> </span><span class="s">'order.enrich'</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">'http://python-host:8086/api/event'</span>
 </code></pre></div>
 <p>Flow task <code>process: 'order.enrich'</code> or graph node
 <code>{"skill": "graph.task", "task": "order.enrich", ...}</code> (engines ≥ v4.11.11 for
@@ -1756,6 +1852,10 @@ graph.task). Details: <a href="../join-event-script/">Join an Event Script Flow<
 <tr>
 <td>let deadlines fail fast (408 envelope)</td>
 <td>swallow timeouts and hoard work</td>
+</tr>
+<tr>
+<td>a <code>rest.yaml</code> entry for an HTTP path</td>
+<td>mount an aiohttp route (<code>Platform.add_routes</code> is the escape hatch for a WebSocket)</td>
 </tr>
 </tbody>
 </table>

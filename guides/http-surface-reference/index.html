@@ -715,6 +715,8 @@
       
         
       
+        
+      
     
     
     
@@ -803,6 +805,34 @@
     
   
     Event Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rest-automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Automation
   
 
     
@@ -1281,6 +1311,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rest-automation-entries-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST automation entries (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#static-content" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1507,6 +1548,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rest-automation-entries-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST automation entries (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#static-content" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1646,6 +1698,51 @@ reports <code>status_code: 404</code> with <code>Please check - Route X not foun
   uuid (the Java reference engine's format).</li>
 <li><code>up_time</code> — the engines' rendering (<code>59 seconds</code>, <code>1 minute 1 second</code>, …).</li>
 </ul>
+<h2 id="rest-automation-entries-opt-in">REST automation entries (opt-in)<a class="headerlink" href="#rest-automation-entries-opt-in" title="Permanent link">&para;</a></h2>
+<p>With <code>rest.automation: true</code> (<a href="../rest-automation/">guide</a>) the entries of <code>rest.yaml</code> are served
+first, in the engines' grammar; <code>POST /api/event</code> and the actuators are the default entries.</p>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Matching</td>
+<td>the engines' precedence — the most specific route wins, <code>{param}</code> and a trailing <code>*</code>; a known path under another method → 405 <code>Method not allowed</code>; an unknown path → 404 <code>Resource not found</code>; <code>OPTIONS</code> → 204 with the entry's CORS <code>options</code> lines, 405 without a CORS block</td>
+</tr>
+<tr>
+<td>Request to the function</td>
+<td>the whole request as the <code>AsyncHttpRequest</code> map — method, url, headers (lowercased, after the request transform), path and query parameters (a form's fields among them), the body parsed by its content type (JSON → map or list, text types → text, else bytes), cookies, the <code>session</code> map an authentication function left; <code>x-ttl</code> carries the entry's timeout in ms</td>
+</tr>
+<tr>
+<td>Reply</td>
+<td>a returned value is the body; a returned <code>EventEnvelope</code> sets the status and headers (<code>set-cookie</code> values split on <code>\|</code>); the content type is the function's or negotiated from <code>Accept</code> (<code>text/html</code> wraps a map in the HTML shell; no <code>Accept</code> → no content type); a map or list is pretty-printed JSON with <code>null</code> entries omitted</td>
+</tr>
+<tr>
+<td>Errors</td>
+<td>the engines' body below with <code>content-type: application/json</code>: an <code>AppException</code> from the function or the authentication function (anything but <code>true</code> from the latter → 401 <code>Unauthorized</code>); 408 <code>Timeout for N ms</code> at the entry's timeout (1 s–5 min, 30 s default; an inbound <code>x-ttl</code> wins); 503 <code>Service X not reachable</code> for an unregistered function; 413 <code>Upload exceeds N bytes</code></td>
+</tr>
+<tr>
+<td>Correlation and tracing</td>
+<td><code>X-Correlation-Id</code> (or <code>http.correlation.id.header</code>) always ensured and echoed, delivered as <code>my_correlation_id</code>; with <code>tracing: true</code> a W3C <code>traceparent</code>, else <code>X-Trace-Id</code> (<code>http.trace.id.header</code>), else a fresh id, and the <code>http.request</code> record plus the function's round-trip record</td>
+</tr>
+<tr>
+<td><code>stream: true</code></td>
+<td>an interceptor's segments rendered progressively: Server-Sent Events (<code>event:</code>/<code>data:</code> frames, <code>event: done</code> at the end, <code>event: error</code> in band, <code>: ping</code> keep-alives every <code>event.stream.keep.alive</code>) for a <code>text/event-stream</code> head or <code>Accept</code>, chunked text or JSON lines otherwise; the entry's timeout is the idle allowance, the head's <code>x-ttl</code> overrides it; a keep-alive that cannot be written ends the stream</td>
+</tr>
+<tr>
+<td><code>upload: true</code></td>
+<td>a <code>POST</code> entry's <code>multipart/form-data</code> files in the request map (<code>filename</code>, <code>file_type</code>, <code>file_length</code>, <code>upload</code>, <code>size</code>, bytes in <code>contents</code>), the form's text fields as query parameters, no body; all files together within <code>rest.upload.max.bytes</code> (16 MiB)</td>
+</tr>
+<tr>
+<td>Precedence</td>
+<td>a <code>rest.yaml</code> entry, then an extension's mounted routes (<code>Platform.add_routes</code>), then the static folder (under the <code>static-content</code> block's <code>no-cache-pages</code> and <code>filter</code>), then the error signature below</td>
+</tr>
+</tbody>
+</table>
 <h2 id="static-content">Static content<a class="headerlink" href="#static-content" title="Permanent link">&para;</a></h2>
 <p>A <code>GET</code> or <code>HEAD</code> of any other path is answered with the file it names inside <code>static.html.folder</code>
 (<code>resources/public</code> next to the application file by default; <code>index.html</code> for a folder) when there
@@ -1663,7 +1760,8 @@ pretty-printed JSON:</p>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"error"</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">}</span>
 </code></pre></div>
-<p>Handler-level errors never use this shape — they ride the envelope on <code>/api/event</code>.</p>
+<p>Handler-level errors never use this shape on <code>/api/event</code> — they ride the envelope. Behind a
+<code>rest.yaml</code> entry a function's <code>AppException</code> <em>does</em> render as this shape, as in the engines.</p>
 
 
 

@@ -715,6 +715,8 @@
       
         
       
+        
+      
     
     
     
@@ -803,6 +805,34 @@
     
   
     Event Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rest-automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Automation
   
 
     
@@ -1597,6 +1627,41 @@
 <td><code>optional.health.dependencies</code></td>
 <td>health check routes reported but never affecting status</td>
 <td>(empty)</td>
+</tr>
+<tr>
+<td><code>rest.automation</code></td>
+<td>REST automation on: the entries of <code>rest.yaml</code> served in front of the functions (<a href="../rest-automation/">guide</a>)</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>yaml.rest.automation</code></td>
+<td>the one location of <code>rest.yaml</code>: <code>classpath:</code> the resources folder, <code>file:</code> an absolute path, a relative path under the application file's folder</td>
+<td><code>classpath:/rest.yaml</code></td>
+</tr>
+<tr>
+<td><code>rest.upload.max.bytes</code></td>
+<td>the bound on the files of one upload entry, together (413 beyond it)</td>
+<td><code>16777216</code></td>
+</tr>
+<tr>
+<td><code>http.trace.id.header</code></td>
+<td>the trace-id header a traced entry reads when no W3C <code>traceparent</code> arrives (<code>trace.id.header</code> overrides it per entry)</td>
+<td><code>X-Trace-Id</code></td>
+</tr>
+<tr>
+<td><code>http.correlation.id.header</code></td>
+<td>the business correlation-id header, always ensured and echoed (<code>correlation.id.header</code> per entry)</td>
+<td><code>X-Correlation-Id</code></td>
+</tr>
+<tr>
+<td><code>http.traceparent.header</code></td>
+<td>a custom name for the W3C <code>traceparent</code> header, read only when the standard one is absent (<code>traceparent.header</code> per entry)</td>
+<td><code>traceparent</code></td>
+</tr>
+<tr>
+<td><code>event.stream.keep.alive</code></td>
+<td>the keep-alive comment interval of a Server-Sent Events reply (<code>/api/event</code> and streaming entries); <code>0</code> disables</td>
+<td><code>30s</code></td>
 </tr>
 <tr>
 <td><code>static.html.folder</code></td>

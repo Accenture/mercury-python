@@ -784,6 +784,8 @@
       
         
       
+        
+      
     
     
     
@@ -872,6 +874,34 @@
     
   
     Event Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="guides/rest-automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Automation
   
 
     
@@ -1517,7 +1547,10 @@ for human–AI collaboration.</p>
 <li><strong>For</strong> teams whose business logic lives in Python — <code>requests</code>-style integrations,
   NumPy/pandas, ML inference - inside a composable, event-driven architecture.</li>
 <li><strong>Not</strong> an orchestrator. Flows, graphs, retries and state live in the engines;
-  this package deliberately provides functions only.</li>
+  this package provides functions and, with <a href="guides/rest-automation/">REST automation</a>,
+  the HTTP edge in front of them — <code>rest.yaml</code> as the router, in the engines' grammar —
+  so a utility application is built and deployed as an engine application is. Ingress,
+  never orchestration.</li>
 </ul>
 </blockquote>
 <h2 id="the-main-theme-in-one-screen">The main theme, in one screen<a class="headerlink" href="#the-main-theme-in-one-screen" title="Permanent link">&para;</a></h2>
@@ -1574,6 +1607,8 @@ end to end. <strong>No engine code changes. No orchestration in Python.</strong>
 <li><strong>Why this design?</strong> <a href="guides/rationale/">Rationale</a> and
   <a href="guides/design/">Design</a> — the thinking before the how.</li>
 <li><strong>Writing functions?</strong> <a href="guides/function-patterns/">Function Writing Patterns</a>.</li>
+<li><strong>Serving HTTP?</strong> <a href="guides/rest-automation/">REST Automation</a> — <code>rest.yaml</code> as the router in
+  front of your functions, with CORS, authentication, streaming, upload and static content.</li>
 <li><strong>Wiring the engine?</strong> <a href="guides/join-event-script/">Join an Event Script Flow</a> ·
   <a href="guides/join-knowledge-graph/">Join a Knowledge Graph</a>.</li>
 <li><strong>You are an AI agent?</strong> Start at the <a href="guides/ai-agent-guide/">AI Agent Guide</a> —

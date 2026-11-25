@@ -11,7 +11,7 @@
 
 ## Start here
 - [Home](https://accenture.github.io/mercury-python/): the three-layer theme and where a Python function sits (a leaf peer over Event-over-HTTP).
-- [AI Agent Guide](https://accenture.github.io/mercury-python/guides/ai-agent-guide/): **start here if you are an AI agent** — the complete authoring grammar on one page: contract, registration, composition, config keys, error rules.
+- [AI Agent Guide](https://accenture.github.io/mercury-python/guides/ai-agent-guide/): **start here if you are an AI agent** — the complete authoring grammar on one page: contract, registration, composition, config keys, error rules, and the REST automation checklist (a `rest.yaml` entry and the function behind it).
 - [Getting Started](https://accenture.github.io/mercury-python/guides/getting-started/): a running function in five minutes, called from an engine flow.
 
 ## Foundations
@@ -20,6 +20,7 @@
 
 ## Write functions
 - [Function Writing Patterns](https://accenture.github.io/mercury-python/guides/function-patterns/): the (headers, body) contract, plain-def vs async-def, AppException, trace context, private functions, composition incl. the sync bridge.
+- [REST Automation](https://accenture.github.io/mercury-python/guides/rest-automation/): opt-in `rest.automation: true` — `rest.yaml` is the router in front of your functions, in the engines' grammar: an entry maps a URL and its methods to a function with CORS, header transforms, an authentication function (its verdict headers become the `session` map), a timeout, tracing, `stream: true` for a progressive reply, the bounded `upload: true` and static content; the function reads the `AsyncHttpRequest` map and replies with a value, an `EventEnvelope` or an `AppException`; a flow binding, the HTTP relay and the A/B dual service are refused by name — a full-service application server for utility apps, ingress never orchestration.
 - [Configuration, Logging & Actuators](https://accenture.github.io/mercury-python/guides/config-logging-actuators/): resources convention, -D overrides, three log formats, actuator endpoints, health-function contract, Kubernetes probes, and the opt-in OpenTelemetry forwarder (`otel.forwarding=true`).
 - [Testing Your Functions](https://accenture.github.io/mercury-python/guides/testing/): handler tests, fresh-registry bus tests, real-HTTP host tests, golden wire vectors.
 
@@ -29,5 +30,5 @@
 
 ## Reference
 - [Configuration Reference](https://accenture.github.io/mercury-python/guides/configuration-reference/): every well-known key, resolution order, substitution syntax.
-- [HTTP Surface Reference](https://accenture.github.io/mercury-python/guides/http-surface-reference/): /api/event protocol, actuator shapes, error signature, content types.
+- [HTTP Surface Reference](https://accenture.github.io/mercury-python/guides/http-surface-reference/): /api/event protocol, actuator shapes, the REST automation entries' behaviour (matching, errors, streaming, upload, precedence), error signature, content types.
 - [Release Notes](https://github.com/Accenture/mercury-python/blob/main/CHANGELOG.md)

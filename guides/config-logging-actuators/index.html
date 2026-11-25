@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://accenture.github.io/mercury-python/guides/config-logging-actuators/">
       
       
-        <link rel="prev" href="../streaming/">
+        <link rel="prev" href="../rest-automation/">
       
       
         <link rel="next" href="../testing/">
@@ -717,6 +717,8 @@
       
         
       
+        
+      
     
     
     
@@ -808,6 +810,34 @@
     
   
     Event Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rest-automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Automation
   
 
     
@@ -1774,8 +1804,9 @@ a bundle ships — and is <code>application/octet-stream</code> otherwise; every
 answers <code>If-None-Match</code> with 304, and HTML is served <code>Cache-Control: no-cache</code>, so a redeployed
 page is revalidated while hashed assets stay cached. Never found, in the engines' error shape: a
 hidden entry (a segment starting with <code>.</code>, so <code>..</code> too), a symbolic link that leaves the folder,
-anything that is not a regular file. Not ported from the Java engine: the static-content filter,
-the <code>no-cache-pages</code> list and the <code>mime.types</code> section.</p>
+anything that is not a regular file. With <a href="../rest-automation/#static-content">REST automation</a> on,
+the <code>static-content</code> block of <code>rest.yaml</code> applies to this folder — the <code>no-cache-pages</code> list and
+the <code>filter</code> function — as in the Java engine; its <code>mime.types</code> section is not ported.</p>
 <h2 id="kubernetes-wiring">Kubernetes wiring<a class="headerlink" href="#kubernetes-wiring" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">livenessProbe</span><span class="p">:</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">/livenessprobe</span><span class="p p-Indicator">,</span><span class="nt"> port</span><span class="p">:</span><span class="w"> </span><span class="nv">8086</span><span class="w"> </span><span class="p p-Indicator">}</span>
@@ -1824,7 +1855,7 @@ polyglot estate.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../streaming/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Event Streaming">
+          <a href="../rest-automation/" class="md-footer__link md-footer__link--prev" aria-label="Previous: REST Automation">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1834,7 +1865,7 @@ polyglot estate.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Event Streaming
+                REST Automation
               </div>
             </div>
           </a>
