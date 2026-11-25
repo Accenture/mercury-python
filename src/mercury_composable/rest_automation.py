@@ -18,6 +18,11 @@ the messages and the error body are the engines' - the pure half lives in
   authentication function whose ``true`` verdict lets the request through and whose headers ride as
   the ``session`` map; its reply becomes the response with the engines' rules (a returned envelope
   sets the status and headers; a failure renders as the standard error body);
+- ``upload: true`` on a POST entry reads a ``multipart/form-data`` body: each file arrives in the
+  request map under the engines' keys (``filename``, ``file_type``, ``file_length``, the ``upload``
+  tags, ``size``) with its bytes in ``contents`` - the pack's bounded form of the engines' streaming
+  upload, within ``rest.upload.max.bytes`` (16 MiB; 413 beyond it) - and the form's text fields
+  become query parameters;
 - ``stream: true`` renders an interceptor's segments as Server-Sent Events or chunked text on the
   pack's reply sink; a traced call leaves the edge's ``http.request`` record and the function's
   round-trip record, as the engines do;
@@ -41,10 +46,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import yaml
-from aiohttp import web
+from aiohttp import BodyPartReader, web
 
 from .actuator import app_origin
-from .async_http_request import AsyncHttpRequest
+from .async_http_request import AsyncHttpRequest, UploadedFile
 from .bus import DeliveryTimeout, EventBus, round_trip_record
 from .config import AppConfig
 from .envelope import EventEnvelope, iso_utc
@@ -64,8 +69,10 @@ from .log import get_logger
 from .registry import FunctionRegistry, ServiceDef
 from .rest_routing import (
     AssignedRoute,
+    ParsedBody,
     RouteInfo,
     RoutingTable,
+    base_content_type,
     compact_json,
     error_body,
     error_payload,
@@ -96,6 +103,11 @@ DEFAULT_TRACE_ID_HEADER = "X-Trace-Id"
 DEFAULT_CORRELATION_ID_HEADER = "X-Correlation-Id"
 TRACEPARENT = "traceparent"
 X_TTL = "x-ttl"
+# the bound on the files of one upload, all of them together (the pack's bounded form of the
+# engines' streaming upload)
+UPLOAD_MAX_BYTES = "rest.upload.max.bytes"
+DEFAULT_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
+MULTIPART_FORM_DATA = "multipart/form-data"
 # the edge's own service name in the trace records (the engines' REST edge)
 HTTP_REQUEST = "http.request"
 EVENT_API_SERVICE = "event.api.service"
@@ -282,6 +294,10 @@ class RestAutomation:
                            or DEFAULT_CORRELATION_ID_HEADER).lower()
         self.traceparent_header = (config.get_property(TRACEPARENT_HEADER, TRACEPARENT)
                                    or TRACEPARENT).lower()
+        try:
+            self.upload_max_bytes = int(config.get(UPLOAD_MAX_BYTES, DEFAULT_UPLOAD_MAX_BYTES))
+        except (TypeError, ValueError):
+            self.upload_max_bytes = DEFAULT_UPLOAD_MAX_BYTES
         self._fallback: list[web.AbstractRoute] = []
         self._started = False
 
@@ -368,7 +384,6 @@ class RestAutomation:
         info = assigned.info
         method = request.method.upper()
         path = request.path
-        raw = await request.read()
         headers = self._request_headers(request)
         if info.headers is not None:
             headers = info.headers.request.apply(headers)
@@ -397,10 +412,20 @@ class RestAutomation:
         query = parse_query(query_text)
         cookies = parse_cookies(headers.pop("cookie", None))
         accept = headers.get("accept")
-        parsed = parse_body(headers.get("content-type"), raw)
-        if parsed.kind == "form":
-            for name, value in parsed.value.items():
+        files: list[UploadedFile] = []
+        declared = (base_content_type(headers.get("content-type")) or "").lower()
+        if info.upload and method == "POST" and declared == MULTIPART_FORM_DATA:
+            # the engines' upload, bounded: the files' bytes ride the request map, a form's text
+            # fields become query parameters, the body stays absent
+            files, fields = await self._read_multipart(request)
+            for name, value in fields.items():
                 query[name] = value
+            parsed = ParsedBody("upload", None)
+        else:
+            parsed = parse_body(headers.get("content-type"), await request.read())
+            if parsed.kind == "form":
+                for name, value in parsed.value.items():
+                    query[name] = value
         http_request = (AsyncHttpRequest().set_method(method).set_url(path)
                         .set_remote_ip(request.remote or "unknown")
                         .set_secure(headers.get("x-forwarded-proto") == "https")
@@ -412,7 +437,12 @@ class RestAutomation:
             http_request.set_path_parameter(name, value)
         for name, value in query.items():
             http_request.set_query_parameter(name, value)
-        http_request.set_body(None if parsed.kind == "form" else parsed.value)
+        if parsed.kind == "upload":
+            for uploaded in files:
+                http_request.add_file(uploaded.name, uploaded.content_type, uploaded.content,
+                                      uploaded.tag)
+        else:
+            http_request.set_body(None if parsed.kind == "form" else parsed.value)
         if query_text:
             http_request.set_query_string(query_text)
         for name, value in cookies.items():
@@ -421,6 +451,49 @@ class RestAutomation:
         edge = _RestEdge(self.bus, trace_id, trace_path, parent_span) if trace_id else None
         return _Prepared(http_request, cid, cid_header, trace_id, trace_path, accept, edge,
                          method == "HEAD")
+
+    async def _read_multipart(self, request: web.Request) -> tuple[list[UploadedFile], dict[str, str]]:
+        """The parts of a multipart body: a part with a filename is a file (its field name the
+        upload tag, its declared type or octet-stream), any other part a text field. The files
+        together may not exceed ``rest.upload.max.bytes`` - a 413 the moment they do."""
+        files: list[UploadedFile] = []
+        fields: dict[str, str] = {}
+        total = 0
+        try:
+            reader = await request.multipart()
+            while True:
+                # reader.next() rather than an async for: the iteration protocol is not typed on
+                # every Python the pack supports
+                part = await reader.next()
+                if part is None:
+                    break
+                if not isinstance(part, BodyPartReader):
+                    continue
+                if part.filename:
+                    chunks: list[bytes] = []
+                    while True:
+                        chunk = await part.read_chunk(65536)
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                        if total > self.upload_max_bytes:
+                            raise AppException(413, f"Upload exceeds {self.upload_max_bytes} bytes")
+                        chunks.append(chunk)
+                    content = b"".join(chunks)
+                    content_type = part.headers.get("Content-Type", "application/octet-stream")
+                    files.append(UploadedFile(part.filename, content_type, len(content),
+                                              part.name or "file", content))
+                else:
+                    text = await part.text()
+                    total += len(text)
+                    if total > self.upload_max_bytes:
+                        raise AppException(413, f"Upload exceeds {self.upload_max_bytes} bytes")
+                    fields[part.name or ""] = text
+        except AppException:
+            raise
+        except (ValueError, LookupError, AssertionError) as e:
+            raise AppException(400, f"Invalid multipart body - {e}") from None
+        return files, fields
 
     @staticmethod
     def _event(to: str, prepared: _Prepared) -> EventEnvelope:
@@ -493,7 +566,10 @@ class RestAutomation:
 
     async def _process(self, request: web.Request, assigned: AssignedRoute) -> web.StreamResponse:
         info = assigned.info
-        prepared = await self._prepare(request, assigned)
+        try:
+            prepared = await self._prepare(request, assigned)
+        except AppException as e:
+            return _error(e.status, e.message)
         edge = prepared.edge
         try:
             if info.authentication:
@@ -669,7 +745,10 @@ class RestAutomation:
         behind the entry's authentication, within its timeout (a caller's ``x-ttl`` wins), with
         the entry's CORS headers and added response headers."""
         info = assigned.info
-        prepared = await self._prepare(request, assigned)
+        try:
+            prepared = await self._prepare(request, assigned)
+        except AppException as e:
+            return _error(e.status, e.message)
         if info.authentication:
             try:
                 await self._authenticate(info, prepared)

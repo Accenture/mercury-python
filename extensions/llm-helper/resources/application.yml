@@ -59,6 +59,14 @@ llm.fallbacks: 'default'
 # bytes of files per call, counted from the files' sizes before they are read (20 MB)
 # llm.attachments.max.bytes: 20971520
 
+# --- the document intake: REST automation (the engines' rest.yaml) ----------------------------
+# resources/rest.yaml serves POST /api/llm/upload (llm.upload, an entry with upload: true): the
+# files of a multipart upload are saved under uploads/ inside llm.attachments.root and their
+# references returned for a later llm.chat call's `attachments`. Off by default in the package;
+# the helper turns it on. The files of one upload are bounded, all together (16 MiB)
+rest.automation: true
+# rest.upload.max.bytes: 16777216
+
 # --- the agent loop's turns (llm.chat with tools): the transcript store -------------------
 # memory keeps the transcripts in this process - development and a single replica. With more
 # than one replica a turn may land on any of them: set redis (the [redis] extra)

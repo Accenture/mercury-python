@@ -155,7 +155,7 @@
   in the helper's store (`llm.transcript.store`: `memory` or `redis`), the loop holds `conversation` and `turn`, a stale or
   ended turn is a 409, the model is pinned at the first turn and no server-side fallback is sent; a second shared vector
   file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
-  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-24 | uses: 8 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-25 | uses: 9 | tier: active | origin: 2026-10-02-001146 -->
 
 - **The MCP binding serves one composable route per allowlisted MCP tool, and the server cannot change a tool under the
   graph (RFC-0011 / ADR-0033 step 4; built 2026-11-14, Python first).** `extensions/mcp-binding/mcp_binding.py` on the
@@ -277,7 +277,7 @@
   access tokens - and the reply page signs the person in by Authorization Code with PKCE (a shell, `GET /ask/config`,
   the wait read from `GET /ask/{ticket}/wait`). **How to apply (amended):** "keeping no store" means no state of the
   wait - the record is an audit log, never consulted to render a wait; the agent-question app reads it.
-  <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-20 | uses: 6 | tier: active | origin: 2026-11-19-054804 -->
+  <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-20 | uses: 6 | tier: archive-candidate | origin: 2026-11-19-054804 -->
 
 - **The agent-question app is the first channel of RFC-0014: a store-and-forward inbox for the person an agent asks,
   a standalone application on the package that the main flow knows nothing of (build plan step 3; built here
@@ -362,12 +362,14 @@
   (`rest_routing.py`: the parser and its refusals, the matching with the engines' precedence, the header transforms,
   the body dispatch by content type, the `Accept` negotiation, the response mapping) is pinned by
   `tests/vectors/rest-automation-vectors.json`, shared with the Node twin. Version 1 is the Rust port's subset;
-  refused by name at load: a flow binding, the HTTP relay, the A/B dual service, `upload`. The edge records
+  refused by name at load: a flow binding, the HTTP relay, the A/B dual service; `upload: true` is the pack's
+  bounded form (the files' bytes in the request map within `rest.upload.max.bytes`, `AsyncHttpRequest.files()`;
+  the LLM helper's `llm.upload` the first intake, 2026-11-25). The edge records
   `http.request` and the function's round trip as the engines do, so the forwarder's SERVER kind holds. **How to
   apply:** a new endpoint is a `rest.yaml` entry and a `@preload` function reading `AsyncHttpRequest(body)`, never a
   mounted route; a behaviour of the edge is first a vector case, then code, in both packs; the grammar's messages
   are the engines' and a pack never grows a dialect; what the engines defer stays deferred until a field request.
-  <!-- id: rest-automation-python | created: 2026-11-25 | last_used: 2026-11-25 | uses: 1 | tier: working | origin: 2026-11-25-005844 -->
+  <!-- id: rest-automation-python | created: 2026-11-25 | last_used: 2026-11-25 | uses: 2 | tier: active | origin: 2026-11-25-005844 -->
 
 ## Conventions
 
@@ -379,11 +381,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-25 | uses: 17 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-25 | uses: 18 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-25 | uses: 8 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-25 | uses: 9 | tier: active | origin: 2026-08-22-171555 -->
 - **Each example app lives in a folder of its own, with a README and its own `resources/` (Eric, 2026-10-01; PR #38).**
   `examples/demo-app/` (the minimal polyglot app: `hello.python`, `hello.declarative`, `hello.chain`, `hello.sync.chain`,
   `hello.tokens`, the private `demo.suffix.helper` and `demo.health`) and `examples/llm-helper/`; run one as

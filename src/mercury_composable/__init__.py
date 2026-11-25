@@ -10,7 +10,7 @@ this package provides functions, the HTTP edge and the minimalist utilities
 (configuration, logging, telemetry) shared with the engine style.
 """
 
-from .async_http_request import AsyncHttpRequest
+from .async_http_request import AsyncHttpRequest, UploadedFile
 from .client import PostOffice
 from .config import AppConfig, app_config, load_config
 from .envelope import Body, EventEnvelope, iso_utc
@@ -36,6 +36,7 @@ __all__ = [
     "Platform",
     "PostOffice",
     "TraceInfo",
+    "UploadedFile",
     "__version__",
     "annotate_trace",
     "app_config",

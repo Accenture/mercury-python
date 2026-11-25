@@ -293,9 +293,13 @@ passes through.
 Precedence: a `rest.yaml` entry, then an extension's mounted routes, then the static folder, then
 the engines' error shape. Refused by name at load, so the grammar shows the scope fence: a `flow`
 binding (`flow:` or `service: http.flow.adapter` — flows run in the engines), the HTTP relay (an
-`http(s)://` service) and the A/B dual service. Deferred as in the Rust engine: `upload`,
-`custom.content.types`, `mime.types` and XML. With the switch off, the default, the host is exactly
-what it was.
+`http(s)://` service) and the A/B dual service. `upload: true` on a `POST` entry is the pack's bounded
+form of the engines' streaming upload: the files of a `multipart/form-data` body arrive in the request
+map under the engines' keys (`filename`, `file_type`, `file_length`, the `upload` tags, `size`) with
+their bytes in `contents`, read with `AsyncHttpRequest.files()`, all together within
+`rest.upload.max.bytes` (16 MiB; 413 beyond it); the form's text fields become query parameters.
+Deferred as in the Rust engine: `custom.content.types`, `mime.types`, XML and request-body
+streaming. With the switch off, the default, the host is exactly what it was.
 
 ## Wire compatibility
 

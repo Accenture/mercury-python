@@ -4,6 +4,8 @@ the engines' behaviour, the Rust port's test list as the checklist (RFC-0018).""
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -63,7 +65,7 @@ def _route_view(route: Any) -> dict[str, Any]:
             "timeout_ms": route.timeout_ms, "cors": route.cors.id if route.cors else None,
             "headers": route.headers.id if route.headers else None,
             "authentication": route.authentication, "tracing": route.tracing,
-            "stream": route.stream, "trace_id_header": route.trace_id_header,
+            "stream": route.stream, "upload": route.upload, "trace_id_header": route.trace_id_header,
             "correlation_id_header": route.correlation_id_header,
             "traceparent_header": route.traceparent_header}
 
@@ -170,7 +172,25 @@ def _build(spec: dict[str, Any]) -> AsyncHttpRequest:
         request.set_cookie(name, value)
     for name, value in spec.get("session", {}).items():
         request.set_session_info(name, value)
+    for uploaded in spec.get("files", []):
+        request.add_file(uploaded["name"], uploaded["content_type"],
+                         base64.b64decode(uploaded["content_base64"]), uploaded["tag"])
     return request
+
+
+def _with_base64(data: dict[str, Any]) -> dict[str, Any]:
+    """A map's file bytes as the vector file carries them (JSON holds no bytes)."""
+    if "contents" in data:
+        data = dict(data)
+        data["contents_base64"] = [base64.b64encode(c).decode("ascii") for c in data.pop("contents")]
+    return data
+
+
+def _from_base64(data: dict[str, Any]) -> dict[str, Any]:
+    if "contents_base64" in data:
+        data = dict(data)
+        data["contents"] = [base64.b64decode(c) for c in data.pop("contents_base64")]
+    return data
 
 
 def _read(request: AsyncHttpRequest, key: str) -> Any:
@@ -181,11 +201,23 @@ def _read(request: AsyncHttpRequest, key: str) -> Any:
 
 def test_vectors_request_model_cases(vectors: dict[str, Any]):
     for case in vectors["request_model_cases"]:
-        assert _build(case["build"]).to_map() == case["map"], case["name"]
+        assert _with_base64(_build(case["build"]).to_map()) == case["map"], case["name"]
     for case in vectors["request_read_cases"]:
         request = AsyncHttpRequest(case["map"])
         for key, expected in case["expect"].items():
             assert _read(request, key) == expected, (case["name"], key)
+
+
+def test_vectors_upload_read_cases(vectors: dict[str, Any]):
+    for case in vectors["upload_read_cases"]:
+        request = AsyncHttpRequest(_from_base64(case["map"]))
+        expect = case["expect"]
+        assert request.is_file == expect["is_file"], case["name"]
+        assert request.content_length == expect["content_length"], case["name"]
+        assert request.upload_tags == expect["upload_tags"], case["name"]
+        files = [{"name": f.name, "content_type": f.content_type, "size": f.size, "tag": f.tag,
+                  "content_base64": base64.b64encode(f.content).decode("ascii")} for f in request.files()]
+        assert files == expect["files"], case["name"]
 
 
 def test_vectors_response_cases(vectors: dict[str, Any]):
@@ -312,6 +344,10 @@ rest:
     methods: ['GET']
     url: "/ops/info"
     authentication: "api.key.check"
+  - service: "upload.probe"
+    methods: ['POST']
+    url: "/api/upload"
+    upload: true
 cors:
   - id: cors_1
     options:
@@ -385,7 +421,7 @@ def build_registry(probe: Probe) -> FunctionRegistry:
                 else "text" if isinstance(value, str) else "bytes" if isinstance(value, bytes)
                 else "map" if isinstance(value, dict) else "list" if isinstance(value, list)
                 else "other")
-        content = value.decode("utf-8") if isinstance(value, bytes) else value
+        content = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
         return {"kind": kind, "content": content, "query": request.query_parameters_map}
 
     async def request_view(_headers: dict[str, str], body: Body):
@@ -447,6 +483,13 @@ def build_registry(probe: Probe) -> FunctionRegistry:
         out.write("partial")
         out.fail(AppException(503, "upstream down"))
 
+    async def upload_probe(_headers: dict[str, str], body: Body):
+        request = AsyncHttpRequest(body)
+        return {"files": [{"name": f.name, "type": f.content_type, "size": f.size, "tag": f.tag,
+                           "sha256": hashlib.sha256(f.content).hexdigest()} for f in request.files()],
+                "query": request.query_parameters_map, "body_present": isinstance(body, dict) and "body" in body,
+                "size": request.content_length, "is_file": request.is_file}
+
     async def forwarder(_headers: dict[str, str], body: Body):
         if isinstance(body, dict):
             probe.datasets.append(body)
@@ -466,6 +509,7 @@ def build_registry(probe: Probe) -> FunctionRegistry:
     registry.register("token.stream", token_stream, interceptor=True)
     registry.register("lines.stream", lines_stream, interceptor=True)
     registry.register("stream.fail", stream_fail, interceptor=True)
+    registry.register("upload.probe", upload_probe)
     registry.register("distributed.trace.forwarder", forwarder, private=True)
     return registry
 
@@ -956,3 +1000,60 @@ def test_cors_lines_resolve_configuration_references(tmp_path: Path, probe: Prob
             assert entry.info.cors.headers == [("Access-Control-Allow-Origin", "https://app.example")]
     finally:
         del os.environ["REST_TEST_ORIGIN"]
+
+
+# ---- upload: the bounded form of the engines' streaming upload ----
+
+PDF_BYTES = b"%PDF-1.4 a small document"
+PNG_BYTES = b"\x89PNG\r\n\x1a\n a small image"
+
+
+def _form() -> aiohttp.FormData:
+    data = aiohttp.FormData()
+    data.add_field("doc", PDF_BYTES, filename="report.pdf", content_type="application/pdf")
+    data.add_field("image", PNG_BYTES, filename="page.png", content_type="image/png")
+    data.add_field("note", "hello world")
+    return data
+
+
+async def post_form(url: str, data: aiohttp.FormData) -> tuple[int, bytes]:
+    async with aiohttp.ClientSession() as session, session.post(url, data=data) as response:
+        return response.status, await response.read()
+
+
+async def test_multipart_upload_delivers_the_files_and_the_fields(rest_url: str):
+    status, body = await post_form(f"{rest_url}/api/upload", _form())
+    assert status == 200, body
+    data = json.loads(body)
+    assert data["files"] == [
+        {"name": "report.pdf", "type": "application/pdf", "size": len(PDF_BYTES), "tag": "doc",
+         "sha256": hashlib.sha256(PDF_BYTES).hexdigest()},
+        {"name": "page.png", "type": "image/png", "size": len(PNG_BYTES), "tag": "image",
+         "sha256": hashlib.sha256(PNG_BYTES).hexdigest()},
+    ]
+    assert data["query"] == {"note": "hello world"}
+    assert data["size"] == len(PDF_BYTES) + len(PNG_BYTES) and data["is_file"] is True
+    assert data["body_present"] is False
+
+
+async def test_a_json_post_to_an_upload_entry_dispatches_as_usual(rest_url: str):
+    status, _, body = await http(f"{rest_url}/api/upload", "POST", {"Content-Type": "application/json"},
+                                 '{"a": 1}')
+    assert status == 200
+    data = json.loads(body)
+    assert data["files"] == [] and data["is_file"] is False and data["body_present"] is True
+
+
+async def test_multipart_to_an_entry_without_upload_is_bytes(rest_url: str):
+    status, body = await post_form(f"{rest_url}/api/probe", _form())
+    assert status == 200
+    data = json.loads(body)
+    assert data["kind"] == "bytes" and "report.pdf" in data["content"]
+
+
+async def test_an_upload_over_the_bound_is_413(tmp_path: Path, probe: Probe, serve: Serve):
+    with configured(tmp_path, REST_YAML, {"rest.upload.max.bytes": 40}):
+        async with serve(build_registry(probe)) as base:
+            status, body = await post_form(f"{base}/api/upload", _form())
+            assert status == 413
+            assert json.loads(body) == {"status": 413, "message": "Upload exceeds 40 bytes", "type": "error"}

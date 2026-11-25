@@ -251,6 +251,41 @@ file is kept even when the file is not.
 Not on `llm.stream`, where a reply carries no schema, and not on a loop turn: a transcript keeps every turn, so it
 would have to keep the files, or references whose files may change between turns.
 
+### Uploading documents
+
+The helper fills its own folder: `POST /api/llm/upload` (a REST automation entry with `upload: true` in
+`resources/rest.yaml`, served because `application.yml` sets `rest.automation: true`) takes a
+`multipart/form-data` upload - PDFs, images, word-processor files, spreadsheets, any file - saves each file
+under `uploads/` inside `llm.attachments.root` under a new name, and returns the references a later
+`llm.chat` call names in `attachments`:
+
+```shell
+curl -s -F 'doc=@contract.pdf' -F 'image=@table.png' http://127.0.0.1:8086/api/llm/upload
+```
+
+```json
+{
+  "files": [
+    {"path": "uploads/3f2a...-contract.pdf", "filename": "contract.pdf", "media_type": "application/pdf",
+     "bytes": 48213, "sha256": "9c1e...", "attachable": true},
+    {"path": "uploads/77b0...-table.png", "filename": "table.png", "media_type": "image/png",
+     "bytes": 2048, "sha256": "0a4d...", "attachable": true}
+  ]
+}
+```
+
+`path` is the reference: a graph node that passes it to `llm.chat` as `attachments[0].path` has the model read
+the document - for the context, the rules and the formulas it holds. `media_type` is the kind by the first
+bytes, else the type the client declared; `attachable` says whether the model takes the file as it is (a PDF
+or an image) or a conversion comes first (a word-processor file or a spreadsheet, which `file.extract` of
+the agent tools turns into text; a PDF rendering of it is the other way). `sha256` is the hash the audit
+keeps, so an exchange can be checked against the file. The saved name is new on every upload (`<id>-<the
+original name made safe>`), so nothing is overwritten and a reference stays valid for the audit's retention.
+The files of one upload are bounded together by `rest.upload.max.bytes` (16 MiB; 413 beyond it), and the
+upload is a 503 by name until `llm.attachments.root` is set. **The folder is readable through the model, and
+this entry writes into it:** in production put an authentication function in front of the entry
+(`authentication: 'my.auth'`) or the gateway, and give the folder a retention of its own.
+
 ## The loop contract
 
 `llm.chat` also serves one model turn of an agent loop. The loop is `llm.run`, a function of the Java and Rust

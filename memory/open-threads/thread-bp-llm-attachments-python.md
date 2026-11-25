@@ -26,6 +26,11 @@
     or message changed; its PDF library is `@cantoo/pdf-lib`, the maintainer's choice, and a cut is asserted by its
     pages, not its bytes. RFC-0016's entry records both steps (mercury-composable #669 and #670).
   - **Next:** the schema page in mercury-composable; a live drive on both backends.
+  - **The folder's first filler, 2026-11-25:** `llm.upload` behind `POST /api/llm/upload` (REST automation's
+    `upload: true`) saves uploaded documents under `uploads/` inside the root and returns the references a call
+    names in `attachments` - Eric's AI SDLC use case, documents uploaded to the helper for context, rules and
+    formula extraction; `attachable` tells a PDF or an image from a file that needs a conversion first; the
+    object-store download stays the later iteration (branch `feat/rest-upload`).
   → proposal: RFC-0016 (mercury-composable)
   → serves: vision-mercury-python
-  <!-- id: bp-llm-attachments-python | created: 2026-11-24 | last_used: 2026-11-24 | uses: 1 | tier: working | origin: 2026-11-24-055310 -->
+  <!-- id: bp-llm-attachments-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 2 | tier: working | origin: 2026-11-24-055310 -->

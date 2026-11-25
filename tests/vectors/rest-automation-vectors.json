@@ -1,7 +1,7 @@
 {
   "contract": "rest-automation",
-  "version": 1,
-  "description": "REST automation's shared vectors (RFC-0018 in mercury-composable): the pure half of the HTTP edge, run by mercury-python and mercury-nodejs against the same file. load_cases pin the rest.yaml parser - the entries, cors, headers and static-content blocks it accepts and the exact message of every refusal, the engines' messages plus the pack's own refusals of a flow binding, the HTTP relay, the A/B dual service and upload. timeout_cases pin the duration grammar and its clamp. match_cases pin the URL matching and its precedence over the 'basic' table (404 when no entry matches, 405 when the path matches under another method). header_transform_cases pin keep, drop and add. body_cases pin the request-body dispatch by content type, query_cases and cookie_cases the request parsing, negotiation_cases and stream_negotiation_cases the Accept rules, request_model_cases the AsyncHttpRequest map an edge builds and request_read_cases its accessors, response_cases the mapping of a reply envelope to the status, header lines and body of the HTTP response, render_cases and stream_text_cases the payload rendering, error_body_cases the error shape. Header names are compared case-insensitively and header lines as a sorted list. No server is started by these cases; the edge is tested by each pack over HTTP.",
+  "version": 2,
+  "description": "REST automation's shared vectors (RFC-0018 in mercury-composable): the pure half of the HTTP edge, run by mercury-python and mercury-nodejs against the same file. load_cases pin the rest.yaml parser - the entries, cors, headers and static-content blocks it accepts and the exact message of every refusal, the engines' messages plus the pack's own refusals of a flow binding, the HTTP relay and the A/B dual service; an upload entry is accepted and its files ride the request map (the engines' keys plus the bytes in contents, the pack's bounded form). timeout_cases pin the duration grammar and its clamp. match_cases pin the URL matching and its precedence over the 'basic' table (404 when no entry matches, 405 when the path matches under another method). header_transform_cases pin keep, drop and add. body_cases pin the request-body dispatch by content type, query_cases and cookie_cases the request parsing, negotiation_cases and stream_negotiation_cases the Accept rules, request_model_cases the AsyncHttpRequest map an edge builds and request_read_cases and upload_read_cases its accessors (file bytes travel as contents_base64 in this file), response_cases the mapping of a reply envelope to the status, header lines and body of the HTTP response, render_cases and stream_text_cases the payload rendering, error_body_cases the error shape. Header names are compared case-insensitively and header lines as a sorted list. No server is started by these cases; the edge is tested by each pack over HTTP.",
   "tables": {
     "basic": "rest:\n  - service: \"greeting.api\"\n    methods: ['GET']\n    url: \"/api/greeting/{user}\"\n    timeout: 10s\n    cors: cors_1\n    headers: header_1\n    tracing: true\n  - service: \"catch.all\"\n    methods: ['GET', 'POST']\n    url: \"/api/files/*\"\n  - service: \"exact.match\"\n    methods: ['GET']\n    url: \"/api/greeting/system\"\n  - service: \"version.ping\"\n    methods: ['GET']\n    url: \"/api/v*/ping\"\n  - service: \"mid.any\"\n    methods: ['GET']\n    url: \"/api/mid/*/end\"\n  - service: \"secure.api\"\n    methods: ['POST']\n    url: \"/api/secure\"\n    authentication: \"api.key.check\"\n    stream: true\n    trace.id.header: 'X-Legacy-Trace'\n    correlation.id.header: 'X-Legacy-Cid'\n    traceparent.header: 'X-Trace-Context'\ncors:\n  - id: cors_1\n    options:\n      - \"Access-Control-Allow-Origin: *\"\n      - \"Access-Control-Allow-Methods: GET, POST, OPTIONS\"\n    headers:\n      - \"Access-Control-Allow-Origin: *\"\nheaders:\n  - id: header_1\n    request:\n      drop: ['x-secret']\n    response:\n      add: [\"x-served-by: mercury\"]\nstatic-content:\n  no-cache-pages: [\"/\", \"/index.html\", \"/app/*\"]\n  filter:\n    path: [\"/\", \"/assets/*\", \"*.html\"]\n    exclusion: [\"*.css\"]\n    service: \"http.request.filter\"\n",
     "defaults": "rest:\n  - service: \"event.api.service\"\n    methods: ['POST']\n    url: \"/api/event\"\n    timeout: 60s\n    tracing: true\n  - service: \"info.actuator.service\"\n    methods: ['GET']\n    url: \"/info\"\n    timeout: 10s\n  - service: \"routes.actuator.service\"\n    methods: ['GET']\n    url: \"/info/routes\"\n    timeout: 10s\n  - service: \"env.actuator.service\"\n    methods: ['GET']\n    url: \"/env\"\n    timeout: 10s\n  - service: \"health.actuator.service\"\n    methods: ['GET']\n    url: \"/health\"\n    timeout: 30s\n  - service: \"liveness.actuator.service\"\n    methods: ['GET']\n    url: \"/livenessprobe\"\n    timeout: 10s\n",
@@ -24,6 +24,7 @@
           "authentication": null,
           "tracing": true,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -41,6 +42,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -57,6 +59,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -73,6 +76,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -89,6 +93,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -105,6 +110,7 @@
           "authentication": "api.key.check",
           "tracing": false,
           "stream": true,
+          "upload": false,
           "trace_id_header": "X-Legacy-Trace",
           "correlation_id_header": "X-Legacy-Cid",
           "traceparent_header": "X-Trace-Context"
@@ -145,6 +151,7 @@
           "authentication": null,
           "tracing": true,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -161,6 +168,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -177,6 +185,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -193,6 +202,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -209,6 +219,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -225,6 +236,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -255,6 +267,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": null,
           "correlation_id_header": null,
           "traceparent_header": null
@@ -284,6 +297,7 @@
           "authentication": null,
           "tracing": false,
           "stream": false,
+          "upload": false,
           "trace_id_header": "X-Legacy",
           "correlation_id_header": null,
           "traceparent_header": null
@@ -338,9 +352,34 @@
       "error": "rest[0] flow binding is not available in a language pack - flows run in the engines (service 'http.flow.adapter')"
     },
     {
-      "name": "upload is deferred and refused when declared",
+      "name": "upload on a POST entry: the bounded form of the engines' streaming upload",
       "yaml": "rest:\n  - service: x.y\n    methods: ['POST']\n    url: /a\n    upload: true\n",
-      "error": "rest[0] 'upload' is not available in this version of the language pack"
+      "routes": [
+        {
+          "service": "x.y",
+          "methods": [
+            "POST"
+          ],
+          "url": "/a",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "upload": true,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        }
+      ],
+      "static": {
+        "no_cache_pages": [
+          "/",
+          "/index.html"
+        ],
+        "filter": null
+      }
     },
     {
       "name": "missing url",
@@ -1017,6 +1056,61 @@
           "path": {}
         }
       }
+    },
+    {
+      "name": "an upload: the engines' parallel lists, size, the tags, and the bytes in contents",
+      "build": {
+        "method": "POST",
+        "url": "/api/upload",
+        "files": [
+          {
+            "name": "a.pdf",
+            "content_type": "application/pdf",
+            "tag": "doc",
+            "content_base64": "JVBERi0xLjQg"
+          },
+          {
+            "name": "b.png",
+            "content_type": "image/png",
+            "tag": "image",
+            "content_base64": "iVBORw0KGgo="
+          }
+        ],
+        "query": {
+          "note": "hello"
+        }
+      },
+      "map": {
+        "method": "POST",
+        "url": "/api/upload",
+        "filename": [
+          "a.pdf",
+          "b.png"
+        ],
+        "file_type": [
+          "application/pdf",
+          "image/png"
+        ],
+        "file_length": [
+          9,
+          8
+        ],
+        "size": 17,
+        "upload": [
+          "doc",
+          "image"
+        ],
+        "contents_base64": [
+          "JVBERi0xLjQg",
+          "iVBORw0KGgo="
+        ],
+        "parameters": {
+          "query": {
+            "note": "hello"
+          },
+          "path": {}
+        }
+      }
     }
   ],
   "request_read_cases": [
@@ -1100,6 +1194,81 @@
         "remote_ip": null,
         "query_string": null,
         "body": null
+      }
+    }
+  ],
+  "upload_read_cases": [
+    {
+      "name": "the files of an upload through the accessors",
+      "map": {
+        "method": "POST",
+        "url": "/api/upload",
+        "filename": [
+          "a.pdf",
+          "b.png"
+        ],
+        "file_type": [
+          "application/pdf",
+          "image/png"
+        ],
+        "file_length": [
+          9,
+          8
+        ],
+        "size": 17,
+        "upload": [
+          "doc",
+          "image"
+        ],
+        "contents_base64": [
+          "JVBERi0xLjQg",
+          "iVBORw0KGgo="
+        ],
+        "parameters": {
+          "query": {},
+          "path": {}
+        }
+      },
+      "expect": {
+        "is_file": true,
+        "content_length": 17,
+        "upload_tags": [
+          "doc",
+          "image"
+        ],
+        "files": [
+          {
+            "name": "a.pdf",
+            "content_type": "application/pdf",
+            "size": 9,
+            "tag": "doc",
+            "content_base64": "JVBERi0xLjQg"
+          },
+          {
+            "name": "b.png",
+            "content_type": "image/png",
+            "size": 8,
+            "tag": "image",
+            "content_base64": "iVBORw0KGgo="
+          }
+        ]
+      }
+    },
+    {
+      "name": "no upload: no files, no size",
+      "map": {
+        "method": "GET",
+        "url": "/x",
+        "parameters": {
+          "query": {},
+          "path": {}
+        }
+      },
+      "expect": {
+        "is_file": false,
+        "content_length": null,
+        "upload_tags": [],
+        "files": []
       }
     }
   ],

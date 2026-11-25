@@ -1,0 +1,20 @@
+#
+# REST automation (the engines' rest.yaml) for the LLM helper - the document intake.
+#
+# A multipart upload to POST /api/llm/upload saves its files under uploads/ inside
+# llm.attachments.root (application.yml) and returns the references a later llm.chat call
+# names in `attachments`: the path inside the folder, the kind by the first bytes, the size,
+# the SHA-256 and whether the file can be attached as it is. The files of one upload are
+# bounded by rest.upload.max.bytes (16 MiB by default).
+#
+# The folder is readable through the model: in production put an authentication function in
+# front of the entry (authentication: 'my.auth', a function answering true or false) or the
+# gateway. POST /api/event and the actuators stay served as the engines' default entries.
+#
+rest:
+  - service: "llm.upload"
+    methods: ['POST']
+    url: "/api/llm/upload"
+    upload: true
+    timeout: 60s
+    tracing: true
