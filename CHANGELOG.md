@@ -397,6 +397,18 @@
     that reads these endpoints with its own client sees the error body gain `status`; nothing else changes. The Node
     pack follows.
 
+### Documentation
+
+1. **The documentation site gains the REST Automation guide, and the references follow.** `docs/guides/rest-automation.md`
+   is the narrative of `rest.yaml` in the pack: turning it on, the file as the router, the function behind an entry
+   with the `AsyncHttpRequest` accessors and the reply rules, what the edge does, the authentication function and the
+   session map, streaming entries (the idle allowance, the keep-alive, a long-lived producer's `connected`), the bounded
+   upload, the `static-content` block, the default entries and the precedence, what a pack refuses and defers, the
+   shipped examples and how to test an entry. The HTTP Surface Reference gains the entries' behaviour, the
+   Configuration Reference the keys (`rest.automation`, `yaml.rest.automation`, `rest.upload.max.bytes`, the three
+   `http.*.header` names, `event.stream.keep.alive`), the AI Agent Guide a pre-write checklist with a minimal entry
+   and function, the site index and `llms.txt` their entries. **Upgrade note:** none.
+
 ## Version 4.12.30, 11/16/2026
 
 The catch-up round with the engines: the pack moves from 4.12.21 to 4.12.30, the number the Java engine released on

@@ -56,9 +56,16 @@
   - **The Node twin of the first adopters MERGED 2026-11-25** (mercury-nodejs #148, `4bd3bc1`, by the twin's session):
     the same entries, functions and authentication functions, aligned to this pack's shape; both packs' routes are
     `rest.yaml` entries now.
-  - **Next:** the engines' polyglot guide and the RFC's resolution (step 2 and the adopters, in mercury-composable);
-    a live drive through an engine's `async.http.request` with the trace lineage checked; then the promotion to an
-    ADR.
+  - **Documented 2026-11-25 (Eric: "add REST automation documentation for python and node"), branch
+    `docs/rest-automation-guide`, raised as PR #88:** the documentation site gains `docs/guides/rest-automation.md` - turning it on, the
+    file as the router, the function behind an entry with the `AsyncHttpRequest` accessors and the reply rules, the
+    edge, the authentication function and the session map, streaming entries, the bounded upload, the `static-content`
+    block, the default entries and the precedence, what a pack refuses and defers, the shipped examples, how to test
+    an entry; the HTTP Surface Reference, the Configuration Reference, the AI Agent Guide (a pre-write checklist), the
+    site index, `llms.txt` and the nav follow. The Node twin of the docs by a delegated agent; the engines' repository
+    records step 2 and the adopters in RFC-0018 and documents the packs in the polyglot guide and the REST guides.
+  - **Next:** a live drive through an engine's `async.http.request` with the trace lineage checked; then the
+    promotion of RFC-0018 to an ADR.
   - **Upload BUILT 2026-11-25 (Eric: "Please add upload feature after this PR"; the use case: documents uploaded
     to the LLM helper for a model to read), branch `feat/rest-upload` stacked on the step-1 branch:** `upload: true`
     on a POST entry is the pack's bounded form of the engines' streaming upload - the files of a multipart body in
