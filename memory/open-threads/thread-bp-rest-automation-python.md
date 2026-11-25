@@ -57,7 +57,7 @@
     the same entries, functions and authentication functions, aligned to this pack's shape; both packs' routes are
     `rest.yaml` entries now.
   - **Documented 2026-11-25 (Eric: "add REST automation documentation for python and node"), branch
-    `docs/rest-automation-guide`:** the documentation site gains `docs/guides/rest-automation.md` - turning it on, the
+    `docs/rest-automation-guide`, raised as PR #88:** the documentation site gains `docs/guides/rest-automation.md` - turning it on, the
     file as the router, the function behind an entry with the `AsyncHttpRequest` accessors and the reply rules, the
     edge, the authentication function and the session map, streaming entries, the bounded upload, the `static-content`
     block, the default entries and the precedence, what a pack refuses and defers, the shipped examples, how to test
