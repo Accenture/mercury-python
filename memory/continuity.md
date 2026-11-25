@@ -390,6 +390,15 @@
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
   <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-24 | uses: 5 | tier: active | origin: 2026-10-14-015420 -->
 
+- **The live interop gate is a release convention (Eric, 2026-11-25; closes the Blueprint gap [[bp-publish-interop-gate]]).**
+  Every pack release is driven live against both engines before it is published - the Vision's success criterion met by
+  practice, never tracked as a gap: 4.12.0 (progressive rendering across the wrappers), 4.12.15 (the four-runtime Dynatrace
+  drive of 2026-09-22), 4.12.21 (the LLM helper certified through both engines), 4.12.30 (the agent loop's pack half and
+  the MCP binding driven live from the Java engine). **How to apply:** a release thread names the live drive and the report
+  it left before the publication, and a release with no drive is not cut; the cadence and the supply-chain posture stay
+  Eric's (design P5/D6).
+  <!-- id: conv-release-interop-gate | created: 2026-11-25 | last_used: 2026-11-25 | uses: 1 | tier: working | origin: 2026-11-25-002254 -->
+
 ## Open Threads
 
 > Open Threads live **one per file** in `memory/open-threads/` (`thread-<id>.md`;
