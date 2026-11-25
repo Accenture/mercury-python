@@ -8,6 +8,10 @@
 > release number it caught up to. **Subprocesses allowed for stdio MCP 2026-11-03 (Eric).**
 > **Wording refreshed 2026-11-13 (Eric):** the legacy language pack lives in tagged releases.
 > **Current-state line refreshed 2026-11-16:** v4.12.30 published.
+> **REST automation added 2026-11-24 (Eric):** the pack becomes a full-service application
+> development server - the engines' `rest.yaml` edge in front of its functions - for the field's
+> utility apps, inspired by the AI SDLC work where utility functions run in the language packs
+> (RFC-0018 in mercury-composable); the scope fence is unchanged.
 > Treated as `core` (never decays) but re-confirmed on the
 > invariant-verification cadence — a vision can go stale. The **Blueprint** (Open Threads
 > tagged `(blueprint)` in `continuity.md`) tracks the gap from Current State to here;
@@ -17,9 +21,11 @@
 
 ## Elevator statement
 
-The **Python doorway into Mercury Composable**: a deliberately tiny Event-over-HTTP
-wrapper that lets developers write functions in the language that genuinely earns its
-place — while the engines own all orchestration.
+The **Python doorway into Mercury Composable**: a lightweight Event-over-HTTP wrapper
+that lets developers write functions in the language that genuinely earns its place, and
+— with REST automation — a full-service application development server, so a utility app
+in Python is built and deployed as an engine application is, while the engines own all
+orchestration.
 
 ## Current-state context
 
@@ -47,6 +53,14 @@ lives in tagged releases (v1.11.39–v2.5.0).
 - The **rapid-prototyping path**: `pip install mercury-composable` plus the
   `mercury-serve` one-liner; heavy libraries (pandas, ML) load once in a long-lived
   service.
+- A **full-service application development server for utility apps (Eric, 2026-11-24):**
+  the engines' REST automation in the pack — `rest.yaml` is the router, mapping a URL and
+  its methods to a function with CORS, header transforms, an authentication function, a
+  timeout, tracing and static content, in the engines' grammar and never a dialect of it —
+  so the field's Python utility scripts become applications designed, configured and
+  deployed in one consistent manner with the engines' applications, beside the AI SDLC's
+  utility functions that already run here. Ingress, not orchestration: a `flow` binding is
+  refused by name (RFC-0018 in mercury-composable).
 - **Bidirectional and invisible in the architecture**: functions addressed from Event
   Script flows and MiniGraph tasks as if local (declarative map, zero caller code); the
   thin client calls engine or peer functions over the same protocol.
@@ -69,13 +83,18 @@ teams, who gain polyglot reach with zero engine coupling.
   live interop gate against both engines on every release.
 - The dev loop stays one-liner simple; cross-language trace continuity gives one log
   aggregation.
+- A `rest.yaml` written for an engine loads in the pack unchanged (a flow binding apart),
+  and a utility app ships as REST endpoints, functions and a web bundle with no web
+  framework of its own.
 
 ## Non-goals (what it must never become)
 
 - **Never a composable foundation or full SDK** — no flows, no graphs, no persistence (in
   the package: the LLM helper's configurable transcript store is that application's,
   2026-11-03), no pub/sub broadcast, no orchestration. Those live in the engines (the
-  ratified scope fence). This is **not** a ban on an in-process dispatch bus.
+  ratified scope fence). This is **not** a ban on an in-process dispatch bus, nor on the
+  HTTP edge: REST automation is ingress configuration in front of the pack's functions
+  (2026-11-24), never a flow or a graph — a `flow` binding is refused by name.
 - **The primitive in-process event bus is in scope** (ratified 2026-08-23, implemented):
   the single dispatch pipeline — one FIFO mailbox per route, `instances` worker tasks,
   `deliver` (RPC) and `publish` (drop-n-forget) only. HTTP and local `PostOffice` are thin
@@ -95,5 +114,5 @@ teams, who gain polyglot reach with zero engine coupling.
 
 ## Mental model
 
-> Functions in your language; orchestration in the engines — one wire format keeps
-> everyone honest.
+> Functions in your language; orchestration in the engines — one wire format and one
+> `rest.yaml` grammar keep everyone honest.
