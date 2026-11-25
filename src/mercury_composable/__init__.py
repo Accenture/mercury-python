@@ -4,11 +4,13 @@ Mercury Composable — polyglot functions for Python.
 A lightweight Event-over-HTTP function host and client: write decoupled
 functions in Python and let Java/Rust Mercury engines orchestrate them from
 Event Script flows and MiniGraph knowledge graphs through the declarative
-``yaml.event.over.http`` routing map. Orchestration stays in the engines;
-this package deliberately provides functions only, plus the minimalist
-utilities (configuration, logging, telemetry) shared with the engine style.
+``yaml.event.over.http`` routing map, or serve them to the world through the
+engines' REST automation (``rest.yaml``). Orchestration stays in the engines;
+this package provides functions, the HTTP edge and the minimalist utilities
+(configuration, logging, telemetry) shared with the engine style.
 """
 
+from .async_http_request import AsyncHttpRequest
 from .client import PostOffice
 from .config import AppConfig, app_config, load_config
 from .envelope import Body, EventEnvelope, iso_utc
@@ -23,6 +25,7 @@ from .version import __version__
 __all__ = [
     "AppConfig",
     "AppException",
+    "AsyncHttpRequest",
     "Body",
     "CompactFormatError",
     "EventApiServer",

@@ -10,6 +10,10 @@ info.app.description: 'Mercury Composable polyglot demo'
 
 rest.server.port: 8086
 
+# REST automation - the engines' rest.yaml: resources/rest.yaml maps GET /api/hello/{name} to the
+# function hello.rest. Off by default in the package; the demo turns it on.
+rest.automation: true
+
 # text (default) | json (pretty-printed) | compact (single-line JSONL)
 log.format: text
 log.level: INFO

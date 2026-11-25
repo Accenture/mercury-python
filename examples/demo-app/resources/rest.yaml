@@ -1,0 +1,45 @@
+#
+# REST automation - the engines' rest.yaml, served by this application when
+# application.yml sets rest.automation: true. An entry maps a URL and its methods
+# to a function; the function receives the whole request as the AsyncHttpRequest
+# map (see hello.rest in demo_app.py). Try:
+#
+#   curl -s http://127.0.0.1:8086/api/hello/world?lang=fr
+#
+# POST /api/event and the actuators stay served as the engines' default entries.
+# The grammar is the engines' (docs/guides/rest-automation in mercury-composable);
+# a pack refuses a flow binding, the HTTP relay and the A/B dual service by name.
+#
+rest:
+  - service: "hello.rest"
+    methods: ['GET']
+    url: "/api/hello/{name}"
+    timeout: 10s
+    cors: cors_1
+    headers: header_1
+    tracing: true
+
+#
+# CORS headers for the pre-flight (HTTP OPTIONS) and the normal responses.
+# The origin comes from api.origin in application.yml (or the environment), "*" by default.
+#
+cors:
+  - id: cors_1
+    options:
+      - "Access-Control-Allow-Origin: ${api.origin:*}"
+      - "Access-Control-Allow-Methods: GET, OPTIONS"
+      - "Access-Control-Allow-Headers: Origin, Authorization, X-Correlation-Id, Accept, Content-Type"
+      - "Access-Control-Max-Age: 86400"
+    headers:
+      - "Access-Control-Allow-Origin: ${api.origin:*}"
+
+#
+# add / drop / keep HTTP request and response headers
+#
+headers:
+  - id: header_1
+    request:
+      drop: ['Upgrade-Insecure-Requests', 'cache-control', 'accept-encoding', 'connection']
+    response:
+      add:
+        - "Cache-Control: no-cache, no-store"

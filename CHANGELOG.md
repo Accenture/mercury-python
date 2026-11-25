@@ -259,6 +259,29 @@
    server connected and every bound route answered 503. Both entry points attach the hooks now, so a bad server file
    stops the direct run by name as it stops the served one.
 
+13. **REST automation: `rest.yaml` as the router of a Python application (RFC-0018 in mercury-composable, build
+   plan step 1).** With `rest.automation: true` the host reads one `yaml.rest.automation` location (default
+   `classpath:/rest.yaml`, the `resources/rest.yaml` next to the application file; `file:` an absolute path) in the
+   engines' grammar and serves its entries on the one server: a URL and its methods mapped to a function, which
+   receives the whole request as the engines' `AsyncHttpRequest` map (the class is exported for reading it); CORS
+   blocks with the preflight; request and response header transforms; an `authentication` function whose `true`
+   verdict lets the request through and whose headers ride as the session map; the entry's `timeout` riding the
+   request as `x-ttl` (an inbound one wins) and answering 408; `tracing` from a W3C `traceparent`, the trace-id
+   header or a fresh id with the per-entry header-name overrides, leaving the edge's `http.request` record and the
+   function's round-trip record as the engines leave them; the correlation id always ensured, delivered as
+   `my_correlation_id` and echoed on the response; the request body parsed by its declared content type, repeated
+   query parameters as a list, cookies as a map; the response content type the function's or negotiated from
+   `Accept`, a failure as the standard error body, a returned envelope setting the status and headers;
+   `stream: true` rendering an interceptor's segments as Server-Sent Events or chunked text; `POST /api/event` and
+   the actuators as the engines' default entries a user entry may override; the `static-content` block's
+   `no-cache-pages` and `filter` over the static folder. An entry whose function is not registered at the end of
+   the boot is skipped with the engines' warning, never a live URL. Refused by name at load, so the grammar shows the
+   scope fence: a flow binding, the HTTP relay, the A/B dual service and `upload`; deferred as in the Rust port:
+   `custom.content.types`, `mime.types` and XML. Off by default: without the switch the host is unchanged. Pinned
+   by `tests/vectors/rest-automation-vectors.json` (new, 126 cases over the pure half, shared with the Node pack)
+   and the 45 tests of `tests/test_rest_automation.py` over HTTP; the demo app gains `hello.rest` at
+   `GET /api/hello/{name}` with its `resources/rest.yaml`. No new dependency.
+
 ### Changed
 
 1. **The agent-question app reads the question record and writes nothing: the backend of the React UI (RFC-0014

@@ -18,6 +18,7 @@ import asyncio
 
 from mercury_composable import (
     AppException,
+    AsyncHttpRequest,
     Body,
     EventEnvelope,
     EventStreamWriter,
@@ -82,6 +83,18 @@ def sync_chain(_headers: dict[str, str], body: Body):
     never the event loop."""
     reply = PostOffice().request_sync("demo.suffix.helper", body=body, timeout_ms=5000)
     return reply.body
+
+
+@preload(route="hello.rest", instances=10)
+def hello_rest(_headers: dict[str, str], body: Body):
+    """A REST automation endpoint - GET /api/hello/{name}?lang=fr, declared in resources/rest.yaml.
+    The function receives the whole request as the engines' AsyncHttpRequest map and reads it
+    with the engines' accessors; a returned EventEnvelope would set the status and headers."""
+    request = AsyncHttpRequest(body)
+    name = request.path_parameter("name") or "world"
+    greeting = "Bonjour" if request.query_parameter("lang") == "fr" else "Hello"
+    annotate_trace("language", "python")
+    return {"greeting": f"{greeting}, {name}", "method": request.method, "language": "python"}
 
 
 @preload(route="hello.tokens", instances=10, interceptor=True)

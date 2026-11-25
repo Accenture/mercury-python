@@ -15,6 +15,10 @@ This package is a deliberately **lightweight wrapper of the Event-over-HTTP prot
   per route consumed by `instances` worker tasks, and
 - the **minimalist utilities** shared with the engines for consistency: configuration
   management, logging in the engines' presentation format, and distributed-trace context, and
+- the engines' **REST automation** (opt-in, `rest.automation=true`): `rest.yaml` as the router
+  in front of your functions - a URL and its methods mapped to a function, with CORS, header
+  transforms, an authentication function, a timeout, tracing and static content - so a utility
+  application in Python is built and deployed as an engine application is, and
 - the **OpenTelemetry forwarder** (opt-in, `otel.forwarding=true`): the host's trace spans
   exported over OTLP/HTTP to Dynatrace, Splunk or a collector — no SDK, no new dependency.
 
@@ -212,6 +216,87 @@ anything that is not a regular file is not found, in the engines' error shape. A
 the key is under the application file's folder, never the working directory; `file:` prefixes an
 absolute path as in the Java engine; an empty value turns the service off.
 
+## REST automation
+
+With `rest.automation: true` the host also serves the entries of `rest.yaml` — the engines' REST
+automation, where the file *is* the router: an entry maps a URL and its methods to a function, with
+CORS, header transforms, an authentication function, a timeout, tracing and static content, so a
+utility application in Python is designed and deployed as an engine application is. The file is
+read from `yaml.rest.automation` (default `classpath:/rest.yaml`, the `resources/rest.yaml` next to
+the application file; `file:` prefixes an absolute path) in the engines' grammar — the
+[REST automation guide](https://accenture.github.io/mercury-composable/guides/rest-automation/) and
+its [grammar](https://accenture.github.io/mercury-composable/guides/rest-automation/rest-grammar/)
+apply unchanged, and a misconfigured entry fails the start with the engines' message.
+
+```yaml
+rest:
+  - service: "profile.lookup"
+    methods: ['GET']
+    url: "/api/profile/{id}"
+    timeout: 10s
+    cors: cors_1
+    headers: header_1
+    authentication: "v1.api.auth"
+    tracing: true
+cors:
+  - id: cors_1
+    options:
+      - "Access-Control-Allow-Origin: ${api.origin:*}"
+      - "Access-Control-Allow-Methods: GET, OPTIONS"
+    headers:
+      - "Access-Control-Allow-Origin: ${api.origin:*}"
+headers:
+  - id: header_1
+    response:
+      add: ["Cache-Control: no-cache, no-store"]
+```
+
+The function receives the whole request as its body — the engines' `AsyncHttpRequest` map, never
+the bare HTTP body — and reads it with the engines' accessors; a returned `EventEnvelope` sets the
+status and headers, a raised `AppException` is the error:
+
+```python
+from mercury_composable import AppException, AsyncHttpRequest, Body, EventEnvelope, preload
+
+@preload(route="profile.lookup", instances=10)
+async def lookup(headers: dict[str, str], body: Body):
+    request = AsyncHttpRequest(body)
+    profile_id = request.path_parameter("id")     # from url: /api/profile/{id}
+    if profile_id == "0":
+        raise AppException(404, "no such profile")  # the standard error body on the wire
+    return EventEnvelope().set_header("x-source", "demo").set_body({"profile_id": profile_id})
+```
+
+What the edge does, as the engines do it: the request body is parsed by its declared content type
+(`application/json` to a map or list, the text types to text, a form's fields into the query
+parameters, anything else to bytes); repeated query parameters become a list and cookies a map;
+the response content type is the function's or negotiated from `Accept` (`text/html` wraps a map
+in an HTML shell; no `Accept` means no content type); a failure renders as the standard error body
+`{"status", "message", "type": "error"}`; the correlation id (`X-Correlation-Id`, or
+`http.correlation.id.header`) is always ensured, delivered as the read-only `my_correlation_id`
+header and echoed on the response; with `tracing: true` the edge starts a trace from a W3C
+`traceparent`, else the trace-id header (`http.trace.id.header`), else a fresh id, and leaves the
+`http.request` record the engines leave, so the OpenTelemetry forwarder exports the request as a
+SERVER span. The entry's `timeout` (1 s to 5 min, 30 s by default) rides the request as `x-ttl` and
+answers 408 when it expires; an inbound `x-ttl` wins. `OPTIONS` is answered from the `options` lines
+of the entry's CORS block (405 without one); a known path under another method is 405, an unknown
+path 404. `stream: true` renders an interceptor's segments progressively — Server-Sent Events for a
+`text/event-stream` head or `Accept`, chunked text or JSON lines otherwise. `POST /api/event` and
+the actuators are the engines' default entries, so a user entry for `/api/event` can attach
+`authentication`, CORS or a timeout to it; an entry whose function is not registered at the end of
+the boot is skipped with a warning, never a live URL. The `static-content` block applies to the
+static folder: the `no-cache-pages` (default `/` and `/index.html`) are served
+`Cache-Control: no-cache, no-store`, and the `filter` function sees every matching static request
+first — its headers ride the response, and a status other than 200 (a 302 to a sign-in page)
+passes through.
+
+Precedence: a `rest.yaml` entry, then an extension's mounted routes, then the static folder, then
+the engines' error shape. Refused by name at load, so the grammar shows the scope fence: a `flow`
+binding (`flow:` or `service: http.flow.adapter` — flows run in the engines), the HTTP relay (an
+`http(s)://` service) and the A/B dual service. Deferred as in the Rust engine: `upload`,
+`custom.content.types`, `mime.types` and XML. With the switch off, the default, the host is exactly
+what it was.
+
 ## Wire compatibility
 
 The codec implements the
@@ -230,7 +315,8 @@ millisecond precision; binary payloads use MsgPack `bin`.
 This package intentionally contains **no orchestration: no flows, no graphs, no
 persistence, no pub/sub broadcast** — those live in the engines. What it does carry is
 deliberately minimal: functions, a primitive in-process event bus (route mailboxes +
-workers, RPC and drop-n-forget — nothing more), and the minimalist foundation utilities,
+workers, RPC and drop-n-forget — nothing more), the engines' REST automation edge (an opt-in
+`rest.yaml` — ingress, never orchestration), and the minimalist foundation utilities,
 keeping Python fast to prototype with while the composable core guarantees the
 architecture.
 
