@@ -3,7 +3,7 @@ title: AI Agent Guide
 summary: The complete authoring grammar for Python polyglot functions on one page -
   contract, registration, config keys, endpoints and error rules, for deterministic generation.
 audience: [ai-agent]
-keywords: [ai agent, grammar, contract, deterministic, preload, postoffice]
+keywords: [ai agent, grammar, contract, deterministic, preload, postoffice, rest automation, rest.yaml]
 ---
 
 # AI Agent Guide
@@ -105,6 +105,56 @@ List the route in `mandatory.health.dependencies` (or `optional.…`).
 `POST /api/event` (envelope wire) · `GET /` `/info` `/info/routes` `/env` `/health`
 `/livenessprobe`. Shapes: [HTTP Surface Reference](http-surface-reference.md).
 
+## REST automation (serve HTTP from `rest.yaml`, no engine needed)
+
+Opt in with `rest.automation: true` in `resources/application.yml`; the router is
+`resources/rest.yaml` next to the application file, in the engines' grammar
+([REST grammar](https://accenture.github.io/mercury-composable/guides/rest-automation/rest-grammar/),
+[`rest-automation.json`](https://accenture.github.io/mercury-composable/guides/rest-automation/rest-automation.json)).
+Narrative: [REST Automation](rest-automation.md).
+
+Pre-write checklist for an entry:
+
+1. `service` is a function route of **this** application. Never `flow:` or
+   `service: http.flow.adapter` (flows run in the engines), never an `http(s)://` relay,
+   never a list of services — each is refused at load by name.
+2. `methods` from `GET PUT POST DELETE HEAD PATCH` (`OPTIONS` is auto-added); `url` with
+   `{param}` segments or a trailing `*`; `timeout` 1 s–5 min (30 s default).
+3. The function reads `AsyncHttpRequest(body)` — never the bare HTTP body — and replies
+   with a value, an `EventEnvelope` (status, headers) or an `AppException` (the standard
+   error body). A `null` the client must see → serialize the JSON yourself and set
+   `content-type: application/json`.
+4. `authentication: '<route>'` names a function that returns `True` (its reply headers
+   become `request.session_info(...)`) or raises `AppException(401, ...)`.
+5. `stream: true` → an `interceptor=True` function writing through `EventStreamWriter`;
+   `upload: true` → a `POST` entry, the files in `request.files()`, within
+   `rest.upload.max.bytes`.
+6. Register the functions behind entries `private=True` when the edge is their only caller.
+7. A `cors:` or `headers:` value must match an `id` in the same file.
+
+```yaml
+# resources/rest.yaml
+rest:
+  - service: "order.enrich.rest"
+    methods: ['POST']
+    url: "/api/orders/{id}/enrich"
+    timeout: 15s
+    tracing: true
+```
+
+```python
+from mercury_composable import AppException, AsyncHttpRequest, Body, EventEnvelope, preload
+
+@preload(route="order.enrich.rest", instances=10, private=True)
+async def enrich_rest(_headers: dict[str, str], body: Body):
+    request = AsyncHttpRequest(body)
+    order_id = request.path_parameter("id")
+    payload = request.body                                  # the parsed JSON body
+    if not isinstance(payload, dict):
+        raise AppException(400, "the body must be a JSON map")
+    return EventEnvelope().set_status(200).set_body({"id": order_id, "enriched": True})
+```
+
 ## Engine-side wiring (for completeness; authored on the engine)
 
 ```yaml
@@ -128,3 +178,4 @@ graph.task). Details: [Join an Event Script Flow](join-event-script.md) ·
 | keep functions stateless | cache business state in module globals |
 | compose one or two leaf helpers | re-implement flows/retries in Python |
 | let deadlines fail fast (408 envelope) | swallow timeouts and hoard work |
+| a `rest.yaml` entry for an HTTP path | mount an aiohttp route (`Platform.add_routes` is the escape hatch for a WebSocket) |

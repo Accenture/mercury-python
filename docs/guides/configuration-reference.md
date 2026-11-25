@@ -33,6 +33,13 @@ keywords: [configuration, reference, keys, substitution, overrides]
 | `show.application.properties` | opt-in list of configuration keys shown by `/env` | (empty) |
 | `mandatory.health.dependencies` | routes of health check functions that decide `/health` | (empty) |
 | `optional.health.dependencies` | health check routes reported but never affecting status | (empty) |
+| `rest.automation` | REST automation on: the entries of `rest.yaml` served in front of the functions ([guide](rest-automation.md)) | `false` |
+| `yaml.rest.automation` | the one location of `rest.yaml`: `classpath:` the resources folder, `file:` an absolute path, a relative path under the application file's folder | `classpath:/rest.yaml` |
+| `rest.upload.max.bytes` | the bound on the files of one upload entry, together (413 beyond it) | `16777216` |
+| `http.trace.id.header` | the trace-id header a traced entry reads when no W3C `traceparent` arrives (`trace.id.header` overrides it per entry) | `X-Trace-Id` |
+| `http.correlation.id.header` | the business correlation-id header, always ensured and echoed (`correlation.id.header` per entry) | `X-Correlation-Id` |
+| `http.traceparent.header` | a custom name for the W3C `traceparent` header, read only when the standard one is absent (`traceparent.header` per entry) | `traceparent` |
+| `event.stream.keep.alive` | the keep-alive comment interval of a Server-Sent Events reply (`/api/event` and streaming entries); `0` disables | `30s` |
 | `static.html.folder` | the folder of static web content the host serves for the paths nothing else claims — relative to the application file's folder ([guide](config-logging-actuators.md#static-content-the-engines-public-folder)) | `resources/public` |
 | `otel.forwarding` | the OpenTelemetry forwarder's master switch ([guide](config-logging-actuators.md#distributed-tracing-the-opentelemetry-forwarder-opt-in)) | `false` |
 | `otel.exporter.otlp.endpoint` | the OTLP/HTTP traces URL including the signal path | `http://localhost:4318/v1/traces` |

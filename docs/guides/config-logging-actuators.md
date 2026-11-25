@@ -155,8 +155,9 @@ a bundle ships — and is `application/octet-stream` otherwise; every file carri
 answers `If-None-Match` with 304, and HTML is served `Cache-Control: no-cache`, so a redeployed
 page is revalidated while hashed assets stay cached. Never found, in the engines' error shape: a
 hidden entry (a segment starting with `.`, so `..` too), a symbolic link that leaves the folder,
-anything that is not a regular file. Not ported from the Java engine: the static-content filter,
-the `no-cache-pages` list and the `mime.types` section.
+anything that is not a regular file. With [REST automation](rest-automation.md#static-content) on,
+the `static-content` block of `rest.yaml` applies to this folder — the `no-cache-pages` list and
+the `filter` function — as in the Java engine; its `mime.types` section is not ported.
 
 ## Kubernetes wiring
 

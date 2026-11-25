@@ -24,7 +24,10 @@ for human–AI collaboration.
 > - **For** teams whose business logic lives in Python — `requests`-style integrations,
 >   NumPy/pandas, ML inference - inside a composable, event-driven architecture.
 > - **Not** an orchestrator. Flows, graphs, retries and state live in the engines;
->   this package deliberately provides functions only.
+>   this package provides functions and, with [REST automation](guides/rest-automation.md),
+>   the HTTP edge in front of them — `rest.yaml` as the router, in the engines' grammar —
+>   so a utility application is built and deployed as an engine application is. Ingress,
+>   never orchestration.
 
 ## The main theme, in one screen
 
@@ -67,6 +70,8 @@ end to end. **No engine code changes. No orchestration in Python.**
 - **Why this design?** [Rationale](guides/rationale.md) and
   [Design](guides/design.md) — the thinking before the how.
 - **Writing functions?** [Function Writing Patterns](guides/function-patterns.md).
+- **Serving HTTP?** [REST Automation](guides/rest-automation.md) — `rest.yaml` as the router in
+  front of your functions, with CORS, authentication, streaming, upload and static content.
 - **Wiring the engine?** [Join an Event Script Flow](guides/join-event-script.md) ·
   [Join a Knowledge Graph](guides/join-knowledge-graph.md).
 - **You are an AI agent?** Start at the [AI Agent Guide](guides/ai-agent-guide.md) —

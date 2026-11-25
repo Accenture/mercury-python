@@ -111,6 +111,7 @@ nav:
   - Write functions:
     - Function Writing Patterns: guides/function-patterns.md
     - Event Streaming: guides/streaming.md
+    - REST Automation: guides/rest-automation.md
     - Configuration, Logging & Actuators: guides/config-logging-actuators.md
     - Testing Your Functions: guides/testing.md
 
