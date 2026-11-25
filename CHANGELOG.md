@@ -282,6 +282,21 @@
    and the 45 tests of `tests/test_rest_automation.py` over HTTP; the demo app gains `hello.rest` at
    `GET /api/hello/{name}` with its `resources/rest.yaml`. No new dependency.
 
+14. **Upload in REST automation, and the LLM helper's document intake (RFC-0018; Eric's direction of 2026-11-25:
+   documents uploaded to the helper for a model to read).** `upload: true` on a `POST` entry is the pack's bounded form
+   of the engines' streaming upload: the files of a `multipart/form-data` body arrive in the request map under the
+   engines' keys (`filename`, `file_type`, `file_length`, the `upload` tags, `size`) with their bytes in `contents` -
+   the stream routes the engines send replaced by the bytes - all together within `rest.upload.max.bytes` (16 MiB; a
+   413 the moment they exceed it), the form's text fields as query parameters, the body absent; a non-multipart body
+   on such an entry dispatches as usual. `AsyncHttpRequest.files()` reads them as `UploadedFile` (name, content type,
+   size, tag, bytes), both exported. The LLM helper gains `llm.upload` behind `POST /api/llm/upload`
+   (`resources/rest.yaml`, `rest.automation: true` in its `application.yml`): each file is saved under `uploads/`
+   inside `llm.attachments.root` under a new name and the references returned - the `path` a later `llm.chat` call
+   names in `attachments`, the kind by the first bytes, the size, the SHA-256 the audit keeps and `attachable`,
+   whether the model takes the file as it is or a conversion comes first. Pinned by the vector file at version 2
+   (an upload entry accepted, the request map and the accessors with the bytes as base64 in the file), four tests
+   over HTTP and `tests/test_llm_upload.py`. The host's static-content rules and the rest of the edge are unchanged.
+
 ### Changed
 
 1. **The agent-question app reads the question record and writes nothing: the backend of the React UI (RFC-0014

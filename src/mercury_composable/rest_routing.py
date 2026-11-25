@@ -14,8 +14,10 @@ pack.
 
 What a pack refuses by name, so the grammar itself shows the scope fence: a ``flow`` binding
 (``flow:`` or ``service: http.flow.adapter`` - flows run in the engines), the HTTP relay (an
-``http(s)://`` service) and the A/B dual service (a list of two routes). Deferred as in the Rust
-port: ``upload``, ``custom.content.types``, ``mime.types`` and XML.
+``http(s)://`` service) and the A/B dual service (a list of two routes). ``upload: true`` is the
+pack's bounded form of the engines' streaming upload: the files arrive in the request map, their
+bytes beside the engines' keys, within ``rest.upload.max.bytes``. Deferred as in the Rust port:
+``custom.content.types``, ``mime.types``, XML and request-body streaming.
 """
 
 from __future__ import annotations
@@ -211,6 +213,7 @@ class RouteInfo:
     authentication: str | None = None
     tracing: bool = False
     stream: bool = False
+    upload: bool = False
     trace_id_header: str | None = None
     correlation_id_header: str | None = None
     traceparent_header: str | None = None
@@ -394,8 +397,6 @@ def _parse_route(index: int, entry: Mapping[str, Any], cors_blocks: Mapping[str,
         raise AppException(
             400, f"rest[{index}] flow binding is not available in a language pack - flows run in the"
                  f" engines ({binding})")
-    if _lookup(entry, "upload") is True:
-        raise AppException(400, f"rest[{index}] 'upload' is not available in this version of the language pack")
     url = _text(_lookup(entry, "url"))
     if url is None:
         raise AppException(400, f"rest[{index}] missing 'url'")
@@ -431,6 +432,7 @@ def _parse_route(index: int, entry: Mapping[str, Any], cors_blocks: Mapping[str,
         authentication=_text(_lookup(entry, "authentication")),
         tracing=_lookup(entry, "tracing") is True,
         stream=_lookup(entry, "stream") is True,
+        upload=_lookup(entry, "upload") is True,
         trace_id_header=_text(_lookup(entry, "trace.id.header")),
         correlation_id_header=_text(_lookup(entry, "correlation.id.header")),
         traceparent_header=_text(_lookup(entry, "traceparent.header")),

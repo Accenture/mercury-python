@@ -58,10 +58,12 @@ except ImportError as missing_sdk:  # the SDK is this app's one dependency - tea
 
 from mercury_composable import (
     AppException,
+    AsyncHttpRequest,
     Body,
     EventEnvelope,
     EventStreamWriter,
     PostOffice,
+    UploadedFile,
     annotate_trace,
     app_config,
     default_registry,
@@ -796,6 +798,14 @@ def _plan(request: LlmRequest, backend: Backend) -> tuple[Any, dict[str, Any]]:
 # a relative path only, the resolved path inside it, no hidden entry, a regular file. Every caller
 # that can reach this app can have a file under the root sent to the provider and read back in
 # the reply: the root is deployment configuration, certified with the deployment.
+
+# --- the document intake: llm.upload behind a REST automation entry with upload: true -----
+# the files of a multipart upload saved under this folder of the root, each under a new name
+UPLOAD_FOLDER = "uploads"
+UPLOAD_NO_FILES = (
+    "upload: no file in the request - send multipart/form-data to an entry with upload: true"
+)
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 _attachments_root: Path | None = None  # resolved on first use - module-level so tests can inject
 
@@ -2480,6 +2490,60 @@ async def llm_stream(headers: dict[str, str], event: EventEnvelope) -> None:
     if done.stop_reason == "refusal" and done.refusal:
         trailing["stop_details"] = done.refusal
     out.close(trailing)
+
+
+def _safe_name(filename: str) -> str:
+    """The uploaded name as a safe suffix of the saved name: the base name only, hidden-entry
+    dots stripped (the attachments rules would refuse them), every other character an
+    underscore, at most 80 characters."""
+    base = Path(filename).name if filename else ""
+    return _SAFE_NAME.sub("_", base).lstrip(".")[:80]
+
+
+def _save_uploads(root: Path, files: list[UploadedFile]) -> list[dict[str, Any]]:
+    """Write each file under a new name in the uploads folder of the root (in a worker thread)
+    and return the references a later call names: the path inside the root, the original name,
+    the kind by the first bytes (else the declared type), the size, the SHA-256 the audit keeps,
+    and whether llm.chat can attach the file as it is."""
+    folder = root / UPLOAD_FOLDER
+    folder.mkdir(parents=True, exist_ok=True)
+    saved: list[dict[str, Any]] = []
+    for uploaded in files:
+        suffix = _safe_name(uploaded.name)
+        name = f"{uuid.uuid4().hex}-{suffix}" if suffix else uuid.uuid4().hex
+        with open(folder / name, "xb") as handle:  # a new name - never an overwrite
+            handle.write(uploaded.content)
+        detected = _media_type(uploaded.content[:16])
+        saved.append({
+            "path": f"{UPLOAD_FOLDER}/{name}",
+            "filename": uploaded.name,
+            "media_type": detected or uploaded.content_type,
+            "bytes": len(uploaded.content),
+            "sha256": hashlib.sha256(uploaded.content).hexdigest(),
+            "attachable": detected is not None,
+        })
+    return saved
+
+
+@preload(route="llm.upload", instances=10)
+async def llm_upload(_headers: dict[str, str], body: Body) -> Any:
+    """The document intake for the attachments folder (RFC-0016): behind a REST automation entry
+    with ``upload: true`` (``POST /api/llm/upload`` in resources/rest.yaml), the files of a
+    multipart upload are saved under ``uploads/`` inside ``llm.attachments.root``, each under a
+    new name, and their references returned - the ``path`` a later ``llm.chat`` call names in
+    ``attachments``, the kind by the first bytes, the size and the SHA-256 the audit keeps, and
+    ``attachable``: whether the model takes the file as it is (a PDF or an image) or a conversion
+    comes first (a word-processor file, a spreadsheet). The folder is readable through the model:
+    put an authentication function or the gateway in front of the entry."""
+    request = AsyncHttpRequest(body)
+    files = request.files()
+    if not files:
+        raise AppException(400, UPLOAD_NO_FILES)
+    root = attachments_root()
+    saved = await asyncio.get_running_loop().run_in_executor(None, _save_uploads, root, files)
+    annotate_trace("llm_uploads", len(saved))
+    log.info("Uploaded %d file(s), %d bytes", len(saved), sum(item["bytes"] for item in saved))
+    return {"files": saved}
 
 
 @preload(route="llm.health", instances=5, private=True)
