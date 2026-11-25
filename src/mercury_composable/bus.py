@@ -252,7 +252,7 @@ class EventBus:
             envelope=envelope))
         try:
             return await asyncio.wait_for(reply, timeout=max(100, ttl_ms) / 1000)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise DeliveryTimeout(ttl_ms) from None
 
     def publish(self, service: ServiceDef, headers: dict[str, str], body: Any, *,

@@ -19,7 +19,7 @@ import re
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +75,7 @@ def wait_event(ticket: str = "t-answer", base: str = "https://ask.example.test",
         "description": "Customer-support assistant: a refund waits for a supervisor",
         "correlation_id": "order-1002-case", "turn": 2, "node": "assist",
         "summary": "A refund waits for the supervisor's decision", "calls": CALLS, "ttl": "2d",
-        "requested_at": iso_utc(), "expires_at": iso_utc(datetime.now(timezone.utc) + timedelta(days=2)),
+        "requested_at": iso_utc(), "expires_at": iso_utc(datetime.now(UTC) + timedelta(days=2)),
         "ticket": ticket, "link": f"{base}/ask/{ticket}",
     }  # fmt: skip
     event.update(overrides)
@@ -542,7 +542,7 @@ async def test_the_oauth2_mode_guards_every_read_and_the_click(
     configure({**BASE, aq.AUTH: "oauth2", aq.OAUTH2_ISSUER: ISSUER, aq.OAUTH2_AUDIENCE: AUDIENCE,
                aq.OAUTH2_JWKS_URL: f"{base}/jwks", aq.OAUTH2_CLIENT_ID: "agent-question-ui"})
     aq._verifier = None
-    now = int(datetime.now(timezone.utc).timestamp())
+    now = int(datetime.now(UTC).timestamp())
     token = jwt.encode({"iss": ISSUER, "aud": AUDIENCE, "sub": "u-17", "preferred_username": "operator-17",
                         "iat": now, "exp": now + 300}, pem, algorithm="RS256", headers={"kid": "k1"})
     row = put(wait_event(base=base), 1, 1)
@@ -607,7 +607,7 @@ class _FakePool:
 
 
 def _record(**overrides: Any) -> tuple[Any, ...]:
-    now = datetime(2026, 11, 19, 9, 12, 5, 123000, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 19, 9, 12, 5, 123000, tzinfo=UTC)
     values: dict[str, Any] = {
         "id": 7, "seq": 12, "ticket": "t-answer", "graph_id": "order-assistant", "correlation_id": "order-1002-case",
         "turn": 2, "kind": "approval", "description": "Customer-support assistant", "summary": "A refund waits",
@@ -620,14 +620,14 @@ def _record(**overrides: Any) -> tuple[Any, ...]:
 
 
 def _conversation_record(light: bool = True) -> tuple[Any, ...]:
-    started = datetime(2026, 11, 19, 9, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 11, 19, 9, 0, 0, tzinfo=UTC)
     values = (CONVERSATION_A, "order-1002-case", "order-assistant", "assist", "claude-haiku-4-5", "done", 2, started,
               started, started, started + timedelta(days=365), 120, 40, 0, 0)
     return values if light else values + ("You are a careful assistant.", [{"name": "issue_refund"}])
 
 
 def _turn_record() -> tuple[Any, ...]:
-    started = datetime(2026, 11, 19, 9, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 11, 19, 9, 0, 0, tzinfo=UTC)
     return (1, "trace-1", "POST /api/graph/order-assistant", "order-1002-case", started, started + timedelta(seconds=1),
             "tool_use", "tool_use", "req-1", 60, 20, 0, 0, [{"role": "user", "content": "refund?"}],
             [{"type": "tool_use", "id": "toolu_01A", "name": "issue_refund", "input": {}}],
@@ -791,7 +791,7 @@ async def test_the_reader_finds_the_rows_on_a_live_postgres() -> None:
         async with pool.connection() as connection:
             await connection.execute(_RECORD_SCHEMA.read_bytes())
             await connection.execute(_TRANSCRIPT_SCHEMA.read_bytes())
-            cid = f"live-{int(datetime.now(timezone.utc).timestamp())}"
+            cid = f"live-{int(datetime.now(UTC).timestamp())}"
             event = wait_event(ticket=f"{cid}-1", correlation_id=cid)
             cursor = await connection.execute(
                 "INSERT INTO question (seq, ticket, graph_id, correlation_id, turn, kind, description, summary, message, "
@@ -801,7 +801,7 @@ async def test_the_reader_finds_the_rows_on_a_live_postgres() -> None:
                  json.dumps(event), event["link"], event["requested_at"], event["expires_at"], iso_utc()),
             )
             inserted = (await cursor.fetchall())[0]
-            conv = f"{int(datetime.now(timezone.utc).timestamp() * 1000):032x}"[-32:]
+            conv = f"{int(datetime.now(UTC).timestamp() * 1000):032x}"[-32:]
             await connection.execute(
                 "INSERT INTO transcript (conversation, correlation_id, graph_id, node, model, status, turns, started_at, "
                 "updated_at, ended_at, expires_at, system, tools) VALUES (%s, %s, %s, %s, %s, 'done', 1, %s::timestamptz, "

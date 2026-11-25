@@ -43,7 +43,7 @@ import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import aiohttp
@@ -144,8 +144,8 @@ def parse_iso(text: str) -> datetime | None:
     except ValueError:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 # --- configuration ----------------------------------------------------------------------------
@@ -928,7 +928,7 @@ async def events(request: web.Request) -> web.StreamResponse:
         while True:
             try:
                 row = await asyncio.wait_for(queue.get(), (ping_ms / 1000) if ping_ms > 0 else None)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await response.write(b": ping\n\n")
                 continue
             if row is None:
@@ -1009,7 +1009,7 @@ async def _forward(url: str, body: dict[str, Any], settings: Settings) -> tuple[
             except ValueError:
                 parsed = {"text": text[:500]}
             return response.status, parsed, None
-    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+    except (TimeoutError, aiohttp.ClientError) as exc:
         return None, None, type(exc).__name__
 
 

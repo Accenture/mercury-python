@@ -39,7 +39,7 @@ import json
 import re
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine
-from typing import Any
+from typing import Any, Self
 
 import aiohttp
 
@@ -116,9 +116,7 @@ class PostOffice:
         if self._session is not None and not self._session.closed:
             await self._session.close()
 
-    # PYI034 wants '-> Self', which needs python >= 3.11; switch when the
-    # floor moves past 3.10
-    async def __aenter__(self) -> PostOffice:  # noqa: PYI034
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
@@ -172,7 +170,7 @@ class PostOffice:
                 bus.publish_envelope(service, event.set_reply_to(sink_route))
                 try:
                     first = await asyncio.wait_for(queue.get(), max(100, timeout_ms) / 1000)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     first = EventEnvelope().set_status(408).set_body(f"Timeout for {timeout_ms} ms")
                 if stream_signal(first) is not None:
                     first = EventEnvelope().set_status(406).set_body(STREAM_CALLER_REQUIRED)
@@ -322,7 +320,7 @@ class PostOffice:
             while True:
                 try:
                     reply = await asyncio.wait_for(queue.get(), idle)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     seconds = max(100, timeout_ms) // 1000
                     yield exception_envelope(408, f"Timeout for {seconds} seconds")
                     return
@@ -369,7 +367,7 @@ class PostOffice:
                 # the dialect ends with a decoded terminal - a bare transport
                 # end is a truncation
                 yield _relay_guard(500, "Event stream ended without eof", effective_cid)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield _relay_guard(408, f"Timeout for {int(idle_seconds)} seconds",
                                    effective_cid)
             except aiohttp.ClientError as e:

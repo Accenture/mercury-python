@@ -30,7 +30,7 @@
     `upload: true`) saves uploaded documents under `uploads/` inside the root and returns the references a call
     names in `attachments` - Eric's AI SDLC use case, documents uploaded to the helper for context, rules and
     formula extraction; `attachable` tells a PDF or an image from a file that needs a conversion first; the
-    object-store download stays the later iteration (branch `feat/rest-upload`).
+    object-store download stays the later iteration (PR #84, MERGED 2026-11-25).
   → proposal: RFC-0016 (mercury-composable)
   → serves: vision-mercury-python
-  <!-- id: bp-llm-attachments-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 2 | tier: working | origin: 2026-11-24-055310 -->
+  <!-- id: bp-llm-attachments-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 3 | tier: working | origin: 2026-11-24-055310 -->

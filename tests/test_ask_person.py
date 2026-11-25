@@ -23,7 +23,7 @@ import sys
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -797,7 +797,7 @@ class _FakePool:
 
 
 def _record(**overrides: Any) -> tuple[Any, ...]:
-    now = datetime(2026, 11, 19, 9, 12, 5, 123000, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 19, 9, 12, 5, 123000, tzinfo=UTC)
     values: dict[str, Any] = {
         "id": 7, "seq": 12, "ticket": "t-answer", "graph_id": "order-assistant", "correlation_id": "order-1002-case",
         "turn": 2, "kind": "approval", "description": "Customer-support assistant", "summary": "A refund waits",
@@ -967,7 +967,7 @@ async def test_the_record_lands_on_a_live_postgres() -> None:
     try:
         async with pool.connection() as connection:
             await connection.execute((_MODULE.parent / "schema" / "postgres.sql").read_bytes())
-        cid = f"live-{int(datetime.now(timezone.utc).timestamp())}"
+        cid = f"live-{int(datetime.now(UTC).timestamp())}"
         key = KEY.encode()
         first = await store.record(ask.build_event(ask.validate_message(approval_message(
             correlation_id=cid, requested_at="2026-11-19T09:00:00.000Z")), key, REPLY_URL), ask.iso_utc())
@@ -989,7 +989,7 @@ async def test_the_record_lands_on_a_live_postgres() -> None:
                                   "operator-9", "expired", {"status": 410, "body": {"type": "nothing-waiting"}}, ask.iso_utc())
         assert kept is not None and kept.answered_by == "operator-17", "the first accepted decision stands"
         assert await store.answer(("order-assistant", f"{cid}-none", 1), [], "x", "answered", {}, ask.iso_utc()) is None
-        soon = ask.iso_utc(datetime.now(timezone.utc) - timedelta(seconds=1))
+        soon = ask.iso_utc(datetime.now(UTC) - timedelta(seconds=1))
         past = await store.record({**ask.build_event(ask.validate_message(approval_message(
             correlation_id=f"{cid}-b")), key, REPLY_URL), "expires_at": soon}, ask.iso_utc())
         expired = await store.expire(ask.iso_utc())

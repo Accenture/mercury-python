@@ -21,7 +21,7 @@ jobs:
         # the supported floor and the newest release the package declares (pyproject.toml): the
         # floor catches what a user on it would hit (a typing stub, a missing method), the newest the
         # deprecations ahead; every gate runs on both
-        python-version: ['3.10', '3.14']
+        python-version: ['3.11', '3.14']
     name: test (python ${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@v7

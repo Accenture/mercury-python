@@ -390,7 +390,7 @@ class Server:
 def _leaf(exc: BaseException) -> BaseException:
     """The first leaf of an exception group: the SDK's transports run in a task group, which wraps
     the failure of the code inside them."""
-    # duck-typed, so Python 3.10 (where the group class is anyio's backport) reads the same
+    # duck-typed: the SDK's group class is anyio's, the same shape as the built-in ExceptionGroup
     while isinstance(getattr(exc, "exceptions", None), (list, tuple)) and exc.exceptions:  # type: ignore[attr-defined]
         exc = exc.exceptions[0]  # type: ignore[attr-defined]
     return exc

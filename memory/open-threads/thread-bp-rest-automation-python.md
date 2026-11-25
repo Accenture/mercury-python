@@ -18,7 +18,7 @@
     front of the host's routes: the trace and correlation ids, authentication, the RPC and the interceptor sink, SSE
     and chunked streaming, the built-in default entries, the static-content filter and no-cache pages), `server.py`
     and `actuator.py` wired, the demo's `hello.rest`; 126 shared vector cases and 45 tests; the three gates clean;
-    the demo driven live. **Raised as PR #83, 2026-11-25.**
+    the demo driven live. **Raised as PR #83 and MERGED 2026-11-25 (`b4f9c09`).**
   - **Defaults set without a ruling (open to the review):** `upload: true` refused at load rather than ignored; an
     unclaimed path answered by the edge with the engines' 404 in their header shape; `keep` takes precedence over
     `drop` (the Java rule, where the Rust port applies both); one `yaml.rest.automation` location, a missing or empty
@@ -37,11 +37,11 @@
     `uploads/` inside the attachments root under new names and returns the references (`path`, the kind by the
     first bytes, the size, the SHA-256, `attachable`). Vectors version 2 (129 cases), 50 REST tests and
     `tests/test_llm_upload.py`; the gates clean; driven live (a PDF and an image uploaded to the running helper,
-    the saved bytes identical, the trace record left). **Raised as PR #84 against the step-1 branch, 2026-11-25.**
+    the saved bytes identical, the trace record left). **Raised as PR #84 and MERGED 2026-11-25 (`2cda53f`).**
   - **Defaults set without a ruling (upload):** one bound for all the files of an upload, 16 MiB; the body absent on
     an upload (Java parity) and the bytes in the pack key `contents` in place of the stream routes; multipart on an
     entry without `upload` stays raw bytes; the intake's saved name `<id>-<the original name made safe>`, never
     overwritten; `attachable` by the first bytes; the helper turns REST automation on in its own application.yml.
   → proposal: RFC-0018 (mercury-composable)
   → serves: vision-mercury-python
-  <!-- id: bp-rest-automation-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 3 | tier: working | origin: 2026-11-24-233943 -->
+  <!-- id: bp-rest-automation-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 4 | tier: working | origin: 2026-11-24-233943 -->
