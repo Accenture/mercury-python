@@ -53,9 +53,12 @@
     caller; `/api/event` cannot forge a session); the reply and wait entries allow 2 minutes above
     `ask.engine.timeout`; a notice page's HTML is the function record's `exception` text, as the engines record an
     error body.
-  - **Next:** the Node twin of the first adopters (the UI's contract is unchanged, so the same shape); the engines'
-    polyglot guide and the RFC's resolution (step 2 and the adopters); a live drive through an engine's
-    `async.http.request` with the trace lineage checked; then the promotion to an ADR.
+  - **The Node twin of the first adopters MERGED 2026-11-25** (mercury-nodejs #148, `4bd3bc1`, by the twin's session):
+    the same entries, functions and authentication functions, aligned to this pack's shape; both packs' routes are
+    `rest.yaml` entries now.
+  - **Next:** the engines' polyglot guide and the RFC's resolution (step 2 and the adopters, in mercury-composable);
+    a live drive through an engine's `async.http.request` with the trace lineage checked; then the promotion to an
+    ADR.
   - **Upload BUILT 2026-11-25 (Eric: "Please add upload feature after this PR"; the use case: documents uploaded
     to the LLM helper for a model to read), branch `feat/rest-upload` stacked on the step-1 branch:** `upload: true`
     on a POST entry is the pack's bounded form of the engines' streaming upload - the files of a multipart body in
