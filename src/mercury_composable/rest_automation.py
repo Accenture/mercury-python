@@ -461,7 +461,12 @@ class RestAutomation:
         total = 0
         try:
             reader = await request.multipart()
-            async for part in reader:
+            while True:
+                # reader.next() rather than an async for: the iteration protocol is not typed on
+                # every Python the pack supports
+                part = await reader.next()
+                if part is None:
+                    break
                 if not isinstance(part, BodyPartReader):
                     continue
                 if part.filename:
