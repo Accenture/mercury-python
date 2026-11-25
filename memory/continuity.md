@@ -22,7 +22,13 @@
   Python member of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function host + thin client,
   repurposed August 2026 (legacy language pack in tagged releases v1.11.39–v2.5.0).
 - **last_enabled:** 2026-08-22
-- **last_review:** 2026-11-25 | through 2026-11-25-001547.md (cadence — 11 sessions since 2026-11-19-060911; `refresh-metadata`
+- **last_review:** 2026-11-25 | through 2026-11-25-034258.md (cadence — 10 sessions since 2026-11-25-001547; `refresh-metadata`
+  refreshed 14 footers in two passes (the second after this review's own log), tier changes 9; archived 1 superseded fact `mcp-binding-route-per-tool` (→ `mcp-binding-function-per-tool`,
+  left in continuity by the previous review) and 1 faded fact `mcp-binding-function-per-tool` (23; the window's one commit on its
+  paths, the floor's comment change, relied on nothing it states; its rule lives in the extension's README and the archive); swept
+  1 completed thread (bp-transcript-audit-python 29) → 2026-Q4; invariants DUE (44 of 40) → [[reverify-invariants-20261125]];
+  stalled none; contradictions none; live facts 29 → 26. Smoke test not run.)
+  Prior: 2026-11-25 | through 2026-11-25-001547.md (cadence — 11 sessions since 2026-11-19-060911; `refresh-metadata`
   refreshed 16 footers; archived 2 faded facts `stack-python-hatchling` (22; the repository's `pyproject.toml` records its
   substance, the window's commits on that file exercised the declared deps fact) and
   `historical-releases-tags-and-pages-python` (31; the one window log on the legacy releases decided by a history search,
@@ -45,7 +51,10 @@
   Prior: 2026-09-23 | through 2026-09-23-004552.md (cadence — archived 1 faded fact `decision-polyglot-reboot` + swept 3
   completed threads → 2026-Q3; invariants not due (29 sessions, cadence 40, none yet); stalled none) · 2026-09-05 | through
   2026-09-05-211409
-- **last_invariant_check:** 2026-11-03 | 2026-11-03-012600.md (COMPLETE - the first re-verify; Eric confirmed all four invariants and
+- **last_invariant_check:** 2026-11-25 | 2026-11-25-034612.md (DUE and PROMPTED - 44 sessions since 2026-11-03-012600; the thread
+  [[reverify-invariants-20261125]] lists the four invariants and the Vision for Eric to re-confirm or supersede; the check completes
+  when he does)
+  Prior: 2026-11-03 | 2026-11-03-012600.md (COMPLETE - the first re-verify; Eric confirmed all four invariants and
   the Vision as walked in 2026-11-03-012056, two wordings refreshed, core stays 4; the next is due 40 sessions after this one)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
 
@@ -115,7 +124,7 @@
   **Kind rule since 2026-09-22 (PR #36 MERGED, `cbf1f7f6`):** SERVER iff the record's `service` is `http.request` — an
   engine edge's round-trip record — and every function execution is INTERNAL; a record's `from` no longer decides the kind
   (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
-  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-11-25 | uses: 6 | tier: active | origin: 2026-09-22-164128 -->
+  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-11-25 | uses: 6 | tier: archive-candidate | origin: 2026-09-22-164128 -->
 
 - **The LLM helper is a dedicated function host on the Anthropic SDK: the engines stay LLM-free, the AI node is a bounded
   function, and one contract is proven by a vector file shared with the Node pack (Eric's rulings, 2026-10-01; PR #38, merge
@@ -159,45 +168,6 @@
   file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
   <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-25 | uses: 9 | tier: active | origin: 2026-10-02-001146 -->
 
-- **The MCP binding serves one composable route per allowlisted MCP tool, and the server cannot change a tool under the
-  graph (RFC-0011 / ADR-0033 step 4; built 2026-11-14, Python first).** `extensions/mcp-binding/mcp_binding.py` on the
-  official MCP SDK 2.x: servers by name in `resources/mcp-servers.yml` (`stdio`, a subprocess of this process with the SDK's
-  minimal environment plus the listed `env` references; or `http`, a streamable HTTP URL with `headers`); `${VAR}` resolves at
-  boot and is never logged; each allowlisted tool maps to a route and pins the SHA-256 of its input schema in canonical JSON.
-  Boot, inside the serving loop before the first request (`Platform.on_startup`), connects each server in its own task,
-  lists its tools, and refuses to start by name when a tool is missing or its schema changed; `describe` prints the digests
-  and a catalog row the developer reviews, because the model reads the graph's descriptions, never the server's. A route's
-  reply is the structured content else the blocks' text; `is_error` is a 400 carrying the text (the loop returns it to the
-  model), a timeout 408, a protocol failure 502, a lost session 503. The pure half (digest, verification, result mapping) is
-  pinned by `tests/vectors/mcp-binding-vectors.json`, shared byte-identical with the Node twin; the transports by the fixture
-  server `tests/fixtures/mcp_test_server.py`. **The shape (2026-11-14, Eric's direction):** every bound route is an alias of
-  ONE `@preload` function, `mcp.tool` - private, bound to no tool - registered at boot with the server's `instances` through
-  `default_registry.register`, the pack's counterpart of the engines' `Platform.register`; the function reads the route it
-  was called as from `get_trace().route`, the pack's counterpart of the engines' read-only `my_route` header (the host strips
-  `my_*` headers at ingress and adds none). A generic client - one route, the server and the tool encoded in the call - was
-  suggested and set aside the same day: ADR-0033 rejects it as alternative (c), since the catalog cannot certify a target
-  hidden in the call; the certifiable form is an optional `headers` map on the catalog row, an engine change in both
-  engines, not taken. **How to apply:** a new MCP tool for an agent is a server entry and an allowlist
-  row here plus a catalog row on the graph, never engine code; a schema change is a digest the developer re-reviews; a
-  credential is a reference in the server file, resolved from this process's environment.
-  <!-- id: mcp-binding-route-per-tool | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: superseded | superseded-by: mcp-binding-function-per-tool | origin: 2026-11-14-073523 -->
-
-- **A tool of an MCP server is a composable function of the binding, declared in code (Eric's review 2026-11-16; the
-  engines' `draft-design-specs/agent-tool-use.md`; supersedes the allowlist-row shape of 2026-11-14).**
-  `extensions/mcp-binding/mcp_binding.py` is a library and a function host: `bind(server, tool, schema_sha256=...)` declares
-  a binding and returns the tool as an async callable, and an ordinary `@preload` function calls it - the extension's own
-  `mermaid.render` binds the one tool of the public Mermaid Chart MCP endpoint named in the default server file, so the
-  binding serves a tool out of the box. The server file keeps what is environment-specific (transport, command or URL,
-  credential references, timeout) and refuses a `tools` allowlist by name; boot connects every server a function binds a tool
-  of, lists its tools and stops the application by name when a bound server is not configured, a tool is not offered or its
-  digest changed; a configured server nobody binds is not connected. `mcp.tool` is no longer a route; `mcp.health` stays. A
-  route names the capability, never the transport: a tool may start as an MCP tool and later be implemented another way, and
-  the graph must not know. The shared vectors are version 2 (`verify_cases` over declared bindings), byte-identical with the
-  Node twin. **How to apply:** a new tool is a `bind` line, a few-line `@preload` function, a catalog row on the graph and an
-  Event-over-HTTP entry; a schema change is a digest re-reviewed next to the function; a new server is a server-file entry;
-  never a route in a YAML file and never engine code.
-  <!-- id: mcp-binding-function-per-tool | created: 2026-11-16 | last_used: 2026-11-19 | uses: 5 | tier: archive-candidate | origin: 2026-11-16-043838 | supersedes: mcp-binding-route-per-tool -->
-
 - **A traced call into the pack leaves the records a Java or Rust callee leaves, so a span lineage is continuous from an
   engine into the pack (2026-11-14; Eric's criterion: for OpenTelemetry to be certified, the span lineage ought to be
   continuous end to end).** The live drive of the engines' agent loop through both packs found the pack legs absent from the
@@ -217,7 +187,7 @@
   record, never whether one exists - every traced execution leaves exactly one; before changing a host or client path, ask
   which side records it in the Java engine and mirror that side; a lineage check parses every record of the trace from every
   process and verifies each parent is a span some record owns.
-  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-25 | uses: 3 | tier: active | origin: 2026-11-14-115310 -->
+  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-25 | uses: 3 | tier: archive-candidate | origin: 2026-11-14-115310 -->
 
 - **The transcript audit store: every model turn recorded by a composable function behind a local event, off the
   turn's path, into PostgreSQL beside the working store (RFC-0012 in mercury-composable, Eric's rulings of 2026-11-17;
@@ -247,7 +217,7 @@
   `docs/test-reports/transcript-audit-live-drive.md`): every turn recorded off the turn's path, a stopped database repaired by
   the sweep; #62 added a server-side `statement_timeout` from `.timeout.ms`, because a paused database stalls a pooled
   statement where a stopped one fails it.
-  <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-24 | uses: 10 | tier: active | origin: 2026-11-17-080036 -->
+  <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-24 | uses: 10 | tier: archive-candidate | origin: 2026-11-17-080036 -->
 
 - **Ask a person, the main flow: the pack carries an agent loop's wait to a person and brings the decision back, knowing
   no channel and keeping no store (RFC-0014 in mercury-composable, build plan step 1; Eric's concept and rulings R1-R8 of
@@ -281,7 +251,7 @@
   wait - the record is an audit log, never consulted to render a wait; the agent-question app reads it.
   **2026-11-25:** the page and the endpoints are `rest.yaml` entries behind private functions, the identity an
   authentication function's finding in the session map; nothing is mounted on the host ([[rest-automation-python]]).
-  <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-20 | uses: 6 | tier: archive-candidate | origin: 2026-11-19-054804 -->
+  <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-25 | uses: 7 | tier: active | origin: 2026-11-19-054804 -->
 
 - **The agent-question app is the first channel of RFC-0014: a store-and-forward inbox for the person an agent asks,
   a standalone application on the package that the main flow knows nothing of (build plan step 3; built here
@@ -327,7 +297,7 @@
   **2026-11-25:** the person's side is `rest.yaml` entries behind private functions - the stream a streaming entry
   whose interceptor opens at once and follows the feed from a task, the UI's contract unchanged (the row's `seq` is
   the cursor, nulls kept); nothing is mounted on the host ([[rest-automation-python]]).
-  <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-20 | uses: 7 | tier: archive-candidate | origin: 2026-11-19-071444 -->
+  <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-25 | uses: 8 | tier: active | origin: 2026-11-19-071444 -->
 
 - **The host serves static web content from `resources/public` next to the application file - the engines' `public`
   folder (Eric, 2026-11-20; PR #73, the Node twin mercury-nodejs #138).** `static.html.folder` is honoured as the Java
@@ -345,7 +315,7 @@
   **How to apply:** a web bundle goes into `resources/public` next to the application file and nothing else is
   configured; a host path or an extension route always wins over a file of the same name; a relative folder is never
   the working directory's.
-  <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-25 | uses: 4 | tier: active | origin: 2026-11-20-075621 -->
+  <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-25 | uses: 5 | tier: active | origin: 2026-11-20-075621 -->
 
 - **`Platform.on_shutdown` runs the moment the application starts to stop - aiohttp's `on_shutdown`, while the host
   still holds its connections and before it waits for the requests in flight - and an extension that holds a stream
@@ -383,7 +353,7 @@
   apply:** a new endpoint is a `rest.yaml` entry and a `@preload` function reading `AsyncHttpRequest(body)`, never a
   mounted route; a behaviour of the edge is first a vector case, then code, in both packs; the grammar's messages
   are the engines' and a pack never grows a dialect; what the engines defer stays deferred until a field request.
-  <!-- id: rest-automation-python | created: 2026-11-25 | last_used: 2026-11-25 | uses: 3 | tier: active | origin: 2026-11-25-005844 -->
+  <!-- id: rest-automation-python | created: 2026-11-25 | last_used: 2026-11-25 | uses: 6 | tier: active | origin: 2026-11-25-005844 -->
 
 ## Conventions
 
@@ -396,11 +366,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-25 | uses: 19 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-25 | uses: 20 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-25 | uses: 9 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-25 | uses: 10 | tier: active | origin: 2026-08-22-171555 -->
 - **Each example app lives in a folder of its own, with a README and its own `resources/` (Eric, 2026-10-01; PR #38).**
   `examples/demo-app/` (the minimal polyglot app: `hello.python`, `hello.declarative`, `hello.chain`, `hello.sync.chain`,
   `hello.tokens`, the private `demo.suffix.helper` and `demo.health`) and `examples/llm-helper/`; run one as
@@ -410,7 +380,7 @@
   **2026-11-02 (Eric):** the LLM helper graduates from an example to an extension, `extensions/llm-helper/` (same folder
   shape: a README and its own `resources/`), so `examples/` holds the demo app; merged as #46 (`13cf394`, 2026-11-03),
   and the Node pack followed the same day (mercury-nodejs #114, `62958b5`).
-  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-25 | uses: 7 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-25 | uses: 7 | tier: archive-candidate | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
   ran (`python app.py`) - and the working directory is never searched (Eric's rule, 2026-10-14; PR #45 merge `a3c5a26`).** The engines' classpath
@@ -422,7 +392,7 @@
   `python llm_helper.py` from the repository root started unconfigured during the Bedrock drive ([[llm-helper-app]]); pinned by
   subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
-  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-25 | uses: 6 | tier: active | origin: 2026-10-14-015420 -->
+  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-25 | uses: 6 | tier: archive-candidate | origin: 2026-10-14-015420 -->
 
 - **The live interop gate is a release convention (Eric, 2026-11-25; closes the Blueprint gap [[bp-publish-interop-gate]]).**
   Every pack release is driven live against both engines before it is published - the Vision's success criterion met by

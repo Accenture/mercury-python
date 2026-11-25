@@ -57,12 +57,12 @@
     the same entries, functions and authentication functions, aligned to this pack's shape; both packs' routes are
     `rest.yaml` entries now.
   - **Documented 2026-11-25 (Eric: "add REST automation documentation for python and node"), branch
-    `docs/rest-automation-guide`, raised as PR #88:** the documentation site gains `docs/guides/rest-automation.md` - turning it on, the
+    `docs/rest-automation-guide`, raised as PR #88 and MERGED 2026-11-25 (`98d6896`):** the documentation site gains `docs/guides/rest-automation.md` - turning it on, the
     file as the router, the function behind an entry with the `AsyncHttpRequest` accessors and the reply rules, the
     edge, the authentication function and the session map, streaming entries, the bounded upload, the `static-content`
     block, the default entries and the precedence, what a pack refuses and defers, the shipped examples, how to test
     an entry; the HTTP Surface Reference, the Configuration Reference, the AI Agent Guide (a pre-write checklist), the
-    site index, `llms.txt` and the nav follow. The Node twin of the docs by a delegated agent; the engines' repository
+    site index, `llms.txt` and the nav follow. The Node twin of the docs by a delegated agent (mercury-nodejs #149, MERGED 2026-11-25); the engines' repository
     records step 2 and the adopters in RFC-0018 and documents the packs in the polyglot guide and the REST guides.
   - **Next:** a live drive through an engine's `async.http.request` with the trace lineage checked; then the
     promotion of RFC-0018 to an ADR.
@@ -82,4 +82,4 @@
     overwritten; `attachable` by the first bytes; the helper turns REST automation on in its own application.yml.
   → proposal: RFC-0018 (mercury-composable)
   → serves: vision-mercury-python
-  <!-- id: bp-rest-automation-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 4 | tier: working | origin: 2026-11-24-233943 -->
+  <!-- id: bp-rest-automation-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 9 | tier: working | origin: 2026-11-24-233943 -->

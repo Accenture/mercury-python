@@ -28,3 +28,6 @@
 - mcp-binding — The MCP binding (RFC-0011 / ADR-0033 build plan step 4) — CLOSED 2026-11-16: released in v… — completed thread past archive_window — 2026-Q4.md
 - pack-catch-up-4-12-25 — Next pack release: catch up to the Java number with the agent loop's pack half — CLOSED 20… — completed thread past archive_window — 2026-Q4.md
 - pack-catch-up-release — Next pack release: catch up to the Java number and carry the LLM helper — CLOSED 2026-10-0… — completed thread past archive_window — 2026-Q4.md
+- mcp-binding-route-per-tool — The MCP binding serves one composable route per allowlisted MCP tool, and the server canno… — superseded by mcp-binding-function-per-tool — 2026-Q4.md
+- mcp-binding-function-per-tool — A tool of an MCP server is a composable function of the binding, declared in code (Eric's… — faded — 2026-Q4.md
+- bp-transcript-audit-python — (blueprint) The transcript audit store in the LLM helper: RFC-0012 build plan step 1, Pyth… — faded — 2026-Q4.md

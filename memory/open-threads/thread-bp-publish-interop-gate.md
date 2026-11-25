@@ -5,4 +5,4 @@
   live); recorded as [[conv-release-interop-gate]]. Lesson: a recurring success criterion is a convention, not a
   Blueprint gap - a gap closes once, a convention repeats. origin: 2026-08-22-173136
   → serves: vision-mercury-python
-  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-11-25 | uses: 10 | tier: active | origin: 2026-08-22-173136 -->
+  <!-- id: bp-publish-interop-gate | created: 2026-08-22 | last_used: 2026-11-25 | uses: 10 | tier: archive-candidate | origin: 2026-08-22-173136 -->
