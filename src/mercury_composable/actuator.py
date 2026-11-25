@@ -192,6 +192,22 @@ class Actuator:
             case _:
                 return _error_response(404, "Resource not found")
 
+    async def by_service(self, service: str) -> web.Response | None:
+        """The actuator a REST automation entry names by the engines' service name."""
+        match service:
+            case "info.actuator.service":
+                return self._info()
+            case "routes.actuator.service":
+                return self._routes()
+            case "env.actuator.service":
+                return self._env()
+            case "health.actuator.service":
+                return await self._health()
+            case "liveness.actuator.service":
+                return self._liveness_probe()
+            case _:
+                return None
+
     def _info(self) -> web.Response:
         now = datetime.now(timezone.utc)
         return _json_response({

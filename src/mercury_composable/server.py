@@ -19,6 +19,10 @@ Behavior mirrors the Java engine's EventApiService:
 - The host also serves the engines' actuator endpoints (``/info``,
   ``/info/routes``, ``/env``, ``/health``, ``/livenessprobe``) for
   operations and Kubernetes probes - see :mod:`mercury_composable.actuator`.
+- With ``rest.automation=true`` the host also serves the entries of ``rest.yaml``
+  - the engines' REST automation, one server and one port - in front of its own
+  paths, an extension's routes and the static folder (see
+  :mod:`mercury_composable.rest_automation`).
 - A traced call leaves the records a Java or Rust callee leaves for the same
   call, so a span lineage stays continuous into this host: ``http.request``
   (``POST /api/event``, the edge's round trip, parented onto the caller's span
@@ -58,6 +62,7 @@ from .event_stream import (
 )
 from .log import get_logger
 from .registry import FunctionRegistry, ServiceDef, default_registry
+from .rest_automation import RestAutomation
 from .static_content import StaticContent, resolve_folder
 from .trace import MY_CID_TAG, MY_CORRELATION_ID
 
@@ -227,6 +232,9 @@ class EventApiServer:
         # the static content folder is resolved from the configuration at construction, as the
         # Actuator's settings are
         self.static = StaticContent(resolve_folder(app_config()))
+        # REST automation (rest.automation=true): the routing table of rest.yaml, loaded at
+        # construction so a misconfigured entry fails the start, never a request
+        self.rest: RestAutomation | None = RestAutomation.load(app_config(), self)
 
     async def handle_event(self, request: web.Request) -> web.StreamResponse:
         raw = await request.read()
@@ -422,17 +430,21 @@ class EventApiServer:
                 with contextlib.suppress(ConnectionError):
                     await response.write(b": ping\n\n")
 
-    def create_app(self, routes: Iterable[RouteMounter] = ()) -> web.Application:
+    def create_app(self, routes: Iterable[RouteMounter] = (), *,
+                   rest_startup: bool = True) -> web.Application:
         """The Event API application: ``POST /api/event``, the actuator paths, then the routes
         of the extensions given (``Platform.add_routes``), then the static content folder for a
         GET or HEAD and, last, the catch-all that answers the engines' error shape - so the host's
         paths always win, an extension's path wins over a file and a file wins over the catch-all.
-        A folder's ``index.html`` replaces the engines' landing page at ``/``."""
+        A folder's ``index.html`` replaces the engines' landing page at ``/``. With REST
+        automation on, the entries of ``rest.yaml`` come first - the host's paths among them as
+        the engines' default entries - and its startup hook validates the table; ``Platform``
+        passes ``rest_startup=False`` to append that hook after the extensions' own boot work."""
         app = web.Application(client_max_size=16 * 1024 * 1024)
         app.router.add_post("/api/event", self.handle_event)
         # the engines' landing page (or the static folder's index.html) + actuator endpoints
         # (see actuator.py)
-        app.router.add_get("/", self.handle_other)
+        root = app.router.add_get("/", self.handle_other)
         for path in ("/info", "/info/routes", "/env", "/health", "/livenessprobe"):
             app.router.add_get(path, self.actuator.handle)
         # an extension's own routes - a reply page, a stream a browser holds - registered
@@ -442,7 +454,13 @@ class EventApiServer:
         # any other path: a static file for a GET or HEAD that names one, else the engines'
         # error shape, not aiohttp's default text page (exact routes above win - they are
         # registered first)
-        app.router.add_route("*", "/{unknown:.*}", self.handle_other)
+        catch_all = app.router.add_route("*", "/{unknown:.*}", self.handle_other)
+        if self.rest is not None:
+            # the rest.yaml entries win over an extension's routes and over a file; a path nothing
+            # claims falls through to the static folder under the static-content rules
+            self.rest.attach(app, root, catch_all)
+            if rest_startup:
+                app.on_startup.append(_lifecycle(self.rest.startup))
         return app
 
     async def handle_other(self, request: web.Request) -> web.StreamResponse:
@@ -497,9 +515,13 @@ class Platform:
         # the opt-in OpenTelemetry forwarder registers on the extension route
         # before the route list is announced; its HTTP client closes with the app
         exporter = otel.activate(config, self.registry)
-        app = EventApiServer(self.registry).create_app(self._routes)
+        server = EventApiServer(self.registry)
+        app = server.create_app(self._routes, rest_startup=False)
         for callback in self._startup:
             app.on_startup.append(_lifecycle(callback))
+        if server.rest is not None:
+            # after the extensions' boot work, which may register the routes the entries name
+            app.on_startup.append(_lifecycle(server.rest.startup))
         for callback in self._shutdown:
             app.on_shutdown.append(_lifecycle(callback))
         for callback in self._cleanup:

@@ -11,6 +11,23 @@
   file, this pack, the Node twin, the README and the engines' polyglot guide, a live drive through a browser and an
   engine with the trace lineage checked. First adopters afterwards: the hand-mounted routes of the agent-question app
   and the ask-person flow.
+  - **Build ordered 2026-11-25 (Eric: "agree with RFC-0018. Please proceed with implementation") and step 1 BUILT
+    the same day, uncommitted at this note:** `rest_routing.py` (the parser with the engines' refusals and the pack's
+    own, the matching, the transforms, the body dispatch, the negotiation, the response mapping),
+    `async_http_request.py` (the request model, exported), `rest_automation.py` (the edge as an aiohttp middleware in
+    front of the host's routes: the trace and correlation ids, authentication, the RPC and the interceptor sink, SSE
+    and chunked streaming, the built-in default entries, the static-content filter and no-cache pages), `server.py`
+    and `actuator.py` wired, the demo's `hello.rest`; 126 shared vector cases and 45 tests; the three gates clean;
+    the demo driven live.
+  - **Defaults set without a ruling (open to the review):** `upload: true` refused at load rather than ignored; an
+    unclaimed path answered by the edge with the engines' 404 in their header shape; `keep` takes precedence over
+    `drop` (the Java rule, where the Rust port applies both); one `yaml.rest.automation` location, a missing or empty
+    file degrading to the defaults with a warning, a relative path under the application folder; the service check
+    at the end of the boot, after the extensions' startup registrations; an authentication function is a regular
+    function; no reply-lane pool (no 503 on exhaustion); a filter failure serves the file (the Rust divergence); no
+    `/index.html` entry leaves `/` to the static folder and the landing page.
+  - **Next:** the pull request; the Node twin from the same vector file; the engines' polyglot guide and the RFC's
+    resolution; a live drive through an engine's `async.http.request` with the trace lineage checked.
   → proposal: RFC-0018 (mercury-composable)
   → serves: vision-mercury-python
-  <!-- id: bp-rest-automation-python | created: 2026-11-24 | last_used: 2026-11-24 | uses: 1 | tier: working | origin: 2026-11-24-233943 -->
+  <!-- id: bp-rest-automation-python | created: 2026-11-24 | last_used: 2026-11-25 | uses: 2 | tier: working | origin: 2026-11-24-233943 -->

@@ -1,0 +1,1534 @@
+{
+  "contract": "rest-automation",
+  "version": 1,
+  "description": "REST automation's shared vectors (RFC-0018 in mercury-composable): the pure half of the HTTP edge, run by mercury-python and mercury-nodejs against the same file. load_cases pin the rest.yaml parser - the entries, cors, headers and static-content blocks it accepts and the exact message of every refusal, the engines' messages plus the pack's own refusals of a flow binding, the HTTP relay, the A/B dual service and upload. timeout_cases pin the duration grammar and its clamp. match_cases pin the URL matching and its precedence over the 'basic' table (404 when no entry matches, 405 when the path matches under another method). header_transform_cases pin keep, drop and add. body_cases pin the request-body dispatch by content type, query_cases and cookie_cases the request parsing, negotiation_cases and stream_negotiation_cases the Accept rules, request_model_cases the AsyncHttpRequest map an edge builds and request_read_cases its accessors, response_cases the mapping of a reply envelope to the status, header lines and body of the HTTP response, render_cases and stream_text_cases the payload rendering, error_body_cases the error shape. Header names are compared case-insensitively and header lines as a sorted list. No server is started by these cases; the edge is tested by each pack over HTTP.",
+  "tables": {
+    "basic": "rest:\n  - service: \"greeting.api\"\n    methods: ['GET']\n    url: \"/api/greeting/{user}\"\n    timeout: 10s\n    cors: cors_1\n    headers: header_1\n    tracing: true\n  - service: \"catch.all\"\n    methods: ['GET', 'POST']\n    url: \"/api/files/*\"\n  - service: \"exact.match\"\n    methods: ['GET']\n    url: \"/api/greeting/system\"\n  - service: \"version.ping\"\n    methods: ['GET']\n    url: \"/api/v*/ping\"\n  - service: \"mid.any\"\n    methods: ['GET']\n    url: \"/api/mid/*/end\"\n  - service: \"secure.api\"\n    methods: ['POST']\n    url: \"/api/secure\"\n    authentication: \"api.key.check\"\n    stream: true\n    trace.id.header: 'X-Legacy-Trace'\n    correlation.id.header: 'X-Legacy-Cid'\n    traceparent.header: 'X-Trace-Context'\ncors:\n  - id: cors_1\n    options:\n      - \"Access-Control-Allow-Origin: *\"\n      - \"Access-Control-Allow-Methods: GET, POST, OPTIONS\"\n    headers:\n      - \"Access-Control-Allow-Origin: *\"\nheaders:\n  - id: header_1\n    request:\n      drop: ['x-secret']\n    response:\n      add: [\"x-served-by: mercury\"]\nstatic-content:\n  no-cache-pages: [\"/\", \"/index.html\", \"/app/*\"]\n  filter:\n    path: [\"/\", \"/assets/*\", \"*.html\"]\n    exclusion: [\"*.css\"]\n    service: \"http.request.filter\"\n",
+    "defaults": "rest:\n  - service: \"event.api.service\"\n    methods: ['POST']\n    url: \"/api/event\"\n    timeout: 60s\n    tracing: true\n  - service: \"info.actuator.service\"\n    methods: ['GET']\n    url: \"/info\"\n    timeout: 10s\n  - service: \"routes.actuator.service\"\n    methods: ['GET']\n    url: \"/info/routes\"\n    timeout: 10s\n  - service: \"env.actuator.service\"\n    methods: ['GET']\n    url: \"/env\"\n    timeout: 10s\n  - service: \"health.actuator.service\"\n    methods: ['GET']\n    url: \"/health\"\n    timeout: 30s\n  - service: \"liveness.actuator.service\"\n    methods: ['GET']\n    url: \"/livenessprobe\"\n    timeout: 10s\n",
+    "minimal": "rest:\n  - service: x.y\n    methods: ['get', 'Post']\n    url: /a\n"
+  },
+  "load_cases": [
+    {
+      "name": "a complete file: entries, cors, headers and static content",
+      "yaml": "rest:\n  - service: \"greeting.api\"\n    methods: ['GET']\n    url: \"/api/greeting/{user}\"\n    timeout: 10s\n    cors: cors_1\n    headers: header_1\n    tracing: true\n  - service: \"catch.all\"\n    methods: ['GET', 'POST']\n    url: \"/api/files/*\"\n  - service: \"exact.match\"\n    methods: ['GET']\n    url: \"/api/greeting/system\"\n  - service: \"version.ping\"\n    methods: ['GET']\n    url: \"/api/v*/ping\"\n  - service: \"mid.any\"\n    methods: ['GET']\n    url: \"/api/mid/*/end\"\n  - service: \"secure.api\"\n    methods: ['POST']\n    url: \"/api/secure\"\n    authentication: \"api.key.check\"\n    stream: true\n    trace.id.header: 'X-Legacy-Trace'\n    correlation.id.header: 'X-Legacy-Cid'\n    traceparent.header: 'X-Trace-Context'\ncors:\n  - id: cors_1\n    options:\n      - \"Access-Control-Allow-Origin: *\"\n      - \"Access-Control-Allow-Methods: GET, POST, OPTIONS\"\n    headers:\n      - \"Access-Control-Allow-Origin: *\"\nheaders:\n  - id: header_1\n    request:\n      drop: ['x-secret']\n    response:\n      add: [\"x-served-by: mercury\"]\nstatic-content:\n  no-cache-pages: [\"/\", \"/index.html\", \"/app/*\"]\n  filter:\n    path: [\"/\", \"/assets/*\", \"*.html\"]\n    exclusion: [\"*.css\"]\n    service: \"http.request.filter\"\n",
+      "routes": [
+        {
+          "service": "greeting.api",
+          "methods": [
+            "GET"
+          ],
+          "url": "/api/greeting/{user}",
+          "timeout_ms": 10000,
+          "cors": "cors_1",
+          "headers": "header_1",
+          "authentication": null,
+          "tracing": true,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "catch.all",
+          "methods": [
+            "GET",
+            "POST"
+          ],
+          "url": "/api/files/*",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "exact.match",
+          "methods": [
+            "GET"
+          ],
+          "url": "/api/greeting/system",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "version.ping",
+          "methods": [
+            "GET"
+          ],
+          "url": "/api/v*/ping",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "mid.any",
+          "methods": [
+            "GET"
+          ],
+          "url": "/api/mid/*/end",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "secure.api",
+          "methods": [
+            "POST"
+          ],
+          "url": "/api/secure",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": "api.key.check",
+          "tracing": false,
+          "stream": true,
+          "trace_id_header": "X-Legacy-Trace",
+          "correlation_id_header": "X-Legacy-Cid",
+          "traceparent_header": "X-Trace-Context"
+        }
+      ],
+      "static": {
+        "no_cache_pages": [
+          "/",
+          "/index.html",
+          "/app/*"
+        ],
+        "filter": {
+          "path": [
+            "/",
+            "/assets/*",
+            "*.html"
+          ],
+          "exclusion": [
+            "*.css"
+          ],
+          "service": "http.request.filter"
+        }
+      }
+    },
+    {
+      "name": "the engines' default endpoints",
+      "yaml": "rest:\n  - service: \"event.api.service\"\n    methods: ['POST']\n    url: \"/api/event\"\n    timeout: 60s\n    tracing: true\n  - service: \"info.actuator.service\"\n    methods: ['GET']\n    url: \"/info\"\n    timeout: 10s\n  - service: \"routes.actuator.service\"\n    methods: ['GET']\n    url: \"/info/routes\"\n    timeout: 10s\n  - service: \"env.actuator.service\"\n    methods: ['GET']\n    url: \"/env\"\n    timeout: 10s\n  - service: \"health.actuator.service\"\n    methods: ['GET']\n    url: \"/health\"\n    timeout: 30s\n  - service: \"liveness.actuator.service\"\n    methods: ['GET']\n    url: \"/livenessprobe\"\n    timeout: 10s\n",
+      "routes": [
+        {
+          "service": "event.api.service",
+          "methods": [
+            "POST"
+          ],
+          "url": "/api/event",
+          "timeout_ms": 60000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": true,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "info.actuator.service",
+          "methods": [
+            "GET"
+          ],
+          "url": "/info",
+          "timeout_ms": 10000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "routes.actuator.service",
+          "methods": [
+            "GET"
+          ],
+          "url": "/info/routes",
+          "timeout_ms": 10000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "env.actuator.service",
+          "methods": [
+            "GET"
+          ],
+          "url": "/env",
+          "timeout_ms": 10000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "health.actuator.service",
+          "methods": [
+            "GET"
+          ],
+          "url": "/health",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        },
+        {
+          "service": "liveness.actuator.service",
+          "methods": [
+            "GET"
+          ],
+          "url": "/livenessprobe",
+          "timeout_ms": 10000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        }
+      ],
+      "static": {
+        "no_cache_pages": [
+          "/",
+          "/index.html"
+        ],
+        "filter": null
+      }
+    },
+    {
+      "name": "a minimal entry: methods uppercased, the default timeout, the default static content",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['get', 'Post']\n    url: /a\n",
+      "routes": [
+        {
+          "service": "x.y",
+          "methods": [
+            "GET",
+            "POST"
+          ],
+          "url": "/a",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": null,
+          "correlation_id_header": null,
+          "traceparent_header": null
+        }
+      ],
+      "static": {
+        "no_cache_pages": [
+          "/",
+          "/index.html"
+        ],
+        "filter": null
+      }
+    },
+    {
+      "name": "a nested header-name override (the ConfigReader's dotted keys)",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\n    trace:\n      id:\n        header: X-Legacy\n",
+      "routes": [
+        {
+          "service": "x.y",
+          "methods": [
+            "GET"
+          ],
+          "url": "/a",
+          "timeout_ms": 30000,
+          "cors": null,
+          "headers": null,
+          "authentication": null,
+          "tracing": false,
+          "stream": false,
+          "trace_id_header": "X-Legacy",
+          "correlation_id_header": null,
+          "traceparent_header": null
+        }
+      ],
+      "static": {
+        "no_cache_pages": [
+          "/",
+          "/index.html"
+        ],
+        "filter": null
+      }
+    },
+    {
+      "name": "no rest section",
+      "yaml": "cors: []\n",
+      "error": "rest.yaml has no 'rest' section"
+    },
+    {
+      "name": "rest is not a list",
+      "yaml": "rest: {}\n",
+      "error": "rest.yaml has no 'rest' section"
+    },
+    {
+      "name": "an entry that is not a map",
+      "yaml": "rest:\n  - hello\n",
+      "error": "rest[0] is not a map"
+    },
+    {
+      "name": "missing service",
+      "yaml": "rest:\n  - methods: ['GET']\n    url: /a\n",
+      "error": "rest[0] missing 'service'"
+    },
+    {
+      "name": "the HTTP relay is refused by name",
+      "yaml": "rest:\n  - service: 'https://example.org'\n    methods: ['GET']\n    url: /a\n",
+      "error": "rest[0] HTTP relay is not available in a language pack (service 'https://example.org')"
+    },
+    {
+      "name": "the A/B dual service is refused by name",
+      "yaml": "rest:\n  - service: ['a.b', 'c.d']\n    methods: ['GET']\n    url: /a\n",
+      "error": "rest[0] service must be a single route - the A/B dual service is not available in a language pack"
+    },
+    {
+      "name": "a flow binding is refused by name - the flow key",
+      "yaml": "rest:\n  - service: 'http.flow.adapter'\n    flow: 'order-status'\n    methods: ['POST']\n    url: /api/orders\n",
+      "error": "rest[0] flow binding is not available in a language pack - flows run in the engines (flow 'order-status')"
+    },
+    {
+      "name": "a flow binding is refused by name - the flow adapter without a flow key",
+      "yaml": "rest:\n  - service: 'http.flow.adapter'\n    methods: ['POST']\n    url: /api/orders\n",
+      "error": "rest[0] flow binding is not available in a language pack - flows run in the engines (service 'http.flow.adapter')"
+    },
+    {
+      "name": "upload is deferred and refused when declared",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['POST']\n    url: /a\n    upload: true\n",
+      "error": "rest[0] 'upload' is not available in this version of the language pack"
+    },
+    {
+      "name": "missing url",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n",
+      "error": "rest[0] missing 'url'"
+    },
+    {
+      "name": "missing methods",
+      "yaml": "rest:\n  - service: x.y\n    url: /a\n",
+      "error": "rest[0] missing 'methods' list"
+    },
+    {
+      "name": "a method that is not text",
+      "yaml": "rest:\n  - service: x.y\n    methods: [1]\n    url: /a\n",
+      "error": "rest[0] method must be text"
+    },
+    {
+      "name": "an invalid method",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['FETCH']\n    url: /a\n",
+      "error": "rest[0] invalid method 'FETCH' (allowed: [\"GET\", \"PUT\", \"POST\", \"DELETE\", \"HEAD\", \"PATCH\"])"
+    },
+    {
+      "name": "OPTIONS is auto-added and must not be listed",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET', 'OPTIONS']\n    url: /a\n",
+      "error": "rest[0] invalid method 'OPTIONS' (allowed: [\"GET\", \"PUT\", \"POST\", \"DELETE\", \"HEAD\", \"PATCH\"])"
+    },
+    {
+      "name": "an unknown cors id",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\n    cors: nope\n",
+      "error": "rest[0] unknown cors id 'nope'"
+    },
+    {
+      "name": "an unknown headers id",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\n    headers: nope\n",
+      "error": "rest[0] unknown headers id 'nope'"
+    },
+    {
+      "name": "a cors block without an id",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\ncors:\n  - options: ['Access-Control-Allow-Origin: *']\n",
+      "error": "cors block missing 'id'"
+    },
+    {
+      "name": "a cors line that is not name: value",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\ncors:\n  - id: c1\n    options:\n      - 'Access-Control-Allow-Origin'\n",
+      "error": "cors 'c1' options line 'Access-Control-Allow-Origin' is not 'name: value'"
+    },
+    {
+      "name": "a cors line that is not an Access-Control header",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\ncors:\n  - id: c1\n    headers:\n      - 'X-Other: 1'\n",
+      "error": "cors 'c1' headers line 'X-Other' must be an Access-Control-* header"
+    },
+    {
+      "name": "a headers block without an id",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\nheaders:\n  - request:\n      drop: ['x']\n",
+      "error": "headers block missing 'id'"
+    },
+    {
+      "name": "no-cache-pages with an invalid pattern",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\nstatic-content:\n  no-cache-pages: ['a*b']\n",
+      "error": "static-content.no-cache-pages has invalid syntax"
+    },
+    {
+      "name": "no-cache-pages empty",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\nstatic-content:\n  no-cache-pages: []\n",
+      "error": "static-content.no-cache-pages has invalid syntax"
+    },
+    {
+      "name": "a filter without a path list",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\nstatic-content:\n  filter:\n    service: f.x\n",
+      "error": "static-content.filter.path must be a list"
+    },
+    {
+      "name": "a filter without a service",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\nstatic-content:\n  filter:\n    path: ['/']\n",
+      "error": "static-content.filter.service is required"
+    },
+    {
+      "name": "a filter pattern with a star in the middle",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\nstatic-content:\n  filter:\n    path: ['*a*']\n    service: f.x\n",
+      "error": "static-content.filter path/exclusion has invalid syntax"
+    },
+    {
+      "name": "the index names the failing entry",
+      "yaml": "rest:\n  - service: x.y\n    methods: ['GET']\n    url: /a\n  - service: x.z\n    methods: ['GET']\n",
+      "error": "rest[1] missing 'url'"
+    }
+  ],
+  "timeout_cases": [
+    {
+      "value": "10s",
+      "ms": 10000
+    },
+    {
+      "value": "2m",
+      "ms": 120000
+    },
+    {
+      "value": "1500ms",
+      "ms": 1500
+    },
+    {
+      "value": "500ms",
+      "ms": 1000
+    },
+    {
+      "value": "0s",
+      "ms": 1000
+    },
+    {
+      "value": "30m",
+      "ms": 300000
+    },
+    {
+      "value": "garbage",
+      "ms": 30000
+    },
+    {
+      "value": null,
+      "ms": 30000
+    },
+    {
+      "value": 10,
+      "ms": 10000
+    },
+    {
+      "value": " 5 s ",
+      "ms": 5000
+    },
+    {
+      "value": "-5s",
+      "ms": 30000
+    },
+    {
+      "value": true,
+      "ms": 30000
+    }
+  ],
+  "match_cases": [
+    {
+      "table": "basic",
+      "name": "an exact literal beats a param",
+      "method": "GET",
+      "path": "/api/greeting/system",
+      "service": "exact.match",
+      "params": {}
+    },
+    {
+      "table": "basic",
+      "name": "literals case-insensitive, a param's case preserved",
+      "method": "GET",
+      "path": "/API/Greeting/Eric",
+      "service": "greeting.api",
+      "params": {
+        "user": "Eric"
+      }
+    },
+    {
+      "table": "basic",
+      "name": "a trailing slash is ignored",
+      "method": "GET",
+      "path": "/api/greeting/Eric/",
+      "service": "greeting.api",
+      "params": {
+        "user": "Eric"
+      }
+    },
+    {
+      "table": "basic",
+      "name": "a trailing wildcard consumes the remainder",
+      "method": "POST",
+      "path": "/api/files/a/b/c",
+      "service": "catch.all",
+      "params": {}
+    },
+    {
+      "table": "basic",
+      "name": "a trailing wildcard needs at least one segment",
+      "method": "GET",
+      "path": "/api/files",
+      "status": 404
+    },
+    {
+      "table": "basic",
+      "name": "a segment prefix wildcard",
+      "method": "GET",
+      "path": "/api/v2/ping",
+      "service": "version.ping",
+      "params": {}
+    },
+    {
+      "table": "basic",
+      "name": "a mid-path star matches exactly one segment",
+      "method": "GET",
+      "path": "/api/mid/x/end",
+      "service": "mid.any",
+      "params": {}
+    },
+    {
+      "table": "basic",
+      "name": "a mid-path star does not match an empty segment",
+      "method": "GET",
+      "path": "/api/mid/end",
+      "status": 404
+    },
+    {
+      "table": "basic",
+      "name": "a known path under a wrong method is 405",
+      "method": "DELETE",
+      "path": "/api/greeting/eric",
+      "status": 405
+    },
+    {
+      "table": "basic",
+      "name": "GET on a POST-only entry is 405",
+      "method": "GET",
+      "path": "/api/secure",
+      "status": 405
+    },
+    {
+      "table": "basic",
+      "name": "OPTIONS matches any entry",
+      "method": "OPTIONS",
+      "path": "/api/greeting/eric",
+      "service": "greeting.api",
+      "params": {
+        "user": "eric"
+      }
+    },
+    {
+      "table": "basic",
+      "name": "an unknown path is 404",
+      "method": "GET",
+      "path": "/api/unknown",
+      "status": 404
+    },
+    {
+      "table": "basic",
+      "name": "the entry's method list is honoured",
+      "method": "POST",
+      "path": "/api/secure",
+      "service": "secure.api",
+      "params": {}
+    }
+  ],
+  "header_transform_cases": [
+    {
+      "name": "drop then add",
+      "transform": {
+        "drop": [
+          "X-Secret"
+        ],
+        "add": [
+          [
+            "x-served-by",
+            "mercury"
+          ]
+        ]
+      },
+      "headers": {
+        "x-secret": "shh",
+        "accept": "*/*"
+      },
+      "expect": {
+        "accept": "*/*",
+        "x-served-by": "mercury"
+      }
+    },
+    {
+      "name": "keep retains only the listed names",
+      "transform": {
+        "keep": [
+          "Accept"
+        ]
+      },
+      "headers": {
+        "accept": "*/*",
+        "x-noise": "1"
+      },
+      "expect": {
+        "accept": "*/*"
+      }
+    },
+    {
+      "name": "keep takes precedence over drop, which is ignored",
+      "transform": {
+        "keep": [
+          "accept"
+        ],
+        "drop": [
+          "accept"
+        ]
+      },
+      "headers": {
+        "accept": "*/*",
+        "x-noise": "1"
+      },
+      "expect": {
+        "accept": "*/*"
+      }
+    },
+    {
+      "name": "add replaces an existing header regardless of case",
+      "transform": {
+        "add": [
+          [
+            "X-Served-By",
+            "mercury"
+          ]
+        ]
+      },
+      "headers": {
+        "x-served-by": "old",
+        "accept": "*/*"
+      },
+      "expect": {
+        "x-served-by": "mercury",
+        "accept": "*/*"
+      }
+    },
+    {
+      "name": "an empty transform changes nothing",
+      "transform": {},
+      "headers": {
+        "accept": "*/*"
+      },
+      "expect": {
+        "accept": "*/*"
+      }
+    }
+  ],
+  "body_cases": [
+    {
+      "name": "json object, charset ignored",
+      "content_type": "application/json; charset=utf-8",
+      "body": "{\"a\":1}",
+      "kind": "value",
+      "value": {
+        "a": 1
+      }
+    },
+    {
+      "name": "json array",
+      "content_type": "application/json",
+      "body": "[1, 2]",
+      "kind": "value",
+      "value": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "text mislabelled json stays text",
+      "content_type": "application/json",
+      "body": "import graph from x",
+      "kind": "value",
+      "value": "import graph from x"
+    },
+    {
+      "name": "malformed json falls back to the raw text",
+      "content_type": "application/json",
+      "body": "{broken",
+      "kind": "value",
+      "value": "{broken"
+    },
+    {
+      "name": "an empty json body is an empty map",
+      "content_type": "application/json",
+      "body": "",
+      "kind": "value",
+      "value": {}
+    },
+    {
+      "name": "no sniffing under text/plain",
+      "content_type": "text/plain",
+      "body": "{\"a\":1}",
+      "kind": "value",
+      "value": "{\"a\":1}"
+    },
+    {
+      "name": "xml is text",
+      "content_type": "application/xml",
+      "body": "<a>1</a>",
+      "kind": "value",
+      "value": "<a>1</a>"
+    },
+    {
+      "name": "html is text",
+      "content_type": "text/html; charset=utf-8",
+      "body": "<p>hi</p>",
+      "kind": "value",
+      "value": "<p>hi</p>"
+    },
+    {
+      "name": "form fields decode into query parameters",
+      "content_type": "application/x-www-form-urlencoded",
+      "body": "a=1&b=hello+world&c=%20x",
+      "kind": "form",
+      "value": {
+        "a": "1",
+        "b": "hello world",
+        "c": " x"
+      }
+    },
+    {
+      "name": "no content type is bytes",
+      "content_type": null,
+      "body": "hello",
+      "kind": "bytes",
+      "value": "hello"
+    },
+    {
+      "name": "no content type and no body is null",
+      "content_type": null,
+      "body": "",
+      "kind": "value",
+      "value": null
+    },
+    {
+      "name": "an unknown type is bytes",
+      "content_type": "application/octet-stream",
+      "body": "abc",
+      "kind": "bytes",
+      "value": "abc"
+    },
+    {
+      "name": "the content type value is matched case-sensitively",
+      "content_type": "Application/JSON",
+      "body": "{\"a\":1}",
+      "kind": "bytes",
+      "value": "{\"a\":1}"
+    }
+  ],
+  "query_cases": [
+    {
+      "query": "q=a&q=b&single=1",
+      "expect": {
+        "q": [
+          "a",
+          "b"
+        ],
+        "single": "1"
+      }
+    },
+    {
+      "query": "q=hello%20world&x=a+b",
+      "expect": {
+        "q": "hello world",
+        "x": "a b"
+      }
+    },
+    {
+      "query": "flag",
+      "expect": {
+        "flag": ""
+      }
+    },
+    {
+      "query": "",
+      "expect": {}
+    },
+    {
+      "query": "a=1&&b=2",
+      "expect": {
+        "a": "1",
+        "b": "2"
+      }
+    },
+    {
+      "query": "bad=%zz",
+      "expect": {
+        "bad": "%zz"
+      }
+    },
+    {
+      "query": "q=a&q=b&q=c",
+      "expect": {
+        "q": [
+          "a",
+          "b",
+          "c"
+        ]
+      }
+    }
+  ],
+  "cookie_cases": [
+    {
+      "header": "first=alpha; second=beta",
+      "expect": {
+        "first": "alpha",
+        "second": "beta"
+      }
+    },
+    {
+      "header": "",
+      "expect": {}
+    },
+    {
+      "header": null,
+      "expect": {}
+    },
+    {
+      "header": "novalue",
+      "expect": {}
+    },
+    {
+      "header": "a=b=c",
+      "expect": {
+        "a": "b=c"
+      }
+    }
+  ],
+  "negotiation_cases": [
+    {
+      "accept": null,
+      "type": null
+    },
+    {
+      "accept": "text/html",
+      "type": "text/html"
+    },
+    {
+      "accept": "application/json",
+      "type": "application/json"
+    },
+    {
+      "accept": "*/*",
+      "type": "application/json"
+    },
+    {
+      "accept": "application/xml",
+      "type": "application/json"
+    },
+    {
+      "accept": "text/plain",
+      "type": "text/plain"
+    },
+    {
+      "accept": "image/png",
+      "type": "text/plain"
+    },
+    {
+      "accept": "text/html, application/json",
+      "type": "text/html"
+    }
+  ],
+  "stream_negotiation_cases": [
+    {
+      "accept": null,
+      "type": "application/json"
+    },
+    {
+      "accept": "*/*",
+      "type": "application/json"
+    },
+    {
+      "accept": "text/event-stream",
+      "type": "text/event-stream"
+    },
+    {
+      "accept": "text/html",
+      "type": "text/html"
+    },
+    {
+      "accept": "application/xml",
+      "type": "application/xml"
+    },
+    {
+      "accept": "text/plain",
+      "type": "text/plain"
+    },
+    {
+      "accept": "application/json, text/event-stream",
+      "type": "application/json"
+    }
+  ],
+  "request_model_cases": [
+    {
+      "name": "every key",
+      "build": {
+        "method": "GET",
+        "url": "/api/greeting/eric",
+        "host": "127.0.0.1:8085",
+        "ip": "127.0.0.1",
+        "https": false,
+        "timeout": 10,
+        "headers": {
+          "accept": "*/*",
+          "x-ttl": "10000"
+        },
+        "path": {
+          "user": "eric"
+        },
+        "query": {
+          "lang": "fr",
+          "q": [
+            "a",
+            "b"
+          ]
+        },
+        "body": null,
+        "query_string": "lang=fr&q=a&q=b",
+        "cookies": {
+          "first": "alpha"
+        },
+        "session": {
+          "user": "demo"
+        }
+      },
+      "map": {
+        "method": "GET",
+        "url": "/api/greeting/eric",
+        "host": "127.0.0.1:8085",
+        "headers": {
+          "accept": "*/*",
+          "x-ttl": "10000"
+        },
+        "body": null,
+        "ip": "127.0.0.1",
+        "https": false,
+        "timeout": 10,
+        "query": "lang=fr&q=a&q=b",
+        "cookies": {
+          "first": "alpha"
+        },
+        "session": {
+          "user": "demo"
+        },
+        "parameters": {
+          "query": {
+            "lang": "fr",
+            "q": [
+              "a",
+              "b"
+            ]
+          },
+          "path": {
+            "user": "eric"
+          }
+        }
+      }
+    },
+    {
+      "name": "a body set to null stays on the wire; empty cookies and session are omitted",
+      "build": {
+        "method": "POST",
+        "url": "/x",
+        "body": {
+          "a": 1
+        }
+      },
+      "map": {
+        "method": "POST",
+        "url": "/x",
+        "body": {
+          "a": 1
+        },
+        "parameters": {
+          "query": {},
+          "path": {}
+        }
+      }
+    },
+    {
+      "name": "an unset body is omitted and parameters always carry both sub-maps",
+      "build": {
+        "method": "GET",
+        "url": "/y"
+      },
+      "map": {
+        "method": "GET",
+        "url": "/y",
+        "parameters": {
+          "query": {},
+          "path": {}
+        }
+      }
+    }
+  ],
+  "request_read_cases": [
+    {
+      "name": "the accessors over a delivered map",
+      "map": {
+        "method": "GET",
+        "url": "/api/greeting/eric",
+        "headers": {
+          "Accept": "*/*",
+          "x-ttl": "10000"
+        },
+        "body": null,
+        "ip": "127.0.0.1",
+        "https": true,
+        "timeout": 10,
+        "query": "lang=fr&q=a&q=b",
+        "cookies": {
+          "first": "alpha"
+        },
+        "session": {
+          "user": "demo"
+        },
+        "parameters": {
+          "query": {
+            "lang": "fr",
+            "q": [
+              "a",
+              "b"
+            ]
+          },
+          "path": {
+            "user": "eric"
+          }
+        }
+      },
+      "expect": {
+        "method": "GET",
+        "url": "/api/greeting/eric",
+        "path_parameter.user": "eric",
+        "query_parameter.q": "a",
+        "query_parameters.q": [
+          "a",
+          "b"
+        ],
+        "query_parameter.lang": "fr",
+        "query_parameters.missing": [],
+        "header.accept": "*/*",
+        "header.ACCEPT": "*/*",
+        "cookie.first": "alpha",
+        "session_info.user": "demo",
+        "remote_ip": "127.0.0.1",
+        "is_secure": true,
+        "timeout_seconds": 10,
+        "query_string": "lang=fr&q=a&q=b",
+        "body": null
+      }
+    },
+    {
+      "name": "x-ttl wins over the entry's timeout; defaults for what is absent",
+      "map": {
+        "headers": {
+          "x-ttl": "1500"
+        },
+        "timeout": 10,
+        "parameters": {
+          "query": {},
+          "path": {}
+        }
+      },
+      "expect": {
+        "method": "GET",
+        "url": "/",
+        "timeout_seconds": 1,
+        "is_secure": false,
+        "path_parameter.user": null,
+        "query_parameter.q": null,
+        "header.accept": null,
+        "cookie.first": null,
+        "session_info.user": null,
+        "remote_ip": null,
+        "query_string": null,
+        "body": null
+      }
+    }
+  ],
+  "response_cases": [
+    {
+      "name": "a map body under Accept json: pretty JSON, the cors header, the cid echoed",
+      "status": 200,
+      "reply_headers": {},
+      "body": {
+        "user": "eric"
+      },
+      "accept": "application/json",
+      "head": false,
+      "transform": null,
+      "cors": {
+        "headers": [
+          [
+            "Access-Control-Allow-Origin",
+            "*"
+          ]
+        ]
+      },
+      "cid": "cid-1",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 200,
+        "headers": [
+          [
+            "access-control-allow-origin",
+            "*"
+          ],
+          [
+            "content-type",
+            "application/json"
+          ],
+          [
+            "x-correlation-id",
+            "cid-1"
+          ]
+        ],
+        "body": "{\n  \"user\": \"eric\"\n}"
+      }
+    },
+    {
+      "name": "a text body under */* negotiates json and rides raw",
+      "status": 200,
+      "reply_headers": {},
+      "body": "plain response",
+      "accept": "*/*",
+      "head": false,
+      "transform": null,
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 200,
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ],
+          [
+            "x-correlation-id",
+            "c"
+          ]
+        ],
+        "body": "plain response"
+      }
+    },
+    {
+      "name": "a map body under text/html is wrapped in the html shell",
+      "status": 200,
+      "reply_headers": {},
+      "body": {
+        "a": 1
+      },
+      "accept": "text/html",
+      "head": false,
+      "transform": null,
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 200,
+        "headers": [
+          [
+            "content-type",
+            "text/html"
+          ],
+          [
+            "x-correlation-id",
+            "c"
+          ]
+        ],
+        "body": "<html><body><pre>\n{\n  \"a\": 1\n}\n</pre></body></html>"
+      }
+    },
+    {
+      "name": "no Accept means no content-type header at all",
+      "status": 200,
+      "reply_headers": {},
+      "body": {
+        "a": 1
+      },
+      "accept": null,
+      "head": false,
+      "transform": null,
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 200,
+        "headers": [
+          [
+            "x-correlation-id",
+            "c"
+          ]
+        ],
+        "body": "{\n  \"a\": 1\n}"
+      }
+    },
+    {
+      "name": "a function's failure renders as the standard error body",
+      "status": 404,
+      "reply_headers": {},
+      "body": "nothing here",
+      "accept": null,
+      "head": false,
+      "transform": null,
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 404,
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ],
+          [
+            "x-correlation-id",
+            "c"
+          ]
+        ],
+        "body": "{\n  \"status\": 404,\n  \"message\": \"nothing here\",\n  \"type\": \"error\"\n}"
+      }
+    },
+    {
+      "name": "an error body that already looks like JSON is left as written",
+      "status": 409,
+      "reply_headers": {},
+      "body": "{\"custom\":true}",
+      "accept": null,
+      "head": false,
+      "transform": null,
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 409,
+        "headers": [
+          [
+            "x-correlation-id",
+            "c"
+          ]
+        ],
+        "body": "{\"custom\":true}"
+      }
+    },
+    {
+      "name": "the function's headers survive: a redirect, a content type, repeated cookies, the transform; the handles are withheld",
+      "status": 302,
+      "reply_headers": {
+        "Location": "/somewhere/else",
+        "Content-Type": "application/vnd.demo+json",
+        "Set-Cookie": "first=1; Path=/|second=2; HttpOnly",
+        "X-Custom": "custom-value",
+        "x-stream-id": "stream.100.in",
+        "x-ttl": "10",
+        "my_route": "hidden"
+      },
+      "body": {
+        "moved": true
+      },
+      "accept": "application/json",
+      "head": false,
+      "transform": {
+        "add": [
+          [
+            "x-served-by",
+            "mercury"
+          ]
+        ]
+      },
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 302,
+        "headers": [
+          [
+            "content-type",
+            "application/vnd.demo+json"
+          ],
+          [
+            "location",
+            "/somewhere/else"
+          ],
+          [
+            "set-cookie",
+            "first=1; Path=/"
+          ],
+          [
+            "set-cookie",
+            "second=2; HttpOnly"
+          ],
+          [
+            "x-correlation-id",
+            "c"
+          ],
+          [
+            "x-custom",
+            "custom-value"
+          ],
+          [
+            "x-served-by",
+            "mercury"
+          ]
+        ],
+        "body": "{\n  \"moved\": true\n}"
+      }
+    },
+    {
+      "name": "a HEAD response carries the headers, no body and no content type",
+      "status": 302,
+      "reply_headers": {
+        "Location": "/somewhere/else",
+        "Content-Type": "application/vnd.demo+json"
+      },
+      "body": {
+        "moved": true
+      },
+      "accept": "application/json",
+      "head": true,
+      "transform": null,
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 302,
+        "headers": [
+          [
+            "location",
+            "/somewhere/else"
+          ],
+          [
+            "x-correlation-id",
+            "c"
+          ]
+        ],
+        "body": ""
+      }
+    },
+    {
+      "name": "a correlation-id header set by the function wins over the echo",
+      "status": 200,
+      "reply_headers": {
+        "X-Correlation-Id": "mine"
+      },
+      "body": "ok",
+      "accept": "text/plain",
+      "head": false,
+      "transform": null,
+      "cors": null,
+      "cid": "edge",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 200,
+        "headers": [
+          [
+            "content-type",
+            "text/plain"
+          ],
+          [
+            "x-correlation-id",
+            "mine"
+          ]
+        ],
+        "body": "ok"
+      }
+    },
+    {
+      "name": "the response transform keeps only the listed headers; content type and the echo bypass it",
+      "status": 200,
+      "reply_headers": {
+        "x-keep": "1",
+        "x-drop": "2"
+      },
+      "body": null,
+      "accept": "text/plain",
+      "head": false,
+      "transform": {
+        "keep": [
+          "x-keep"
+        ]
+      },
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-legacy-cid",
+      "expect": {
+        "status": 200,
+        "headers": [
+          [
+            "content-type",
+            "text/plain"
+          ],
+          [
+            "x-keep",
+            "1"
+          ],
+          [
+            "x-legacy-cid",
+            "c"
+          ]
+        ],
+        "body": ""
+      }
+    },
+    {
+      "name": "an error with headers of its own is not reshaped",
+      "status": 400,
+      "reply_headers": {
+        "x-reason": "quota"
+      },
+      "body": "too many",
+      "accept": "*/*",
+      "head": false,
+      "transform": null,
+      "cors": null,
+      "cid": "c",
+      "cid_header": "x-correlation-id",
+      "expect": {
+        "status": 400,
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ],
+          [
+            "x-correlation-id",
+            "c"
+          ],
+          [
+            "x-reason",
+            "quota"
+          ]
+        ],
+        "body": "too many"
+      }
+    }
+  ],
+  "render_cases": [
+    {
+      "body": {
+        "a": null,
+        "b": 1
+      },
+      "type": null,
+      "text": "{\n  \"b\": 1\n}"
+    },
+    {
+      "body": {
+        "name": "José"
+      },
+      "type": "application/json",
+      "text": "{\n  \"name\": \"José\"\n}"
+    },
+    {
+      "body": [
+        1,
+        "two"
+      ],
+      "type": "text/html",
+      "text": "<html><body><pre>\n[\n  1,\n  \"two\"\n]\n</pre></body></html>"
+    },
+    {
+      "body": "text",
+      "type": "text/html",
+      "text": "text"
+    },
+    {
+      "body": null,
+      "type": "application/json",
+      "text": ""
+    }
+  ],
+  "stream_text_cases": [
+    {
+      "body": null,
+      "text": ""
+    },
+    {
+      "body": "hello",
+      "text": "hello"
+    },
+    {
+      "body": {
+        "n": 2,
+        "skip": null
+      },
+      "text": "{\"n\":2}"
+    },
+    {
+      "body": [
+        1,
+        2
+      ],
+      "text": "[1,2]"
+    }
+  ],
+  "error_body_cases": [
+    {
+      "status": 408,
+      "message": "Timeout for 10000 ms",
+      "expect": {
+        "status": 408,
+        "message": "Timeout for 10000 ms",
+        "type": "error"
+      }
+    }
+  ]
+}

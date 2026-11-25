@@ -113,7 +113,7 @@
   **Kind rule since 2026-09-22 (PR #36 MERGED, `cbf1f7f6`):** SERVER iff the record's `service` is `http.request` — an
   engine edge's round-trip record — and every function execution is INTERNAL; a record's `from` no longer decides the kind
   (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
-  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-11-24 | uses: 5 | tier: active | origin: 2026-09-22-164128 -->
+  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-11-25 | uses: 6 | tier: active | origin: 2026-09-22-164128 -->
 
 - **The LLM helper is a dedicated function host on the Anthropic SDK: the engines stay LLM-free, the AI node is a bounded
   function, and one contract is proven by a vector file shared with the Node pack (Eric's rulings, 2026-10-01; PR #38, merge
@@ -215,7 +215,7 @@
   record, never whether one exists - every traced execution leaves exactly one; before changing a host or client path, ask
   which side records it in the Java engine and mirror that side; a lineage check parses every record of the trace from every
   process and verifies each parent is a span some record owns.
-  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-24 | uses: 2 | tier: active | origin: 2026-11-14-115310 -->
+  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-25 | uses: 3 | tier: active | origin: 2026-11-14-115310 -->
 
 - **The transcript audit store: every model turn recorded by a composable function behind a local event, off the
   turn's path, into PostgreSQL beside the working store (RFC-0012 in mercury-composable, Eric's rulings of 2026-11-17;
@@ -338,7 +338,7 @@
   **How to apply:** a web bundle goes into `resources/public` next to the application file and nothing else is
   configured; a host path or an extension route always wins over a file of the same name; a relative folder is never
   the working directory's.
-  <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-24 | uses: 3 | tier: active | origin: 2026-11-20-075621 -->
+  <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-25 | uses: 4 | tier: active | origin: 2026-11-20-075621 -->
 
 - **`Platform.on_shutdown` runs the moment the application starts to stop - aiohttp's `on_shutdown`, while the host
   still holds its connections and before it waits for the requests in flight - and an extension that holds a stream
@@ -352,6 +352,23 @@
   never a shorter `shutdown_timeout` as the remedy - only the extension knows a response is a stream.
   <!-- id: platform-on-shutdown-hook | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: active | origin: 2026-11-20-094019 -->
 
+- **REST automation in the pack: `rest.yaml` is the router in front of the functions, the engines' grammar and never a
+  dialect (RFC-0018 in mercury-composable, agreed by Eric 2026-11-25; built here the same day as build plan step 1,
+  Python first).** `rest.automation: true` (off by default) reads one `yaml.rest.automation` location -
+  `classpath:/rest.yaml` is `resources/rest.yaml` next to the application file - and the edge (`rest_automation.py`, an
+  aiohttp middleware in front of the host's routes) serves the entries on the one server: `POST /api/event` and the
+  actuators are the engines' default entries a user entry may override; the function receives the engines'
+  `AsyncHttpRequest` map (`async_http_request.py`, exported) and replies with a value or an envelope; the pure half
+  (`rest_routing.py`: the parser and its refusals, the matching with the engines' precedence, the header transforms,
+  the body dispatch by content type, the `Accept` negotiation, the response mapping) is pinned by
+  `tests/vectors/rest-automation-vectors.json`, shared with the Node twin. Version 1 is the Rust port's subset;
+  refused by name at load: a flow binding, the HTTP relay, the A/B dual service, `upload`. The edge records
+  `http.request` and the function's round trip as the engines do, so the forwarder's SERVER kind holds. **How to
+  apply:** a new endpoint is a `rest.yaml` entry and a `@preload` function reading `AsyncHttpRequest(body)`, never a
+  mounted route; a behaviour of the edge is first a vector case, then code, in both packs; the grammar's messages
+  are the engines' and a pack never grows a dialect; what the engines defer stays deferred until a field request.
+  <!-- id: rest-automation-python | created: 2026-11-25 | last_used: 2026-11-25 | uses: 1 | tier: working | origin: 2026-11-25-005844 -->
+
 ## Conventions
 
 - **Quality gates (adopted 2026-08-23, Eric's IDE review round): ruff + basedpyright +
@@ -362,11 +379,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-24 | uses: 16 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-25 | uses: 17 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-24 | uses: 7 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-25 | uses: 8 | tier: active | origin: 2026-08-22-171555 -->
 - **Each example app lives in a folder of its own, with a README and its own `resources/` (Eric, 2026-10-01; PR #38).**
   `examples/demo-app/` (the minimal polyglot app: `hello.python`, `hello.declarative`, `hello.chain`, `hello.sync.chain`,
   `hello.tokens`, the private `demo.suffix.helper` and `demo.health`) and `examples/llm-helper/`; run one as
@@ -376,7 +393,7 @@
   **2026-11-02 (Eric):** the LLM helper graduates from an example to an extension, `extensions/llm-helper/` (same folder
   shape: a README and its own `resources/`), so `examples/` holds the demo app; merged as #46 (`13cf394`, 2026-11-03),
   and the Node pack followed the same day (mercury-nodejs #114, `62958b5`).
-  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-17 | uses: 6 | tier: archive-candidate | origin: 2026-10-02-001146 -->
+  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-25 | uses: 7 | tier: active | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
   ran (`python app.py`) - and the working directory is never searched (Eric's rule, 2026-10-14; PR #45 merge `a3c5a26`).** The engines' classpath
@@ -388,7 +405,7 @@
   `python llm_helper.py` from the repository root started unconfigured during the Bedrock drive ([[llm-helper-app]]); pinned by
   subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
-  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-24 | uses: 5 | tier: active | origin: 2026-10-14-015420 -->
+  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-25 | uses: 6 | tier: active | origin: 2026-10-14-015420 -->
 
 - **The live interop gate is a release convention (Eric, 2026-11-25; closes the Blueprint gap [[bp-publish-interop-gate]]).**
   Every pack release is driven live against both engines before it is published - the Vision's success criterion met by

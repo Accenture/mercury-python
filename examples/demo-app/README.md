@@ -67,6 +67,20 @@ asyncio.run(main())
 | `demo.suffix.helper` | private | Appends `!` to `text`. In-app only: the HTTP host answers 403 for a private route. |
 | `demo.health` | private | A health check speaking the engines' interface contract (`type=info` and `type=health`). `/health` includes it through `mandatory.health.dependencies`. |
 
+### REST automation
+
+`resources/rest.yaml` turns `hello.rest` into `GET /api/hello/{name}` with CORS and a response
+header, the engines' way (`rest.automation: true` in `application.yml`; the grammar is the
+engines' REST automation guide):
+
+```shell
+curl -s 'http://127.0.0.1:8086/api/hello/world?lang=fr'
+```
+
+The function receives the whole request as the engines' `AsyncHttpRequest` map and reads the path
+parameter and the query parameter with the engines' accessors; `POST /api/event` and the actuators
+stay served as the default entries.
+
 ### Streaming
 
 `hello.tokens` sends an introductory message at once, then `count` messages, each after `delay`
