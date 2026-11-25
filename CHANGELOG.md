@@ -364,6 +364,10 @@
    the Node 20 runtime that `actions/checkout@v4` and `actions/setup-python@v5` declare, and run them on Node 24 with a
    deprecation warning. An action declares its own runtime, and Node 24 is the newest GitHub offers, so both move to v7.
    In lockstep with the Node pack. **Upgrade note:** none - CI only; nothing in the package changes.
+9. **CI tests on the supported floor and the newest Python.** The `test` job runs ruff, basedpyright and pytest on
+   a matrix of Python 3.10, the floor `pyproject.toml` declares, and 3.14, the newest release it lists; the floor
+   catches what a user on it would hit (a typing stub, a missing method - as the first run of #84 did), the newest
+   the deprecations ahead. `fail-fast` is off so both results show.
 
 ## Version 4.12.30, 11/16/2026
 
