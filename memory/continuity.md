@@ -51,9 +51,9 @@
   Prior: 2026-09-23 | through 2026-09-23-004552.md (cadence — archived 1 faded fact `decision-polyglot-reboot` + swept 3
   completed threads → 2026-Q3; invariants not due (29 sessions, cadence 40, none yet); stalled none) · 2026-09-05 | through
   2026-09-05-211409
-- **last_invariant_check:** 2026-11-25 | 2026-11-25-034612.md (DUE and PROMPTED - 44 sessions since 2026-11-03-012600; the thread
-  [[reverify-invariants-20261125]] lists the four invariants and the Vision for Eric to re-confirm or supersede; the check completes
-  when he does)
+- **last_invariant_check:** 2026-11-25 | 2026-11-25-042423.md (COMPLETE - the second re-verify, prompted by the review 2026-11-25-034612
+  after 44 sessions; Eric confirmed all four invariants and the Vision, walked with the REST automation edge in mind; no wording
+  changed, core stays 4; the next is due 40 sessions after this one)
   Prior: 2026-11-03 | 2026-11-03-012600.md (COMPLETE - the first re-verify; Eric confirmed all four invariants and
   the Vision as walked in 2026-11-03-012056, two wordings refreshed, core stays 4; the next is due 40 sessions after this one)
 - **repo:** ~/sandbox/mercury-python (origin: github.com/Accenture/mercury-python)
@@ -166,7 +166,7 @@
   in the helper's store (`llm.transcript.store`: `memory` or `redis`), the loop holds `conversation` and `turn`, a stale or
   ended turn is a 409, the model is pinned at the first turn and no server-side fallback is sent; a second shared vector
   file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
-  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-25 | uses: 9 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-25 | uses: 9 | tier: archive-candidate | origin: 2026-10-02-001146 -->
 
 - **A traced call into the pack leaves the records a Java or Rust callee leaves, so a span lineage is continuous from an
   engine into the pack (2026-11-14; Eric's criterion: for OpenTelemetry to be certified, the span lineage ought to be
