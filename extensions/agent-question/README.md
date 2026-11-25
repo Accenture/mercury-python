@@ -11,18 +11,24 @@ application is one of those routes. It is a standalone application on the packag
 - **Intake.** `agent.question.inbox` is a composable function reached over Event-over-HTTP like any peer function. It
   writes nothing - the record is the recorder's (`question.audit` in the ask-person process) - it checks the event and
   wakes the feed, so a connected device sees the row the moment it is recorded.
-- **The person's side**, under the pack's host: `GET /questions/config` tells the UI how to sign in (the auth mode,
-  the title and, under `oauth2`, the issuer, the public client id, the scopes and the audience); `GET /questions?since=<seq>`
-  is the **replay** a reconnecting device calls first - every row that changed since its cursor, oldest change first,
-  with the cursor to continue from; `GET /questions?before=<seq>&limit=<n>` the **history's older page**, newest change
-  first, with the cursor of the page before it - the infinite scroll; `GET /questions/events` the **stream** a connected
-  device holds, each event a changed row, `Last-Event-ID` the same cursor, so a browser's reconnect misses nothing;
-  `GET /transcripts?before=<iso>&limit=<n>&correlation_id=&graph_id=` and `GET /transcripts/{conversation}` browse the
-  **transcript audit store** - the conversations newest first, one conversation with its turns as the model exchanged
-  them. The person selects which card to answer, in any order; the card's button **automates the click**:
-  `POST /questions/{id}/decide` posts `{ticket, decisions, decided_by}` to the main flow's reply endpoint - the link's
-  own base, under this app's bearer - and answers with the row as the recorder then left it and the engine's outcome;
-  the feed carries the change to every device.
+- **The person's side** is `resources/rest.yaml` - the engines' REST automation (RFC-0018), served by the pack's host
+  in front of this process's private functions, with `rest.automation: true` in `application.yml`: `GET /questions/config`
+  (`question.config`) tells the UI how to sign in (the auth mode, the title and, under `oauth2`, the issuer, the public
+  client id, the scopes and the audience); `GET /questions?since=<seq>` (`question.list`) is the **replay** a
+  reconnecting device calls first - every row that changed since its cursor, oldest change first, with the cursor to
+  continue from; `GET /questions?before=<seq>&limit=<n>` the **history's older page**, newest change first, with the
+  cursor of the page before it - the infinite scroll; `GET /questions/events` (`question.events`, a `stream: true`
+  entry) the **stream** a connected device holds, each `question` event a changed row whose `seq` is the cursor,
+  `Last-Event-ID` the same cursor, so a browser's reconnect misses nothing (the engines' Server-Sent Events dialect: an
+  event name and the data, no `id:` line); `GET /transcripts?before=<iso>&limit=<n>&correlation_id=&graph_id=` and
+  `GET /transcripts/{conversation}` (`transcript.list`, `transcript.show`) browse the **transcript audit store** - the
+  conversations newest first, one conversation with its turns as the model exchanged them. The person selects which
+  card to answer, in any order; the card's button **automates the click**: `POST /questions/{id}/decide`
+  (`question.decide`) posts `{ticket, decisions, decided_by}` to the main flow's reply endpoint - the link's own base,
+  under this app's bearer - and answers with the row as the recorder then left it and the engine's outcome; the feed
+  carries the change to every device. Every entry but the sign-in configuration names `question.identity` as its
+  authentication function: it resolves who is at the UI once, by the configured mode, and the functions read `who` and
+  `via` from the request's session map. An error is the engines' standard body, `{"status", "message", "type": "error"}`.
 - **The feed** reads the record's change sequence: a poll every `question.poll` (1 s) and a wake-up from the intake or a
   click, whichever comes first. A wait is `open` until the engine accepts the decision (`answered`) or finds nothing
   waiting (`expired`); an advice has no state - whether a person has read it is the device's, kept by the UI. The

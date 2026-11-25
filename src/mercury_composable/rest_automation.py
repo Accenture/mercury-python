@@ -735,8 +735,9 @@ class RestAutomation:
             except TimeoutError:
                 if loop.time() >= deadline:
                     return None
-                with contextlib.suppress(ConnectionError):
-                    await response.write(b": ping\n\n")
+                # a keep-alive that cannot be written means the client is gone: the stream ends
+                # here and the caller closes the sink, instead of waiting out the idle allowance
+                await response.write(b": ping\n\n")
 
     # ---- the built-in endpoints and static content ----
 

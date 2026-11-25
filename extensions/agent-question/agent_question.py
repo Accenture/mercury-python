@@ -9,15 +9,19 @@ configured with, and this application is one of those routes.
 - ``agent.question.inbox`` is the intake, a composable function reached over Event-over-HTTP like any peer function.
   It writes nothing: the record is the recorder's (``question.audit`` in the ask-person process). It checks the event
   and wakes the feed, so a connected device sees the row the moment it is recorded.
-- The browser side runs under the pack's host (``Platform.add_routes``). ``GET /questions/config`` tells the UI how to
-  sign in; ``GET /questions?since=<seq>`` is the replay a reconnecting device calls first - every row that changed
-  since its cursor, oldest change first; ``GET /questions?before=<seq>&limit=<n>`` the history's older page, newest
-  first, for an infinite scroll; ``GET /questions/events`` the stream a connected device holds, each event a changed
-  row, ``Last-Event-ID`` the same cursor. ``GET /transcripts`` and ``GET /transcripts/{conversation}`` browse the
-  transcript audit store the LLM helper writes beside the record. The person selects which card to answer; the card's
-  button automates the click: ``POST /questions/{id}/decide`` posts ``{ticket, decisions, decided_by}`` to the main
-  flow's reply endpoint - the link's own base, under this app's bearer - and the answer lands on the row through the
-  recorder; the feed carries the change to every device.
+- The browser side is ``resources/rest.yaml`` - the engines' REST automation, served by the pack's host in front of
+  this process's private functions. ``GET /questions/config`` (``question.config``) tells the UI how to sign in;
+  ``GET /questions?since=<seq>`` (``question.list``) is the replay a reconnecting device calls first - every row that
+  changed since its cursor, oldest change first; ``GET /questions?before=<seq>&limit=<n>`` the history's older page,
+  newest first, for an infinite scroll; ``GET /questions/events`` (``question.events``, a streaming entry) the stream
+  a connected device holds, each ``question`` event a changed row whose ``seq`` is the cursor, ``Last-Event-ID`` the
+  same cursor. ``GET /transcripts`` and ``GET /transcripts/{conversation}`` (``transcript.list``, ``transcript.show``)
+  browse the transcript audit store the LLM helper writes beside the record. The person selects which card to
+  answer; the card's button automates the click: ``POST /questions/{id}/decide`` (``question.decide``) posts
+  ``{ticket, decisions, decided_by}`` to the main flow's reply endpoint - the link's own base, under this app's
+  bearer - and the answer lands on the row through the recorder; the feed carries the change to every device. Who is
+  at the UI is resolved once by the entries' authentication function, ``question.identity``, and read from the
+  request's session map.
 - The React UI (mercury-nodejs ``extensions/agent-question-ui``, the one front-end of both packs' backends) is served
   by the host's static content service from ``resources/public`` next to this file, at the application's root; the
   bundle is built in the Node.js pack and committed here. This app generates no page of its own.
@@ -47,7 +51,6 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import aiohttp
-from aiohttp import web
 
 try:
     import jwt
@@ -57,7 +60,10 @@ except ImportError:  # the oauth2 mode needs PyJWT - pip install 'mercury-compos
 from mercury_composable import (
     AppConfig,
     AppException,
+    AsyncHttpRequest,
     Body,
+    EventEnvelope,
+    EventStreamWriter,
     app_config,
     get_logger,
     iso_utc,
@@ -76,12 +82,27 @@ KINDS = ("approval", "question", "advice")
 WAIT_KINDS = ("approval", "question")
 # a wait's states; an advice has none (None) - whether a person read it is the device's business
 STATES = ("open", "answered", "expired")
+# the person's side: the URLs of resources/rest.yaml and the private functions behind them
 LIST_PATH = "/questions"
 EVENTS_PATH = "/questions/events"
 CONFIG_PATH = "/questions/config"
 DECIDE_PATH = "/questions/{id}/decide"
 TRANSCRIPTS_PATH = "/transcripts"
 TRANSCRIPT_PATH = "/transcripts/{conversation}"
+LIST_ROUTE = "question.list"
+EVENTS_ROUTE = "question.events"
+CONFIG_ROUTE = "question.config"
+DECIDE_ROUTE = "question.decide"
+TRANSCRIPTS_ROUTE = "transcript.list"
+TRANSCRIPT_ROUTE = "transcript.show"
+# the entries' authentication function and the session keys it leaves on the request
+IDENTITY_ROUTE = "question.identity"
+SESSION_WHO = "who"
+SESSION_VIA = "via"
+INSTANCES = 10
+# a device's stream is quiet for as long as nothing changes: its idle allowance (the head's x-ttl)
+# is a day, after which the device reconnects from its cursor
+STREAM_IDLE_SECONDS = 86_400
 AUTH_MODES = ("none", "oauth2")
 JWT_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512")
 LIST_LIMIT = 200
@@ -746,8 +767,8 @@ class Identity:
     via: str
 
 
-def _bearer(request: web.Request) -> str | None:
-    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+def _bearer(request: AsyncHttpRequest) -> str | None:
+    scheme, _, token = (request.header("authorization") or "").partition(" ")
     return token.strip() if scheme.lower() == "bearer" and token.strip() else None
 
 
@@ -820,7 +841,7 @@ def _oauth2(settings: Settings) -> OAuth2Verifier:
     return _verifier
 
 
-async def identify(request: web.Request, settings: Settings, claimed: str | None) -> Identity:
+async def identify(request: AsyncHttpRequest, settings: Settings, claimed: str | None) -> Identity:
     """Who is at the UI: nobody is asked in development (a name the page offers is taken as given), or a
     validated access token - the UI obtains one by Authorization Code with PKCE."""
     if settings.auth == "none":
@@ -835,11 +856,39 @@ async def identify(request: web.Request, settings: Settings, claimed: str | None
     return Identity(str(who), "oauth2")
 
 
+def _claimed(request: AsyncHttpRequest) -> str | None:
+    """``decided_by`` from a JSON body when it is text - the name the page offers in development; anything
+    else is left to the click's own check."""
+    body = request.body
+    value = body.get("decided_by") if isinstance(body, Mapping) else None
+    return value if isinstance(value, str) and value else None
+
+
+@preload(route=IDENTITY_ROUTE, instances=INSTANCES, private=True)
+async def question_identity(_headers: dict[str, str], body: Body) -> Any:
+    """The authentication function of the feed, the history, the transcripts and the click: ``true`` with who is
+    at the UI in the headers, which the edge leaves on the request as its session map; a refusal is the error the
+    UI sees."""
+    request = AsyncHttpRequest(body)
+    try:
+        identity = await identify(request, current_settings(), _claimed(request))
+    except ReplyError as exc:
+        raise AppException(exc.status, exc.message) from exc
+    return EventEnvelope().set_body(True).set_header(SESSION_WHO, identity.who).set_header(SESSION_VIA, identity.via)
+
+
+def _identity(request: AsyncHttpRequest) -> Identity:
+    """Who the entry's authentication function found, from the request's session map."""
+    return Identity(request.session_info(SESSION_WHO) or "anonymous", request.session_info(SESSION_VIA) or "none")
+
+
 # --- the browser side -------------------------------------------------------------------------
 
 
-def _error(status: int, message: str) -> web.Response:
-    return web.json_response({"type": "error", "message": message}, status=status)
+def _json_reply(body: Any, status: int = 200) -> EventEnvelope:
+    """A JSON reply as the UI reads it: serialized here, so a null stays a null (an advice's ``state``, a silent
+    engine's ``status`` - the engines' renderer would omit them), under its content type."""
+    return EventEnvelope().set_status(status).set_header("content-type", "application/json").set_body(json.dumps(body))
 
 
 def ui_config(settings: Settings) -> dict[str, Any]:
@@ -854,9 +903,10 @@ def ui_config(settings: Settings) -> dict[str, Any]:
     return config
 
 
-async def show_config(_request: web.Request) -> web.Response:
+@preload(route=CONFIG_ROUTE, instances=INSTANCES, private=True)
+async def question_config(_headers: dict[str, str], _body: Body) -> Any:
     """``GET /questions/config``: the UI's sign-in configuration - open, it holds no secret."""
-    return web.json_response(ui_config(current_settings()))
+    return _json_reply(ui_config(current_settings()))
 
 
 def _whole(text: str | None, default: int) -> int:
@@ -867,133 +917,131 @@ def _whole(text: str | None, default: int) -> int:
     return int(text)
 
 
-async def list_rows(request: web.Request) -> web.Response:
+@preload(route=LIST_ROUTE, instances=INSTANCES, private=True)
+async def question_list(_headers: dict[str, str], body: Body) -> Any:
     """``GET /questions?since=<seq>&limit=<n>``: every row that changed since the cursor, oldest change first,
     and the cursor to continue from - the replay a reconnecting device calls before it listens.
     ``GET /questions?before=<seq>&limit=<n>``: the history's older page, newest change first, and the cursor of
     the page before it - the infinite scroll."""
-    settings = current_settings()
-    try:
-        await identify(request, settings, None)
-    except ReplyError as exc:
-        return _error(exc.status, exc.message)
+    request = AsyncHttpRequest(body)
+    paging = "before" in request.query_parameters_map
     before: int | None = None
     since = 0
     try:
-        limit = min(LIST_LIMIT_MAX, max(1, _whole(request.query.get("limit"), LIST_LIMIT)))
-        if "before" in request.query:
-            before = _whole(request.query.get("before"), 0) if request.query.get("before") else None
+        limit = min(LIST_LIMIT_MAX, max(1, _whole(request.query_parameter("limit"), LIST_LIMIT)))
+        if paging:
+            text = request.query_parameter("before")
+            before = _whole(text, 0) if text else None
         else:
-            since = _whole(request.query.get("since"), 0)
+            since = _whole(request.query_parameter("since"), 0)
     except ValueError:
-        return _error(400, "since, before and limit must be whole numbers")
+        raise AppException(400, "since, before and limit must be whole numbers") from None
     try:
-        if "before" in request.query:
+        if paging:
             older = await reader().before(before, limit)
-            return web.json_response(page_before(older, None, limit) | {"before": before})
+            return _json_reply(page_before(older, None, limit) | {"before": before})
         rows = await reader().since(since, limit)
     except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
         log.warning("The record could not be read - %s", failure(exc))
-        return _error(503, "the question record is not available")
-    return web.json_response(page_since(rows, since, limit) | {"since": since})
+        raise AppException(503, "the question record is not available") from None
+    return _json_reply(page_since(rows, since, limit) | {"since": since})
 
 
-def _frame(row: Row) -> bytes:
-    return f"id: {row.seq}\nevent: question\ndata: {_compact(row.public())}\n\n".encode()
+def _frame(row: Row) -> str:
+    """A changed row as the ``question`` event's data: serialized here, so a null stays a null."""
+    return json.dumps(row.public())
 
 
-async def events(request: web.Request) -> web.StreamResponse:
-    """``GET /questions/events``: the stream a connected device holds. Rows since ``Last-Event-ID`` (or
-    ``since``) first, then every change the feed finds; keep-alive comments while nothing changes."""
-    settings = current_settings()
-    try:
-        await identify(request, settings, None)
-    except ReplyError as exc:
-        return _error(exc.status, exc.message)
-    try:
-        since = int(request.headers.get("last-event-id") or request.query.get("since", "0"))
-    except ValueError:
-        return _error(400, "Last-Event-ID must be a whole number")
-    response = web.StreamResponse(status=200)
-    response.headers["content-type"] = "text/event-stream"
-    response.headers["cache-control"] = "no-cache"
-    response.headers["x-accel-buffering"] = "no"
-    await response.prepare(request)
+_streams: set[asyncio.Task[None]] = set()
+
+
+async def _follow(out: EventStreamWriter, since: int) -> None:
+    """One device's stream: the rows since its cursor first, then every change the feed finds, until the device
+    leaves (the edge closes the reply sink and ``connected`` turns false) or the application stops (the wake-ups
+    close); the edge sends the keep-alive comments while nothing changes."""
     queue = _wakeups.subscribe()
     ping_ms = keep_alive_ms()
+    check_seconds = ping_ms / 1000 if ping_ms > 0 else 30.0
     try:
         for row in await reader().since(since, LIST_LIMIT_MAX):
-            await response.write(_frame(row))
+            out.write_named("question", _frame(row))
             since = row.seq
-        while True:
+        while out.connected:
             try:
-                row = await asyncio.wait_for(queue.get(), (ping_ms / 1000) if ping_ms > 0 else None)
+                row = await asyncio.wait_for(queue.get(), check_seconds)
             except TimeoutError:
-                await response.write(b": ping\n\n")
                 continue
             if row is None:
-                break  # the application is stopping; the device reconnects
-            if row.seq > since:
-                await response.write(_frame(row))
+                out.close()  # the application is stopping; the device reconnects
+                break
+            if row.seq > since and out.connected:
+                out.write_named("question", _frame(row))
                 since = row.seq
-    except (ConnectionError, asyncio.CancelledError):
-        pass
     except Exception as exc:  # noqa: BLE001 - a store that cannot be read ends the stream; the device reconnects
         log.warning("The stream could not read the record - %s", failure(exc))
+        out.fail(AppException(503, "the question record is not available"))
     finally:
         _wakeups.unsubscribe(queue)
-    with contextlib.suppress(ConnectionError):
-        await response.write_eof()
-    return response
 
 
-async def list_transcripts(request: web.Request) -> web.Response:
+@preload(route=EVENTS_ROUTE, instances=INSTANCES, interceptor=True, private=True)
+async def question_events(_headers: dict[str, str], event: EventEnvelope) -> None:
+    """``GET /questions/events`` (a streaming entry): the stream a connected device holds. The head goes out at
+    once, with a day's idle allowance; the rows since ``Last-Event-ID`` (or ``since``) and every later change
+    follow from a task of their own, so the function's workers are never held by the devices."""
+    request = AsyncHttpRequest(event.body)
+    try:
+        since = int(request.header("last-event-id") or request.query_parameter("since") or "0")
+    except ValueError:
+        raise AppException(400, "Last-Event-ID must be a whole number") from None
+    out = EventStreamWriter.from_request(event)
+    out.first(200, "text/event-stream", ttl_seconds=STREAM_IDLE_SECONDS)
+    out.write(None)  # the head alone: the stream is open before the first row
+    task = asyncio.get_running_loop().create_task(_follow(out, since), name="question-stream")
+    _streams.add(task)
+    task.add_done_callback(_streams.discard)
+
+
+@preload(route=TRANSCRIPTS_ROUTE, instances=INSTANCES, private=True)
+async def transcript_list(_headers: dict[str, str], body: Body) -> Any:
     """``GET /transcripts?before=<iso>&limit=<n>&correlation_id=&graph_id=``: the transcript audit store's
     conversations, newest first, and the instant to continue from."""
-    settings = current_settings()
-    try:
-        await identify(request, settings, None)
-    except ReplyError as exc:
-        return _error(exc.status, exc.message)
-    before = request.query.get("before") or None
+    request = AsyncHttpRequest(body)
+    before = request.query_parameter("before") or None
     if before is not None:
         parsed = parse_iso(before)
         if parsed is None:
-            return _error(400, "before must be an ISO-8601 time")
+            raise AppException(400, "before must be an ISO-8601 time")
         before = iso_utc(parsed)
     try:
-        limit = min(TRANSCRIPTS_LIMIT_MAX, max(1, _whole(request.query.get("limit"), TRANSCRIPTS_LIMIT)))
+        limit = min(TRANSCRIPTS_LIMIT_MAX, max(1, _whole(request.query_parameter("limit"), TRANSCRIPTS_LIMIT)))
     except ValueError:
-        return _error(400, "limit must be a whole number")
+        raise AppException(400, "limit must be a whole number") from None
     try:
-        rows = await reader().conversations(before, limit, request.query.get("correlation_id") or None,
-                                            request.query.get("graph_id") or None)
+        rows = await reader().conversations(before, limit, request.query_parameter("correlation_id") or None,
+                                            request.query_parameter("graph_id") or None)
     except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
         log.warning("The transcripts could not be read - %s", failure(exc))
-        return _error(503, "the transcript audit store is not available")
+        raise AppException(503, "the transcript audit store is not available") from None
     oldest = rows[-1]["started_at"] if rows else None
-    return web.json_response({"conversations": rows, "next": oldest, "more": len(rows) >= limit})
+    return _json_reply({"conversations": rows, "next": oldest, "more": len(rows) >= limit})
 
 
-async def show_transcript(request: web.Request) -> web.Response:
+@preload(route=TRANSCRIPT_ROUTE, instances=INSTANCES, private=True)
+async def transcript_show(_headers: dict[str, str], body: Body) -> Any:
     """``GET /transcripts/{conversation}``: one conversation of the transcript audit store with its turns, as the
     model exchanged them."""
-    settings = current_settings()
-    try:
-        await identify(request, settings, None)
-    except ReplyError as exc:
-        return _error(exc.status, exc.message)
-    conversation = request.match_info["conversation"]
+    conversation = AsyncHttpRequest(body).path_parameter("conversation") or ""
     if not CONVERSATION_ID.fullmatch(conversation):
-        return _error(400, "a conversation is 32 hexadecimal characters")
+        raise AppException(400, "a conversation is 32 hexadecimal characters")
     try:
         found = await reader().conversation(conversation)
     except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
         log.warning("The transcript could not be read - %s", failure(exc))
-        return _error(503, "the transcript audit store is not available")
+        raise AppException(503, "the transcript audit store is not available") from None
     if found is None:
-        return _error(404, f"conversation {conversation} is not in the audit store")
-    return web.json_response(found)
+        raise AppException(404, f"conversation {conversation} is not in the audit store")
+    return _json_reply(found)
 
 
 async def _forward(url: str, body: dict[str, Any], settings: Settings) -> tuple[int | None, Any, str | None]:
@@ -1013,47 +1061,43 @@ async def _forward(url: str, body: dict[str, Any], settings: Settings) -> tuple[
         return None, None, type(exc).__name__
 
 
-async def decide(request: web.Request) -> web.Response:
+@preload(route=DECIDE_ROUTE, instances=INSTANCES, private=True)
+async def question_decide(_headers: dict[str, str], body: Body) -> Any:
     """``POST /questions/{id}/decide`` with ``{decisions, decided_by?}``: the click, automated - the decisions
     go to the link's reply endpoint under this app's bearer, the recorder behind that endpoint writes the answer
     on the row, and the invoker gets the row as it then stands with the engine's outcome; the feed carries the
-    change to every device."""
+    change to every device. Who decides is the entry's authentication function's finding."""
     settings = current_settings()
-    try:
-        body = await request.json()
-    except ValueError:
-        body = None
-    if not isinstance(body, dict):
-        return _error(400, "the decision must be a JSON map with decisions")
-    claimed = body.get("decided_by")
+    request = AsyncHttpRequest(body)
+    decision = request.body
+    if not isinstance(decision, Mapping):
+        raise AppException(400, "the decision must be a JSON map with decisions")
+    claimed = decision.get("decided_by")
     if claimed is not None and not isinstance(claimed, str):
-        return _error(400, "decided_by must be text")
-    try:
-        identity = await identify(request, settings, claimed or None)
-    except ReplyError as exc:
-        return _error(exc.status, exc.message)
-    decisions = body.get("decisions")
+        raise AppException(400, "decided_by must be text")
+    identity = _identity(request)
+    decisions = decision.get("decisions")
     if not isinstance(decisions, list) or not decisions or not all(isinstance(d, Mapping) for d in decisions):
-        return _error(400, "decisions must be a non-empty list, one per waiting call")
+        raise AppException(400, "decisions must be a non-empty list, one per waiting call")
     try:
-        row_id = int(request.match_info["id"])
+        row_id = int(request.path_parameter("id") or "")
     except ValueError:
-        return _error(400, "the row id must be a whole number")
+        raise AppException(400, "the row id must be a whole number") from None
     try:
         row = await reader().get(row_id)
     except Exception as exc:  # noqa: BLE001 - a store that cannot be read is a 503 by type
         log.warning("The record could not be read - %s", failure(exc))
-        return _error(503, "the question record is not available")
+        raise AppException(503, "the question record is not available") from None
     if row is None:
-        return _error(404, f"row {row_id} is not in the record")
+        raise AppException(404, f"row {row_id} is not in the record")
     if row.kind not in WAIT_KINDS or not row.ticket or not row.link:
-        return _error(409, f"row {row_id} is an advice - nothing to decide")
+        raise AppException(409, f"row {row_id} is an advice - nothing to decide")
     if row.state != "open":
-        return _error(409, f"row {row_id} is {row.state} - decided by {row.answered_by or 'nobody'}")
+        raise AppException(409, f"row {row_id} is {row.state} - decided by {row.answered_by or 'nobody'}")
     try:
         url, payload = reply_request(row.link, row.ticket, decisions, identity.who)
     except ReplyError as exc:
-        return _error(exc.status, exc.message)
+        raise AppException(exc.status, exc.message) from exc
     status, answer, error = await _forward(url, payload, settings)
     outcome: dict[str, Any] = {"status": status, "body": answer}
     if error:
@@ -1068,17 +1112,7 @@ async def decide(request: web.Request) -> web.Response:
         updated = None
     shown = updated if updated is not None else row
     log.info("Row %d decided by %s via %s - %s -> %s", row_id, identity.who, identity.via, outcome["status"], shown.state)
-    return web.json_response({"row": shown.public(), "outcome": outcome})
-
-
-def mount(app: web.Application) -> None:
-    """The browser side on the host (``Platform.add_routes``)."""
-    app.router.add_get(CONFIG_PATH, show_config)
-    app.router.add_get(EVENTS_PATH, events)
-    app.router.add_get(LIST_PATH, list_rows)
-    app.router.add_get(TRANSCRIPTS_PATH, list_transcripts)
-    app.router.add_get(TRANSCRIPT_PATH, show_transcript)
-    app.router.add_post(DECIDE_PATH, decide)
+    return _json_reply({"row": shown.public(), "outcome": outcome})
 
 
 # --- boot -------------------------------------------------------------------------------------
@@ -1117,6 +1151,8 @@ async def close_streams() -> None:
 
 async def shutdown() -> None:
     global _http
+    for task in list(_streams):
+        task.cancel()
     await _feed.stop()
     if _reader is not None:
         await _reader.close()
@@ -1126,10 +1162,10 @@ async def shutdown() -> None:
 
 
 def _attach() -> None:
+    # the person's side is rest.yaml entries behind this module's functions - no route is mounted
     platform.on_startup(boot)
     platform.on_shutdown(close_streams)
     platform.on_cleanup(shutdown)
-    platform.add_routes(mount)
 
 
 def _main(argv: list[str]) -> int:

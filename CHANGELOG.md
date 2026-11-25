@@ -373,6 +373,29 @@
    (a typing stub, a missing method, as the first run of #84 did on 3.10), the newest the deprecations ahead;
    `fail-fast` is off so both results show. **Upgrade note:** an installation on Python 3.10 stays on 4.12.30 until
    it moves to a supported interpreter; `pip` refuses the next release there by the declared floor.
+10. **The ask-person and agent-question extensions serve their pages, endpoints and the device stream as `rest.yaml`
+    entries - the first adopters of REST automation in the pack (RFC-0018's open question on the hand-mounted routes;
+    Eric's direction of 2026-11-25).** Each extension gains a `resources/rest.yaml` and turns `rest.automation` on in
+    its `application.yml`; the aiohttp handlers behind `Platform.add_routes` are gone, replaced by private functions
+    of the process that read the engines' `AsyncHttpRequest` map (`ask.page`, `ask.wait`, `ask.reply`, `ask.config`;
+    `question.config`, `question.list`, `question.events`, `question.decide`, `transcript.list`, `transcript.show`),
+    and who is asking is resolved once by the entries' authentication functions (`ask.identity`,
+    `ask.reply.identity`, `question.identity` - the configured mode, the channel app's bearer, `decided_by`) and read
+    from the request's session map (`who`, `via`). The device stream, `GET /questions/events`, is a streaming entry:
+    an interceptor opens it at once with a day's idle allowance (the head's `x-ttl`) and follows the feed from a task
+    of its own, so the devices never hold the function's workers; the stream ends at the application's shutdown as
+    before. Two host changes it needed: a keep-alive comment that cannot be written ends a stream and closes its
+    sink (a device that left was otherwise held until the idle allowance), and `EventStreamWriter.connected` tells a
+    long-lived producer that nobody listens - the pack's counterpart of a Java producer's `po.exists(replyTo)`.
+    `Platform.add_routes` stays as the escape hatch for what an entry cannot express (a WebSocket). **On the wire:**
+    an error is the engines' standard body - `{"status", "message", "type": "error"}` - where the handlers sent
+    `{"type", "message"}` (the ticket's `expired` and the engine's `nothing-waiting` bodies are unchanged), so a
+    client reading `type` and `message` sees no difference; the stream's frames carry the `question` event name and
+    the row (whose `seq` is the cursor, as the React UI already reads it) and no `id:` line, which the engines' SSE
+    dialect has not; the JSON the UI reads keeps its nulls (an advice's `state`, a silent engine's `status`), which
+    the functions serialize themselves because the engines' renderer omits a null. **Upgrade note:** an installation
+    that reads these endpoints with its own client sees the error body gain `status`; nothing else changes. The Node
+    pack follows.
 
 ## Version 4.12.30, 11/16/2026
 

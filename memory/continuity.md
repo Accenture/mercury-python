@@ -279,6 +279,8 @@
   access tokens - and the reply page signs the person in by Authorization Code with PKCE (a shell, `GET /ask/config`,
   the wait read from `GET /ask/{ticket}/wait`). **How to apply (amended):** "keeping no store" means no state of the
   wait - the record is an audit log, never consulted to render a wait; the agent-question app reads it.
+  **2026-11-25:** the page and the endpoints are `rest.yaml` entries behind private functions, the identity an
+  authentication function's finding in the session map; nothing is mounted on the host ([[rest-automation-python]]).
   <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-20 | uses: 6 | tier: archive-candidate | origin: 2026-11-19-054804 -->
 
 - **The agent-question app is the first channel of RFC-0014: a store-and-forward inbox for the person an agent asks,
@@ -322,6 +324,9 @@
   ([[static-content-resources-public]]), the engines' actuator endpoints beside it for Kubernetes probes (Eric).
   **Driven live 2026-11-20** with the React UI (mercury-composable `docs/test-reports/agent-question-ui-live-drive.md`);
   the streams end when the application stops ([[platform-on-shutdown-hook]]).
+  **2026-11-25:** the person's side is `rest.yaml` entries behind private functions - the stream a streaming entry
+  whose interceptor opens at once and follows the feed from a task, the UI's contract unchanged (the row's `seq` is
+  the cursor, nulls kept); nothing is mounted on the host ([[rest-automation-python]]).
   <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-20 | uses: 7 | tier: archive-candidate | origin: 2026-11-19-071444 -->
 
 - **The host serves static web content from `resources/public` next to the application file - the engines' `public`
@@ -368,7 +373,12 @@
   bounded form (the files' bytes in the request map within `rest.upload.max.bytes`, `AsyncHttpRequest.files()`;
   the LLM helper's `llm.upload` the first intake, 2026-11-25). The edge records
   `http.request` and the function's round trip as the engines do, so the forwarder's SERVER kind holds. **MERGED
-  2026-11-25:** step 1 as PR #83 (`b4f9c09`), upload as PR #84 (`2cda53f`); the CI matrix as PR #85 (`86d1367`). **How to
+  2026-11-25:** step 1 as PR #83 (`b4f9c09`), upload as PR #84 (`2cda53f`); the CI matrix as PR #85 (`86d1367`); the
+  Node twin mercury-nodejs #146 the same day. **First adopters 2026-11-25 (Eric's direction):** the ask-person and
+  agent-question extensions moved their hand-mounted routes onto `rest.yaml` - private functions behind the entries,
+  authentication functions resolving the identity into the session map, the device stream a streaming entry whose
+  interceptor opens at once and follows the feed from a task; `Platform.add_routes` stays as the escape hatch for
+  what an entry cannot express (PR #87). **How to
   apply:** a new endpoint is a `rest.yaml` entry and a `@preload` function reading `AsyncHttpRequest(body)`, never a
   mounted route; a behaviour of the edge is first a vector case, then code, in both packs; the grammar's messages
   are the engines' and a pack never grows a dialect; what the engines defer stays deferred until a field request.

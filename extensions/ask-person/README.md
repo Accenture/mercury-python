@@ -111,6 +111,14 @@ engine; a malformed one or another version is a 400, one no key signs a 403.
 
 ## The reply page and endpoint
 
+The page and the endpoints are entries of `resources/rest.yaml` - the engines' REST automation (RFC-0018), served by
+the pack's host in front of this process's private functions (`ask.page`, `ask.wait`, `ask.reply`, `ask.config`), with
+`rest.automation: true` in `application.yml`. The wait and the reply name an authentication function (`ask.identity`:
+a person by the configured mode; `ask.reply.identity`: a person, or a channel app under its bearer naming the person
+in `decided_by`) that resolves who is asking once and leaves `who` and `via` in the request's session map. The engine
+may take `ask.engine.timeout` (60 s) to answer, so those two entries allow two minutes; raise both together when the
+engine needs longer. An error is the engines' standard body, `{"status", "message", "type": "error"}`.
+
 - `GET /ask/{ticket}` is the page: a ticket that cannot be used is told so there (expired, tampered, malformed, a graph
   not in the allowlist), before any sign-in. Otherwise the page's script reads `GET /ask/config`, signs the person in
   when the installation asks for it (below), reads the wait from `GET /ask/{ticket}/wait` and renders it: the graph and
@@ -197,5 +205,5 @@ outcomes; the row a message becomes, the state an answer leaves and the record's
 and the page in-process: channels that take, refuse and miss the event, the record written before they are told; the
 reply endpoint against a fake engine, the answer recorded with who decided; the two auth modes with a signed token and
 the page's configuration; the PostgreSQL store's statements on a recording fake of the pool, and - gated on
-`ASK_AUDIT_TEST_URL` - the schema and the rows on a live PostgreSQL; the host hook that mounts the routes before the
-catch-all.
+`ASK_AUDIT_TEST_URL` - the schema and the rows on a live PostgreSQL; the `rest.yaml` entries in front of the host's
+own paths, nothing mounted on the host.

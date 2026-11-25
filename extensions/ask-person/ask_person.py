@@ -22,7 +22,11 @@ channel, and it holds no state of the wait: the engine's at-most-once resume is 
   graph id to the engine's entry through the ``ask.graphs`` allowlist (never to an address a
   message told it), prefixes who decided and when to each note, sends the resume (the same entry,
   the correlation id in ``x-correlation-id``, ``{turn, decisions}``) and returns the engine's
-  outcome to the invoker.
+  outcome to the invoker. The page and the endpoints are entries of ``resources/rest.yaml`` - the
+  engines' REST automation, served by the pack's host - behind private functions of this process
+  (``ask.page``, ``ask.wait``, ``ask.reply``, ``ask.config``); who is asking is resolved by the
+  entries' authentication functions (``ask.identity`` for a person, ``ask.reply.identity`` for a
+  person or a channel app) and read from the request's session map.
 - The question record (round 4 of the paper, section 21): the main flow records and the channels
   deliver. Every wait and every advice ``person.ask`` sends, whatever channel delivers it, and every
   answer the reply endpoint brings back - who decided, when, the engine's outcome - is written to
@@ -61,7 +65,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 import aiohttp
-from aiohttp import web
 
 try:
     import jwt
@@ -71,7 +74,9 @@ except ImportError:  # the oauth2 mode needs PyJWT - pip install 'mercury-compos
 from mercury_composable import (
     AppConfig,
     AppException,
+    AsyncHttpRequest,
     Body,
+    EventEnvelope,
     PostOffice,
     app_config,
     default_registry,
@@ -94,10 +99,20 @@ WAIT_KINDS = ("approval", "question")
 # a wait's states; an advice has none (None): whether a person read it is the device's business
 STATES = ("open", "answered", "expired")
 TICKET_VERSION = "v1"
+# the reply page and endpoint: the URLs of resources/rest.yaml and the private functions behind them
 SHOW_PATH = "/ask/{ticket}"
 WAIT_PATH = "/ask/{ticket}/wait"
 REPLY_PATH = "/ask/reply"
 CONFIG_PATH = "/ask/config"
+PAGE_ROUTE = "ask.page"
+WAIT_ROUTE = "ask.wait"
+REPLY_ROUTE = "ask.reply"
+CONFIG_ROUTE = "ask.config"
+# the entries' authentication functions and the session keys they leave on the request
+IDENTITY_ROUTE = "ask.identity"
+REPLY_IDENTITY_ROUTE = "ask.reply.identity"
+SESSION_WHO = "who"
+SESSION_VIA = "via"
 AUTH_MODES = ("none", "oauth2")
 # the signature algorithms an access token may carry (asymmetric only: the issuer's published keys)
 JWT_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512")
@@ -1217,8 +1232,8 @@ class Identity:
     via: str
 
 
-def _bearer(request: web.Request) -> str | None:
-    value = request.headers.get("authorization", "")
+def _bearer(request: AsyncHttpRequest) -> str | None:
+    value = request.header("authorization") or ""
     scheme, _, token = value.partition(" ")
     return token.strip() if scheme.lower() == "bearer" and token.strip() else None
 
@@ -1303,7 +1318,7 @@ def _oauth2(settings: Settings) -> OAuth2Verifier:
 
 
 async def identify(
-    request: web.Request, settings: Settings, decided_by: str | None, allow_app: bool
+    request: AsyncHttpRequest, settings: Settings, decided_by: str | None, allow_app: bool
 ) -> Identity:
     """Who is answering: a channel app under its bearer (``decided_by`` is the person it acts
     for), or a person by the configured mode - nobody in development, or a validated OAuth 2.0
@@ -1321,6 +1336,45 @@ async def identify(
     if not who:
         raise ReplyError(401, "the access token names nobody")
     return Identity(str(who), "oauth2")
+
+
+def _claimed(request: AsyncHttpRequest) -> str | None:
+    """``decided_by`` from a JSON body when it is text - the person a channel app acts for, or the
+    name offered in development; anything else is left to the endpoint's own check."""
+    body = request.body
+    value = body.get("decided_by") if isinstance(body, Mapping) else None
+    return value if isinstance(value, str) and value else None
+
+
+async def _verdict(body: Body, allow_app: bool) -> EventEnvelope:
+    """The authentication function's reply: ``true`` with who decides in the headers, which the edge
+    leaves on the request as its session map; a refusal is the error the invoker sees."""
+    request = AsyncHttpRequest(body)
+    try:
+        identity = await identify(request, current_settings(), _claimed(request) if allow_app else None,
+                                  allow_app)
+    except ReplyError as exc:
+        raise AppException(exc.status, exc.message) from exc
+    return (EventEnvelope().set_body(True)
+            .set_header(SESSION_WHO, identity.who).set_header(SESSION_VIA, identity.via))
+
+
+@preload(route=IDENTITY_ROUTE, instances=INSTANCES, private=True)
+async def ask_identity(_headers: dict[str, str], body: Body) -> Any:
+    """The authentication function of ``GET /ask/{ticket}/wait``: a person, by the configured mode."""
+    return await _verdict(body, allow_app=False)
+
+
+@preload(route=REPLY_IDENTITY_ROUTE, instances=INSTANCES, private=True)
+async def ask_reply_identity(_headers: dict[str, str], body: Body) -> Any:
+    """The authentication function of ``POST /ask/reply``: a channel app under its bearer, naming the
+    person it acts for in ``decided_by``, or a person by the configured mode."""
+    return await _verdict(body, allow_app=True)
+
+
+def _identity(request: AsyncHttpRequest) -> Identity:
+    """Who the entry's authentication function found, from the request's session map."""
+    return Identity(request.session_info(SESSION_WHO) or "anonymous", request.session_info(SESSION_VIA) or "none")
 
 
 # --- the reply page and endpoint --------------------------------------------------------------
@@ -1467,9 +1521,19 @@ def _page(title: str, body: str, script: str = "") -> str:
     )
 
 
-def _notice(status: int, title: str, text: str) -> web.Response:
-    body = f"<p>{html.escape(text)}</p>"
-    return web.Response(status=status, text=_page(title, body), content_type="text/html")
+def _html(status: int, text: str) -> EventEnvelope:
+    return EventEnvelope().set_status(status).set_header("content-type", "text/html").set_body(text)
+
+
+def _json_reply(body: Any, status: int = 200) -> EventEnvelope:
+    """A JSON reply as the page's script and the UI read it: serialized here, so a null stays a null
+    (the engines' renderer would omit it), under its content type."""
+    return (EventEnvelope().set_status(status).set_header("content-type", "application/json")
+            .set_body(json.dumps(body)))
+
+
+def _notice(status: int, title: str, text: str) -> EventEnvelope:
+    return _html(status, _page(title, f"<p>{html.escape(text)}</p>"))
 
 
 def shell_page(ticket: str, payload: Mapping[str, Any]) -> str:
@@ -1496,9 +1560,10 @@ def page_config(settings: Settings) -> dict[str, Any]:
     return config
 
 
-async def show_config(_request: web.Request) -> web.Response:
+@preload(route=CONFIG_ROUTE, instances=INSTANCES, private=True)
+async def ask_config(_headers: dict[str, str], _body: Body) -> Any:
     """``GET /ask/config``: the sign-in configuration the page reads first - open, it holds no secret."""
-    return web.json_response(page_config(current_settings()))
+    return _json_reply(page_config(current_settings()))
 
 
 async def _engine(request: EngineRequest, timeout_ms: int) -> tuple[int, dict[str, Any]]:
@@ -1518,12 +1583,18 @@ async def _engine(request: EngineRequest, timeout_ms: int) -> tuple[int, dict[st
         return map_outcome(None, None, type(exc).__name__)
 
 
-async def show_wait(request: web.Request) -> web.Response:
+def _ticket_refusal(exc: TicketError) -> EventEnvelope:
+    """A ticket that cannot be used, as the page's script reads it: ``expired`` for 410, else ``error``."""
+    return _json_reply({"type": "expired" if exc.status == 410 else "error", "message": exc.message}, exc.status)
+
+
+@preload(route=PAGE_ROUTE, instances=INSTANCES, private=True)
+async def ask_page(_headers: dict[str, str], body: Body) -> Any:
     """``GET /ask/{ticket}``: the page for the wait - a shell whose script signs the person in when
     the installation asks for it and reads the wait from ``GET /ask/{ticket}/wait``. A ticket that
     cannot be used is told so here, before any sign-in; the graph is never resumed."""
     settings = current_settings()
-    ticket = request.match_info["ticket"]
+    ticket = AsyncHttpRequest(body).path_parameter("ticket") or ""
     try:
         payload = verify_ticket(ticket, settings.keys, time.time())
     except TicketError as exc:
@@ -1531,67 +1602,63 @@ async def show_wait(request: web.Request) -> web.Response:
                        exc.message)
     if str(payload["g"]) not in settings.graphs:
         return _notice(404, "This graph is not configured", f"graph {payload['g']} is not configured for replies")
-    return web.Response(text=shell_page(ticket, payload), content_type="text/html")
+    return _html(200, shell_page(ticket, payload))
 
 
-async def read_wait(request: web.Request) -> web.Response:
+@preload(route=WAIT_ROUTE, instances=INSTANCES, private=True)
+async def ask_wait(_headers: dict[str, str], body: Body) -> Any:
     """``GET /ask/{ticket}/wait``: the current wait as the engine returns it on re-advice, for the
-    page's script - the signed-in person's request; never a resume. 410 ``nothing-waiting`` when
-    the engine holds nothing; the engine's own status and body when it refuses."""
+    page's script - the signed-in person's request (``ask.identity``); never a resume. 410
+    ``nothing-waiting`` when the engine holds nothing; the engine's own status and body when it
+    refuses."""
     settings = current_settings()
-    ticket = request.match_info["ticket"]
+    ticket = AsyncHttpRequest(body).path_parameter("ticket") or ""
     try:
         payload = verify_ticket(ticket, settings.keys, time.time())
     except TicketError as exc:
-        kind = "expired" if exc.status == 410 else "error"
-        return web.json_response({"type": kind, "message": exc.message}, status=exc.status)
+        return _ticket_refusal(exc)
     try:
-        await identify(request, settings, None, allow_app=False)
         readvice = readvice_request(payload, settings.graphs)
     except ReplyError as exc:
-        return web.json_response({"type": "error", "message": exc.message}, status=exc.status)
+        raise AppException(exc.status, exc.message) from exc
     status, advice = await _engine(readvice, settings.engine_timeout_ms)
     if status == 410 or advice.get("type") == "nothing-waiting":
-        return web.json_response({
+        return _json_reply({
             "type": "nothing-waiting",
             "message": "Nothing is waiting for this decision any more - it was decided already, or the "
                        "suspension expired.",
-        }, status=410)  # fmt: skip
+        }, 410)  # fmt: skip
     if status >= 400:
-        return web.json_response(advice, status=status)
+        return _json_reply(advice, status)
     shown = {key: payload[key] for key in ("g", "c", "t", "k")}
-    return web.json_response({"payload": shown, "advice": advice})
+    return _json_reply({"payload": shown, "advice": advice})
 
 
-async def post_reply(request: web.Request) -> web.Response:
-    """``POST /ask/reply``: verify the ticket, identify who decides, forward the resume and
-    return the engine's outcome."""
+@preload(route=REPLY_ROUTE, instances=INSTANCES, private=True)
+async def ask_reply(_headers: dict[str, str], body: Body) -> Any:
+    """``POST /ask/reply``: verify the ticket, take who decides from the entry's authentication
+    function (``ask.reply.identity``), forward the resume and return the engine's outcome."""
     settings = current_settings()
-    try:
-        body = await request.json()
-    except ValueError:
-        body = None
-    if not isinstance(body, dict):
-        return web.json_response(
-            {"type": "error", "message": "the reply must be a JSON map with ticket and decisions"}, status=400
-        )
-    ticket = body.get("ticket")
+    request = AsyncHttpRequest(body)
+    reply = request.body
+    if not isinstance(reply, Mapping):
+        raise AppException(400, "the reply must be a JSON map with ticket and decisions")
+    ticket = reply.get("ticket")
     if not isinstance(ticket, str) or not ticket:
-        return web.json_response({"type": "error", "message": "ticket is required"}, status=400)
+        raise AppException(400, "ticket is required")
     try:
         payload = verify_ticket(ticket, settings.keys, time.time())
     except TicketError as exc:
-        kind = "expired" if exc.status == 410 else "error"
-        return web.json_response({"type": kind, "message": exc.message}, status=exc.status)
-    decided_by = body.get("decided_by")
+        return _ticket_refusal(exc)
+    decided_by = reply.get("decided_by")
     if decided_by is not None and not isinstance(decided_by, str):
-        return web.json_response({"type": "error", "message": "decided_by must be text"}, status=400)
+        raise AppException(400, "decided_by must be text")
     at = iso_utc()
+    identity = _identity(request)
     try:
-        identity = await identify(request, settings, decided_by or None, allow_app=True)
-        resume = build_resume(payload, body.get("decisions"), identity.who, at, settings.graphs)
+        resume = build_resume(payload, reply.get("decisions"), identity.who, at, settings.graphs)
     except ReplyError as exc:
-        return web.json_response({"type": "error", "message": exc.message}, status=exc.status)
+        raise AppException(exc.status, exc.message) from exc
     status, outcome = await _engine(resume, settings.engine_timeout_ms)
     log.info(
         "reply for %s turn %s by %s via %s - the graph answered %d %s",
@@ -1604,16 +1671,7 @@ async def post_reply(request: web.Request) -> web.Response:
         "decisions": resume.body["decisions"], "who": identity.who, "via": identity.via, "at": at,
         "status": status, "body": outcome,
     }}, settings)  # fmt: skip
-    return web.json_response(outcome, status=status)
-
-
-def mount(app: web.Application) -> None:
-    """The reply page and endpoint on the host (``Platform.add_routes``): the sign-in configuration
-    before the ticket paths, so ``/ask/config`` is never read as a ticket."""
-    app.router.add_get(CONFIG_PATH, show_config)
-    app.router.add_post(REPLY_PATH, post_reply)
-    app.router.add_get(WAIT_PATH, read_wait)
-    app.router.add_get(SHOW_PATH, show_wait)
+    return _json_reply(outcome, status)
 
 
 # --- boot -------------------------------------------------------------------------------------
@@ -1711,9 +1769,9 @@ def inspect(words: list[str]) -> int:
 
 
 def _attach() -> None:
+    # the reply page and endpoint are rest.yaml entries behind this module's functions - no route is mounted
     platform.on_startup(boot)
     platform.on_cleanup(shutdown)
-    platform.add_routes(mount)
 
 
 def _main(argv: list[str]) -> int:

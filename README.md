@@ -290,8 +290,11 @@ static folder: the `no-cache-pages` (default `/` and `/index.html`) are served
 first — its headers ride the response, and a status other than 200 (a 302 to a sign-in page)
 passes through.
 
-Precedence: a `rest.yaml` entry, then an extension's mounted routes, then the static folder, then
-the engines' error shape. Refused by name at load, so the grammar shows the scope fence: a `flow`
+Precedence: a `rest.yaml` entry, then an extension's mounted routes (`Platform.add_routes`, the
+escape hatch for what an entry cannot express - a WebSocket), then the static folder, then the
+engines' error shape. The ask-person and agent-question extensions are written this way: their
+pages, endpoints and the device's Server-Sent Events stream are `rest.yaml` entries behind
+private functions, with an authentication function resolving who is asking. Refused by name at load, so the grammar shows the scope fence: a `flow`
 binding (`flow:` or `service: http.flow.adapter` — flows run in the engines), the HTTP relay (an
 `http(s)://` service) and the A/B dual service. `upload: true` on a `POST` entry is the pack's bounded
 form of the engines' streaming upload: the files of a `multipart/form-data` body arrive in the request
