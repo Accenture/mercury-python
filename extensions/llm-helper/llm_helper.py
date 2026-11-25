@@ -2129,7 +2129,7 @@ async def audit_single_idle() -> None:
 
 def _plus_seconds(stamp: str, seconds: int) -> str:
     """An ISO-8601 UTC stamp moved by seconds (the conversation row's expires_at)."""
-    moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    moment = datetime.fromisoformat(stamp)
     return iso_utc(moment + timedelta(seconds=seconds))
 
 

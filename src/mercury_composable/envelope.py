@@ -15,7 +15,7 @@ to the standard format for Event over HTTP.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, TypeAlias
 
 import msgpack
@@ -49,10 +49,10 @@ _EXCEPTION = "exception"
 
 def iso_utc(dt: datetime | None = None) -> str:
     """ISO-8601 UTC with millisecond precision, e.g. 2026-07-21T12:00:00.000Z"""
-    value = dt or datetime.now(timezone.utc)
+    value = dt or datetime.now(UTC)
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    value = value.astimezone(timezone.utc)
+        value = value.replace(tzinfo=UTC)
+    value = value.astimezone(UTC)
     return value.strftime("%Y-%m-%dT%H:%M:%S.") + f"{value.microsecond // 1000:03d}Z"
 
 

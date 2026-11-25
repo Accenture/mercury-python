@@ -2,7 +2,7 @@
 
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import msgpack
@@ -83,7 +83,7 @@ def test_binary_body():
 
 
 def test_datetime_encodes_as_iso_utc_string():
-    moment = datetime(2026, 7, 21, 12, 0, 0, tzinfo=timezone.utc)
+    moment = datetime(2026, 7, 21, 12, 0, 0, tzinfo=UTC)
     assert iso_utc(moment) == "2026-07-21T12:00:00.000Z"
     event = EventEnvelope(to="time.route", body={"when": moment})
     decoded = EventEnvelope.from_bytes(event.to_bytes())

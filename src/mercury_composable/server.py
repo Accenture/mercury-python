@@ -324,7 +324,7 @@ class EventApiServer:
             bus.publish_envelope(service, _handler_event(service, event, headers, sink_route))
             try:
                 first = await asyncio.wait_for(queue.get(), ttl / 1000)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning("Event %s timeout for %d ms (trace_id=%s)",
                             event.to, ttl, event.trace_id)
                 if edge:
@@ -424,7 +424,7 @@ class EventApiServer:
             wait = min(remaining, ping_ms / 1000) if ping_ms > 0 else remaining
             try:
                 return await asyncio.wait_for(queue.get(), wait)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if loop.time() >= deadline:
                     return None
                 with contextlib.suppress(ConnectionError):

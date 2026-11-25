@@ -58,7 +58,7 @@ import zipfile
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -760,7 +760,7 @@ def decode_utf8(data: bytes, *, truncated: bool) -> str | None:
 
 
 def _modified(stat: Any) -> str:
-    moment = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+    moment = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
     return moment.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
@@ -1750,7 +1750,7 @@ class WebTools:
                         data=bytes(data),
                         truncated=truncated,
                     )
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 raise AppException(
                     408, f"{host} did not answer within {self.sandbox.timeout_ms} ms"
                 ) from exc
@@ -2561,7 +2561,7 @@ async def time_now(_headers: dict[str, str], body: Body) -> Any:
     args = _arguments(body, TIME_NOW_ROW)
     name = _string(args, "timezone", default="UTC").strip() or "UTC"
     if name.upper() == "UTC":
-        zone: Any = timezone.utc
+        zone: Any = UTC
         name = "UTC"
     else:
         try:
@@ -2570,7 +2570,7 @@ async def time_now(_headers: dict[str, str], body: Body) -> Any:
             raise AppException(
                 400, f"{name} is not a time zone - an IANA name such as Europe/Berlin"
             ) from exc
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     local = now.astimezone(zone)
     offset = local.strftime("%z")
     return {

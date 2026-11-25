@@ -556,7 +556,7 @@ class RestAutomation:
         while True:
             try:
                 first = await asyncio.wait_for(queue.get(), timeout_ms / 1000)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.bus.close_sink(sink_route)
                 raise AppException(408, f"Timeout for {timeout_ms} ms") from None
             marker = stream_signal(first)
@@ -732,7 +732,7 @@ class RestAutomation:
             wait = min(remaining, ping_ms / 1000) if ping_ms > 0 else remaining
             try:
                 return await asyncio.wait_for(queue.get(), wait)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if loop.time() >= deadline:
                     return None
                 with contextlib.suppress(ConnectionError):
@@ -761,7 +761,7 @@ class RestAutomation:
                 ttl_ms = max(1000, int(header.strip()))
         try:
             response = await asyncio.wait_for(self._builtin_call(request, info.service), ttl_ms / 1000)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return _error(408, f"Timeout for {ttl_ms} ms")
         if not response.prepared:
             if info.cors is not None:

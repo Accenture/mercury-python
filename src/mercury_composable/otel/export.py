@@ -139,7 +139,7 @@ class Exporter:
             async with self._client().post(self.endpoint, data=body, headers=headers) as response:
                 payload = await response.read()
                 status = response.status
-        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+        except (TimeoutError, aiohttp.ClientError, OSError) as e:
             # the transport failed before an HTTP answer - retried like the Java
             # exporter retries every IOException
             raise _AttemptError(True, str(e) or e.__class__.__name__) from None

@@ -364,10 +364,15 @@
    the Node 20 runtime that `actions/checkout@v4` and `actions/setup-python@v5` declare, and run them on Node 24 with a
    deprecation warning. An action declares its own runtime, and Node 24 is the newest GitHub offers, so both move to v7.
    In lockstep with the Node pack. **Upgrade note:** none - CI only; nothing in the package changes.
-9. **CI tests on the supported floor and the newest Python.** The `test` job runs ruff, basedpyright and pytest on
-   a matrix of Python 3.10, the floor `pyproject.toml` declares, and 3.14, the newest release it lists; the floor
-   catches what a user on it would hit (a typing stub, a missing method - as the first run of #84 did), the newest
-   the deprecations ahead. `fail-fast` is off so both results show.
+9. **The supported floor rises to Python 3.11, and CI tests on the floor and the newest Python.** Python 3.10 reached
+   its end of life on 2026-10-01 (the developer guide's release schedule), so the package no longer declares it:
+   `requires-python >= 3.11`, the classifiers from 3.11 to 3.14, ruff's target `py311` - and with it the
+   modernizations the target allows (`datetime.UTC`, the built-in `TimeoutError`, `fromisoformat` reading a trailing
+   `Z`, `PostOffice.__aenter__` returning `Self`). The `test` job runs ruff, basedpyright and pytest on a matrix of
+   3.11, the floor, and 3.14, the newest release the package lists - the floor catches what a user on it would hit
+   (a typing stub, a missing method, as the first run of #84 did on 3.10), the newest the deprecations ahead;
+   `fail-fast` is off so both results show. **Upgrade note:** an installation on Python 3.10 stays on 4.12.30 until
+   it moves to a supported interpreter; `pip` refuses the next release there by the declared floor.
 
 ## Version 4.12.30, 11/16/2026
 

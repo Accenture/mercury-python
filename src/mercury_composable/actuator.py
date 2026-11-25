@@ -45,7 +45,7 @@ import platform as runtime_platform
 import re
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import web
@@ -153,7 +153,7 @@ class Actuator:
     def __init__(self, registry: FunctionRegistry):
         config = app_config()
         self.registry = registry
-        self.start = datetime.now(timezone.utc)
+        self.start = datetime.now(UTC)
         self.healthy = True  # liveness follows the most recent /health outcome
         self.app_name = config.get_property("application.name", "application") or "application"
         self.app_version = config.get_property("info.app.version", __version__) or __version__
@@ -209,7 +209,7 @@ class Actuator:
                 return None
 
     def _info(self) -> web.Response:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return _json_response({
             "app": self._app_block(),
             "runtime": {

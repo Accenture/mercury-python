@@ -54,7 +54,9 @@
 > Canonical live home for the current stack — language version, dependencies, tool
 > versions. `instructions.md` keeps only a high-level descriptor and points here.
 
-- Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
+- Python >= 3.11 (the floor since 2026-11-25: 3.10 reached end of life on 2026-10-01, Eric's direction from the
+  developer guide's schedule; CI tests the floor and the newest release, 3.14); build backend hatchling, the wheel
+  from `src/mercury_composable`. Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`), `ruff` >=0.9, and
   the helper's backends for its tests (`anthropic[bedrock]`, `redis`, `fakeredis[lua]` >=2.26);
   optional extras, all for the LLM helper (`extensions/llm-helper`; the package itself stays SDK-free): `llm` = `anthropic`
@@ -64,7 +66,7 @@
   built-in agent tools (`extensions/agent-tools`): `graph` = `neo4j` >=6,<7 (the knowledge-graph tools over Bolt) and
   `documents` = `pypdf` >=6,<7 + `python-docx` >=1.1,<2 (`file.extract`), both 2026-11-17, and for the ask-a-person
   main flow (`extensions/ask-person`): `ask` = `PyJWT[crypto]` >=2.9,<3 (the reply page's `oauth2` mode), 2026-11-19
-  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-19 | uses: 8 | tier: archive-candidate | origin: 2026-08-22-171555 -->
+  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-25 | uses: 9 | tier: active | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
 
@@ -320,7 +322,7 @@
   ([[static-content-resources-public]]), the engines' actuator endpoints beside it for Kubernetes probes (Eric).
   **Driven live 2026-11-20** with the React UI (mercury-composable `docs/test-reports/agent-question-ui-live-drive.md`);
   the streams end when the application stops ([[platform-on-shutdown-hook]]).
-  <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-20 | uses: 7 | tier: active | origin: 2026-11-19-071444 -->
+  <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-20 | uses: 7 | tier: archive-candidate | origin: 2026-11-19-071444 -->
 
 - **The host serves static web content from `resources/public` next to the application file - the engines' `public`
   folder (Eric, 2026-11-20; PR #73, the Node twin mercury-nodejs #138).** `static.html.folder` is honoured as the Java
@@ -350,7 +352,7 @@
   reconnect to the next instance from their last sequence; the cleanup (`on_cleanup`) still closes the stores after
   the last request. **How to apply:** a stream or a socket ends in `on_shutdown`, a store closes in `on_cleanup`;
   never a shorter `shutdown_timeout` as the remedy - only the extension knows a response is a stream.
-  <!-- id: platform-on-shutdown-hook | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: active | origin: 2026-11-20-094019 -->
+  <!-- id: platform-on-shutdown-hook | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: archive-candidate | origin: 2026-11-20-094019 -->
 
 - **REST automation in the pack: `rest.yaml` is the router in front of the functions, the engines' grammar and never a
   dialect (RFC-0018 in mercury-composable, agreed by Eric 2026-11-25; built here the same day as build plan step 1,
@@ -365,23 +367,25 @@
   refused by name at load: a flow binding, the HTTP relay, the A/B dual service; `upload: true` is the pack's
   bounded form (the files' bytes in the request map within `rest.upload.max.bytes`, `AsyncHttpRequest.files()`;
   the LLM helper's `llm.upload` the first intake, 2026-11-25). The edge records
-  `http.request` and the function's round trip as the engines do, so the forwarder's SERVER kind holds. **How to
+  `http.request` and the function's round trip as the engines do, so the forwarder's SERVER kind holds. **MERGED
+  2026-11-25:** step 1 as PR #83 (`b4f9c09`), upload as PR #84 (`2cda53f`); the CI matrix as PR #85 (`86d1367`). **How to
   apply:** a new endpoint is a `rest.yaml` entry and a `@preload` function reading `AsyncHttpRequest(body)`, never a
   mounted route; a behaviour of the edge is first a vector case, then code, in both packs; the grammar's messages
   are the engines' and a pack never grows a dialect; what the engines defer stays deferred until a field request.
-  <!-- id: rest-automation-python | created: 2026-11-25 | last_used: 2026-11-25 | uses: 2 | tier: active | origin: 2026-11-25-005844 -->
+  <!-- id: rest-automation-python | created: 2026-11-25 | last_used: 2026-11-25 | uses: 3 | tier: active | origin: 2026-11-25-005844 -->
 
 ## Conventions
 
 - **Quality gates (adopted 2026-08-23, Eric's IDE review round): ruff + basedpyright +
-  pytest, config lives in pyproject.toml.** ruff: line-length 100, py310, isort extend.
+  pytest, config lives in pyproject.toml.** ruff: line-length 100, py311 (the floor rose from 3.10 on
+  2026-11-25, 3.10 being end of life since 2026-10-01 - Eric, from the developer guide's schedule), isort extend.
   basedpyright: standard mode + reportMissingParameterType=error, TESTS INCLUDED (Eric's
   ruling — test signatures are annotated; handlers take `(dict[str, str], Body)`).
   `agent-skills/` excluded from both (tool-managed by agent-memory — style fixes belong
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-25 | uses: 18 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-25 | uses: 19 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).

@@ -22,7 +22,7 @@ import re
 import sys
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -901,7 +901,7 @@ async def test_time_now_in_utc_and_a_zone() -> None:
     reply = await tools.time_now({}, None)
     assert set(reply) == {"utc", "local", "timezone", "offset", "weekday", "epoch_ms"}
     assert reply["utc"].endswith("Z") and reply["timezone"] == "UTC" and reply["offset"] == "+00:00"
-    moment = datetime.fromtimestamp(reply["epoch_ms"] / 1000, tz=timezone.utc)
+    moment = datetime.fromtimestamp(reply["epoch_ms"] / 1000, tz=UTC)
     assert reply["weekday"] == moment.strftime("%A")
     assert reply["local"].startswith(reply["utc"][:19]) and reply["local"].endswith("+00:00")
     singapore = await tools.time_now({}, {"timezone": "Asia/Singapore"})
@@ -1220,7 +1220,7 @@ def test_graph_errors_map_to_statuses_by_type() -> None:
         503,
         "the graph database is not reachable (ServiceUnavailable)",
     )
-    assert tools.graph_error(asyncio.TimeoutError(), timeout_ms=10).status == 408
+    assert tools.graph_error(TimeoutError(), timeout_ms=10).status == 408
     assert tools.graph_error(RuntimeError("x"), timeout_ms=10).status == 502
     passthrough = AppException(400, "mine")
     assert tools.graph_error(passthrough, timeout_ms=10) is passthrough

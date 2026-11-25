@@ -57,7 +57,7 @@ import sys
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 import aiohttp
@@ -189,8 +189,8 @@ def parse_iso(text: str) -> datetime | None:
     except ValueError:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 # --- configuration ----------------------------------------------------------------------------
@@ -601,7 +601,7 @@ def build_event(message: Message, key: bytes, reply_url: str) -> dict[str, Any]:
         event["ttl"] = message.ttl
     event["requested_at"] = message.requested_at
     if message.kind in WAIT_KINDS and message.ttl_ms is not None:
-        requested = parse_iso(message.requested_at) or datetime.now(timezone.utc)
+        requested = parse_iso(message.requested_at) or datetime.now(UTC)
         expires_at = requested + timedelta(milliseconds=message.ttl_ms)
         ticket = issue_ticket(ticket_payload(message, expires_at), key)
         event["expires_at"] = iso_utc(expires_at)
@@ -1513,7 +1513,7 @@ async def _engine(request: EngineRequest, timeout_ms: int) -> tuple[int, dict[st
         ) as response:
             text = await response.text()
             return map_outcome(response.status, text, None)
-    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+    except (TimeoutError, aiohttp.ClientError) as exc:
         log.warning("The graph at %s did not answer - %s", request.url, type(exc).__name__)
         return map_outcome(None, None, type(exc).__name__)
 
@@ -1705,7 +1705,7 @@ def inspect(words: list[str]) -> int:
     except TicketError as exc:
         print(f"{exc.status} {exc.message}")
         return 1
-    expires = datetime.fromtimestamp(payload["e"], tz=timezone.utc)
+    expires = datetime.fromtimestamp(payload["e"], tz=UTC)
     print(json.dumps({**payload, "expires_at": iso_utc(expires)}, indent=2))
     return 0
 

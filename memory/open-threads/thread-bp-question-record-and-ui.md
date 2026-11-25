@@ -7,4 +7,4 @@
   manager's grace period ends it ([[platform-on-shutdown-hook]]). Follow-ups outside this thread: the reply page's own
   sign-in against an issuer; `llm.transcript.audit.instances`. The narrative: logs 2026-11-20-075621 to 2026-11-20-094019.
   → serves: vision-mercury-python
-  <!-- id: bp-question-record-and-ui | created: 2026-11-20 | last_used: 2026-11-20 | uses: 4 | tier: active | origin: 2026-11-20-075621 -->
+  <!-- id: bp-question-record-and-ui | created: 2026-11-20 | last_used: 2026-11-20 | uses: 4 | tier: archive-candidate | origin: 2026-11-20-075621 -->
