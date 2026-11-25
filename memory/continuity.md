@@ -378,7 +378,7 @@
   agent-question extensions moved their hand-mounted routes onto `rest.yaml` - private functions behind the entries,
   authentication functions resolving the identity into the session map, the device stream a streaming entry whose
   interceptor opens at once and follows the feed from a task; `Platform.add_routes` stays as the escape hatch for
-  what an entry cannot express (branch `refactor/extension-routes-rest-yaml`). **How to
+  what an entry cannot express (PR #87). **How to
   apply:** a new endpoint is a `rest.yaml` entry and a `@preload` function reading `AsyncHttpRequest(body)`, never a
   mounted route; a behaviour of the edge is first a vector case, then code, in both packs; the grammar's messages
   are the engines' and a pack never grows a dialect; what the engines defer stays deferred until a field request.

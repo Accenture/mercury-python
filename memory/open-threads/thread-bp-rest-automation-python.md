@@ -29,7 +29,7 @@
   - **The Node twin BUILT 2026-11-25** from the same vector file by a session of its own: mercury-nodejs PR #146,
     MERGED the same day; the vector file byte-identical across the packs.
   - **First adopters BUILT 2026-11-25 (Eric: "for python, please refactor the hand-mounted routes with rest.yaml" -
-    RFC-0018's open question), branch `refactor/extension-routes-rest-yaml`:** the ask-person and agent-question
+    RFC-0018's open question), branch `refactor/extension-routes-rest-yaml`, raised as PR #87:** the ask-person and agent-question
     extensions serve their pages, endpoints and the device stream as `rest.yaml` entries behind private functions
     (`ask.page`, `ask.wait`, `ask.reply`, `ask.config`; `question.config`, `question.list`, `question.events`,
     `question.decide`, `transcript.list`, `transcript.show`), who is asking resolved once by the entries'
