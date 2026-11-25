@@ -1,0 +1,36 @@
+#
+# REST automation (the engines' rest.yaml) for the ask-a-person main flow: the reply page and
+# endpoint, served by the pack's host when application.yml sets rest.automation: true. Each entry
+# maps a URL to a private function of this process, which receives the whole request as the
+# engines' AsyncHttpRequest map; POST /api/event and the actuators stay served as the engines'
+# default entries. An authentication function resolves who is asking - the configured mode,
+# ask.reply.auth - and leaves `who` and `via` in the request's session map.
+#
+# The engine may take ask.engine.timeout (60 s by default) to answer a re-advice or a resume, so
+# the wait and the reply allow more than that; raise both together when the engine needs longer.
+#
+rest:
+  - service: "ask.config"
+    methods: ['GET']
+    url: "/ask/config"
+    timeout: 10s
+
+  - service: "ask.reply"
+    methods: ['POST']
+    url: "/ask/reply"
+    authentication: "ask.reply.identity"
+    timeout: 2m
+    tracing: true
+
+  - service: "ask.wait"
+    methods: ['GET']
+    url: "/ask/{ticket}/wait"
+    authentication: "ask.identity"
+    timeout: 2m
+    tracing: true
+
+  - service: "ask.page"
+    methods: ['GET']
+    url: "/ask/{ticket}"
+    timeout: 10s
+    tracing: true

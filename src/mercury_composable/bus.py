@@ -213,6 +213,11 @@ class EventBus:
     def close_sink(self, route: str) -> None:
         self._sinks.pop(route, None)
 
+    def has_sink(self, route: str) -> bool:
+        """True while a reply sink is open - the request it serves has not completed, timed
+        out or lost its client."""
+        return route in self._sinks
+
     def offer_sink(self, route: str, event: EventEnvelope) -> bool:
         """Deliver an envelope to a reply sink; False when the sink is gone
         (a completed, timed-out or disconnected request) - late segments are

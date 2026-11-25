@@ -337,6 +337,10 @@ rest:
     methods: ['POST']
     url: "/api/stream/lines"
     stream: true
+  - service: "hold.stream"
+    methods: ['GET']
+    url: "/api/stream/hold"
+    stream: true
   - service: "token.stream"
     methods: ['POST']
     url: "/api/stream/single"
@@ -395,6 +399,9 @@ class Probe:
     def __init__(self) -> None:
         self.trace: tuple[str | None, str | None, str | None] | None = None
         self.datasets: list[dict[str, Any]] = []
+        self.registry: FunctionRegistry | None = None
+        self.disconnected = 0
+        self.watchers: list[asyncio.Task[None]] = []
 
 
 def build_registry(probe: Probe) -> FunctionRegistry:
@@ -483,6 +490,20 @@ def build_registry(probe: Probe) -> FunctionRegistry:
         out.write("partial")
         out.fail(AppException(503, "upstream down"))
 
+    async def hold_stream(_headers: dict[str, str], event: EventEnvelope):
+        # a long-lived producer: the head alone, then it watches whether anyone still listens
+        out = EventStreamWriter.from_request(event, registry=registry)
+        out.first(200, "text/event-stream", ttl_seconds=600)
+        out.write(None)
+        assert out.connected
+
+        async def watch() -> None:
+            while out.connected:
+                await asyncio.sleep(0.05)
+            probe.disconnected += 1
+
+        probe.watchers.append(asyncio.get_running_loop().create_task(watch()))
+
     async def upload_probe(_headers: dict[str, str], body: Body):
         request = AsyncHttpRequest(body)
         return {"files": [{"name": f.name, "type": f.content_type, "size": f.size, "tag": f.tag,
@@ -509,6 +530,8 @@ def build_registry(probe: Probe) -> FunctionRegistry:
     registry.register("token.stream", token_stream, interceptor=True)
     registry.register("lines.stream", lines_stream, interceptor=True)
     registry.register("stream.fail", stream_fail, interceptor=True)
+    registry.register("hold.stream", hold_stream, interceptor=True)
+    probe.registry = registry
     registry.register("upload.probe", upload_probe)
     registry.register("distributed.trace.forwarder", forwarder, private=True)
     return registry
@@ -799,6 +822,23 @@ async def test_stream_failure_in_band(rest_url: str):
     text = body.decode("utf-8")
     assert "data: partial\n\n" in text
     assert text.endswith('event: error\ndata: {"status":503,"message":"upstream down","type":"error"}\n\n')
+
+
+async def test_a_client_that_leaves_a_stream_is_noticed_at_the_next_keep_alive(rest_url: str, probe: Probe):
+    """A device's feed is quiet for as long as nothing changes, so the idle allowance never tells the edge that the
+    client is gone: the keep-alive comment does - a ping that cannot be written ends the stream and closes the
+    sink, and the producer's ``connected`` turns false, so a long-lived producer stops."""
+    app_config().set("event.stream.keep.alive", "200ms")
+    async with aiohttp.ClientSession() as session:
+        response = await session.get(f"{rest_url}/api/stream/hold")
+        assert response.status == 200 and response.headers["content-type"] == "text/event-stream"
+        assert probe.registry is not None and len(probe.registry.bus._sinks) == 1
+        response.close()  # the client leaves without reading
+    await asyncio.sleep(1.0)
+    assert probe.disconnected == 1, "the producer learnt that nobody listens"
+    assert probe.registry.bus._sinks == {}, "the edge closed the sink"
+    for watcher in probe.watchers:
+        assert watcher.done()
 
 
 async def test_streaming_function_without_the_stream_flag_answers_single_shot(rest_url: str):

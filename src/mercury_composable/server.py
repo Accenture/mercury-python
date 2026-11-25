@@ -500,11 +500,14 @@ class Platform:
         self._cleanup.append(callback)
 
     def add_routes(self, mount: RouteMounter) -> None:
-        """Mount an extension's own HTTP routes on the host - a page a person opens, a stream a
-        browser holds - in the same process and port as ``/api/event``, under the same logging
-        and shutdown. ``mount`` receives the aiohttp application before the host listens and
-        adds its routes; the host's paths (``/api/event``, the actuator) stay the host's, and an
-        extension's path wins over the catch-all that answers the engines' error shape."""
+        """Mount an extension's own aiohttp routes on the host, in the same process and port as
+        ``/api/event``, under the same logging and shutdown - the escape hatch for what a
+        ``rest.yaml`` entry cannot express (a WebSocket, a protocol of its own). A page, a JSON
+        endpoint or a Server-Sent Events stream is a ``rest.yaml`` entry and a function, as the
+        extensions here are written. ``mount`` receives the aiohttp application before the host
+        listens and adds its routes; the host's paths (``/api/event``, the actuator) stay the
+        host's, a ``rest.yaml`` entry wins over a mounted route, and a mounted route wins over the
+        catch-all that answers the engines' error shape."""
         self._routes.append(mount)
 
     def create_app(self) -> web.Application:

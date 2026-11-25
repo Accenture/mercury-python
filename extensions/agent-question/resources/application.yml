@@ -20,6 +20,10 @@ mandatory.health.dependencies: 'question.health'
 show.env.variables: 'LOG_LEVEL'
 show.application.properties: 'application.name, rest.server.port, question.store, question.auth'
 
+# The person's side - the feed, the history, the transcripts, the click - is resources/rest.yaml
+# (the engines' REST automation), served by the host in front of this process's functions.
+rest.automation: true
+
 # --- the store this app reads -------------------------------------------------------------------
 #
 # The main flow records and the channels deliver (RFC-0014 round 4): the question record is written by the ask-person

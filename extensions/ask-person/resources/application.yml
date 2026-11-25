@@ -20,6 +20,10 @@ mandatory.health.dependencies: 'ask.health'
 show.env.variables: 'LOG_LEVEL'
 show.application.properties: 'application.name, rest.server.port, ask.enabled, ask.channels, ask.reply.url, ask.reply.auth, ask.audit'
 
+# The reply page and endpoint are entries of resources/rest.yaml (the engines' REST automation),
+# served by the host in front of this process's functions.
+rest.automation: true
+
 # --- the main flow ------------------------------------------------------------------------------
 #
 # person.ask sends one message event, with the resume link, to every route listed here - the

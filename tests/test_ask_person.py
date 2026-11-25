@@ -22,7 +22,7 @@ import os
 import sys
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,7 @@ from mercury_composable.server import EventApiServer
 
 _TESTS = Path(__file__).resolve().parent
 _MODULE = _TESTS.parent / "extensions" / "ask-person" / "ask_person.py"
+_REST_YAML = _MODULE.parent / "resources" / "rest.yaml"
 
 _spec = importlib.util.spec_from_file_location("ask_person_under_test", _MODULE)
 assert _spec is not None
@@ -537,17 +538,32 @@ async def engine() -> AsyncIterator[tuple[FakeEngine, str]]:
         await runner.cleanup()
 
 
+@contextmanager
+def rest_enabled() -> Iterator[None]:
+    """The extension's rest.yaml on the shared configuration, as its application.yml turns it on."""
+    config = app_config()
+    config.set("rest.automation", True)
+    config.set("yaml.rest.automation", f"file:{_REST_YAML}")
+    try:
+        yield
+    finally:
+        config.set("rest.automation", None)
+        config.set("yaml.rest.automation", None)
+
+
 @pytest_asyncio.fixture
 async def host() -> AsyncIterator[str]:
-    """The pack's host with the extension's routes mounted, as Platform.add_routes mounts them."""
-    runner, url = await _serve(EventApiServer(FunctionRegistry()).create_app(routes=[ask.mount]))
+    """The pack's host serving the extension's rest.yaml entries in front of this module's functions, as
+    mercury-serve does with rest.automation: true."""
+    with rest_enabled():
+        runner, url = await _serve(EventApiServer(default_registry).create_app())
     try:
         yield url
     finally:
         await runner.cleanup()
         await ask.shutdown()
-        # the reply endpoint sends to the recorder over the default registry's bus, whose workers bind to
-        # this test's loop
+        # the functions and the recorder run on the default registry's bus, whose workers bind to this
+        # test's loop
         await default_registry.bus.close()
 
 
@@ -888,25 +904,48 @@ async def test_the_boot_registers_the_recorder_and_a_silent_database_does_not_st
 # --- the host hook, the boot and the inspect command -----------------------------------------------
 
 
-async def test_the_host_mounts_the_routes_before_the_catch_all_and_keeps_its_own(
+async def test_the_rest_entries_serve_the_page_and_the_endpoints_and_the_host_keeps_its_own(
     configure: Callable[[dict[str, Any]], Any], host: str
 ) -> None:
+    """The reply page and endpoint are rest.yaml entries (RFC-0018) behind private functions of the process: the
+    edge serves them in front of the host's own paths, and nothing is mounted on the host any more."""
     configure(BASE)
     async with aiohttp.ClientSession() as http:
         async with http.get(f"{host}/nothing/here") as response:
             assert response.status == 404
-            assert (await response.json())["status"] == 404, "the catch-all still answers the engines' shape"
+            assert (await response.json())["status"] == 404, "an unclaimed path answers the engines' shape"
         async with http.get(f"{host}/health") as response:
             assert response.status == 200, "the actuator stays the host's"
         async with http.post(f"{host}/ask/reply", json={}) as response:
-            assert response.status == 400, "the extension's path wins over the catch-all"
+            refused = await response.json()
+            assert response.status == 400 and refused["status"] == 400 and refused["type"] == "error"
+            assert response.headers["content-type"] == "application/json", "the engines' error shape"
+        async with http.get(f"{host}/ask/config") as response:
+            assert response.status == 200, "the configuration is never read as a ticket"
+        async with http.put(f"{host}/ask/config") as response:
+            assert response.status == 405, "a known path under another method"
+    with rest_enabled():
+        rest = EventApiServer(default_registry).rest
+    assert rest is not None
+    expected = {
+        ("GET", "/ask/config"): ("ask.config", None),
+        ("POST", "/ask/reply"): ("ask.reply", "ask.reply.identity"),
+        ("GET", "/ask/v1.payload.mac/wait"): ("ask.wait", "ask.identity"),
+        ("GET", "/ask/v1.payload.mac"): ("ask.page", None),
+    }
+    for (method, path), (service, authentication) in expected.items():
+        assigned = rest.table.find(method, path)
+        assert assigned is not None and assigned.info.service == service, path
+        assert assigned.info.authentication == authentication, path
+    wait = rest.table.find("GET", "/ask/v1.payload.mac/wait")
+    assert wait is not None and wait.path_params == {"ticket": "v1.payload.mac"}
+    for route in ("ask.config", "ask.reply", "ask.wait", "ask.page", "ask.identity", "ask.reply.identity"):
+        service = default_registry.get(route)
+        assert service is not None and service.private, route
     fresh = Platform(FunctionRegistry())
-    fresh.add_routes(ask.mount)
     app = fresh.create_app()
     paths = [route.resource.canonical for route in app.router.routes() if route.resource is not None]
-    assert paths.index("/ask/reply") > paths.index("/api/event")
-    assert paths.index("/ask/{ticket}") < paths.index("/{unknown}")
-    assert paths.index("/ask/config") < paths.index("/ask/{ticket}"), "the configuration is never read as a ticket"
+    assert not any(path.startswith("/ask") for path in paths), "no route is mounted - the page is rest.yaml's"
 
 
 async def test_the_platform_hooks_run_the_boot_and_fail_by_name(

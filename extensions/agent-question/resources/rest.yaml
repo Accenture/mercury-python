@@ -1,0 +1,60 @@
+#
+# REST automation (the engines' rest.yaml) for the agent-question app: the person's side, served
+# by the pack's host when application.yml sets rest.automation: true. Each entry maps a URL to a
+# private function of this process, which receives the whole request as the engines'
+# AsyncHttpRequest map; POST /api/event and the actuators stay served as the engines' default
+# entries, and the React UI's bundle in resources/public is served at the root by the host's
+# static content service. The authentication function resolves who is at the UI - the configured
+# mode, question.auth - and leaves `who` and `via` in the request's session map; the sign-in
+# configuration itself is open.
+#
+rest:
+  - service: "question.config"
+    methods: ['GET']
+    url: "/questions/config"
+    timeout: 10s
+
+  - service: "question.list"
+    methods: ['GET']
+    url: "/questions"
+    authentication: "question.identity"
+    timeout: 30s
+    tracing: true
+
+  # the stream a connected device holds: the function opens it at once and follows the feed; its
+  # own idle allowance (a day, the head's x-ttl) replaces the entry's timeout once it is open
+  - service: "question.events"
+    methods: ['GET']
+    url: "/questions/events"
+    authentication: "question.identity"
+    stream: true
+    headers: header_stream
+    timeout: 30s
+
+  - service: "question.decide"
+    methods: ['POST']
+    url: "/questions/{id}/decide"
+    authentication: "question.identity"
+    timeout: 60s
+    tracing: true
+
+  - service: "transcript.list"
+    methods: ['GET']
+    url: "/transcripts"
+    authentication: "question.identity"
+    timeout: 30s
+    tracing: true
+
+  - service: "transcript.show"
+    methods: ['GET']
+    url: "/transcripts/{conversation}"
+    authentication: "question.identity"
+    timeout: 30s
+    tracing: true
+
+headers:
+  - id: header_stream
+    response:
+      add:
+        # a reverse proxy must not buffer the stream
+        - "X-Accel-Buffering: no"

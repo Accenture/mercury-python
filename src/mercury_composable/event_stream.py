@@ -285,6 +285,14 @@ class EventStreamWriter:
         """True when the stream has been closed or failed."""
         return self._closed
 
+    @property
+    def connected(self) -> bool:
+        """True while the reply address is still served. A request's reply sink closes when the
+        caller completes, times out or loses its client, so a long-lived producer - a device's
+        feed - learns here that nobody listens and stops; the pack's counterpart of a Java
+        producer's ``po.exists(replyTo)`` check."""
+        return self._registry.bus.has_sink(self._reply_to) or self._registry.exists(self._reply_to)
+
     def _send(self, marker: str, body: Any, event_name: str | None, *,
               unchecked: bool = False) -> None:
         if self._closed and not unchecked:

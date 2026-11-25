@@ -18,7 +18,7 @@ import os
 import re
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -44,6 +44,7 @@ from mercury_composable.server import EventApiServer
 
 _TESTS = Path(__file__).resolve().parent
 _MODULE = _TESTS.parent / "extensions" / "agent-question" / "agent_question.py"
+_REST_YAML = _MODULE.parent / "resources" / "rest.yaml"
 _RECORD_SCHEMA = _TESTS.parent / "extensions" / "ask-person" / "schema" / "postgres.sql"
 _TRANSCRIPT_SCHEMA = _TESTS.parent / "extensions" / "llm-helper" / "schema" / "postgres.sql"
 
@@ -349,14 +350,36 @@ async def reply_endpoint() -> AsyncIterator[tuple[FakeReply, str]]:
         await runner.cleanup()
 
 
+@contextmanager
+def rest_enabled() -> Iterator[None]:
+    """The app's rest.yaml on the shared configuration, as its application.yml turns it on."""
+    config = app_config()
+    config.set("rest.automation", True)
+    config.set("yaml.rest.automation", f"file:{_REST_YAML}")
+    try:
+        yield
+    finally:
+        config.set("rest.automation", None)
+        config.set("yaml.rest.automation", None)
+
+
+def rest_app() -> web.Application:
+    """The pack's host serving the app's rest.yaml entries in front of this module's functions, as mercury-serve
+    does with rest.automation: true."""
+    with rest_enabled():
+        return EventApiServer(default_registry).create_app()
+
+
 @pytest_asyncio.fixture
 async def host() -> AsyncIterator[str]:
-    runner, url = await _serve(EventApiServer(FunctionRegistry()).create_app(routes=[aq.mount]))
+    runner, url = await _serve(rest_app())
     try:
         yield url
     finally:
         await runner.cleanup()
         await aq.shutdown()
+        # the functions run on the default registry's bus, whose workers bind to this test's loop
+        await default_registry.bus.close()
 
 
 async def get_json(url: str, headers: dict[str, str] | None = None) -> tuple[int, Any]:
@@ -414,19 +437,29 @@ async def test_the_stream_replays_then_follows_the_feed_with_keep_alives(
                     continue
                 lines.append(line)
 
+        assert response.headers["cache-control"] == "no-cache" and response.headers["x-accel-buffering"] == "no"
         replayed = await frame()
-        assert replayed[0] == "id: 1" and replayed[1] == "event: question"
-        assert json.loads(replayed[2][len("data: "):])["ticket"] == "t-answer"
+        assert replayed[0] == "event: question", "the engines' SSE dialect: an event name and the data, no id line"
+        first_row = json.loads(replayed[1][len("data: "):])
+        assert first_row["ticket"] == "t-answer" and first_row["seq"] == 1, "the row's seq is the cursor"
         ping = await frame()
         assert ping == [": ping"], "a keep-alive while nothing changes"
         put(advice_event(), 2, 2)
         await aq._feed.poll_once()
         live = await frame()
-        assert live[0] == "id: 2" and json.loads(live[2][len("data: "):])["kind"] == "advice"
+        assert live[0] == "event: question"
+        advice = json.loads(live[1][len("data: "):])
+        assert advice["kind"] == "advice" and advice["seq"] == 2
+        assert "state" in advice and advice["state"] is None, "a null stays on the wire - the UI reads it"
     async with aiohttp.ClientSession() as http, http.get(f"{host}/questions/events",
                                                           headers={"last-event-id": "1"}) as response:
         first = (await asyncio.wait_for(response.content.readline(), 5)).decode()
-        assert first == "id: 2\n", "the reconnect resumes after the cursor the browser kept"
+        second = (await asyncio.wait_for(response.content.readline(), 5)).decode()
+        assert first == "event: question\n" and json.loads(second[len("data: "):])["seq"] == 2, \
+            "the reconnect resumes after the cursor the browser kept"
+    async with aiohttp.ClientSession() as http, http.get(f"{host}/questions/events",
+                                                          headers={"last-event-id": "x"}) as response:
+        assert response.status == 400 and "whole number" in (await response.json())["message"]
 
 
 async def test_the_ui_configuration_names_the_sign_in(configure: Callable[[dict[str, Any]], Any], host: str) -> None:
@@ -711,7 +744,7 @@ async def test_the_host_serves_the_committed_ui_bundle_at_the_root(configure: Ca
     """The React UI is built in the Node.js pack and its bundle committed here, in resources/public next to the
     application file; the host's static content service serves it at the root - the app generates no page."""
     configure({**BASE, "static.html.folder": f"file:{PUBLIC}"})
-    runner, host = await _serve(EventApiServer(FunctionRegistry()).create_app(routes=[aq.mount]))
+    runner, host = await _serve(rest_app())
     try:
         async with aiohttp.ClientSession() as http:
             async with http.get(f"{host}/") as response:
@@ -754,11 +787,27 @@ async def test_the_platform_hooks_mount_the_routes_and_run_the_boot(
     app = fresh.create_app()
     assert len(app.on_shutdown) == 1, "the streams end on shutdown, before the host waits for the requests in flight"
     paths = [route.resource.canonical for route in app.router.routes() if route.resource is not None]
-    for path in ("/questions/config", "/questions/events", "/questions", "/questions/{id}/decide",
-                 "/transcripts", "/transcripts/{conversation}"):
-        assert path in paths, path
-    assert paths.index("/questions") < paths.index("/{unknown}")
-    assert paths.index("/questions/config") < paths.index("/questions/{id}/decide")
+    assert not any(path.startswith(("/questions", "/transcripts")) for path in paths), \
+        "no route is mounted - the person's side is rest.yaml's (RFC-0018)"
+    with rest_enabled():
+        rest = EventApiServer(default_registry).rest
+    assert rest is not None
+    expected = {
+        ("GET", "/questions/config"): "question.config", ("GET", "/questions"): "question.list",
+        ("GET", "/questions/events"): "question.events", ("POST", "/questions/7/decide"): "question.decide",
+        ("GET", "/transcripts"): "transcript.list", ("GET", f"/transcripts/{CONVERSATION_A}"): "transcript.show",
+    }  # fmt: skip
+    for (method, path), service in expected.items():
+        assigned = rest.table.find(method, path)
+        assert assigned is not None and assigned.info.service == service, path
+        assert (assigned.info.authentication == "question.identity") is (service != "question.config"), path
+        registered = default_registry.get(service)
+        assert registered is not None and registered.private, service
+    events = rest.table.find("GET", "/questions/events")
+    assert events is not None and events.info.stream and events.info.headers is not None
+    decide = rest.table.find("POST", "/questions/7/decide")
+    assert decide is not None and decide.path_params == {"id": "7"}
+    assert rest.table.find("POST", "/questions/7/seen") is None, "the seen endpoint is gone with the state"
     runner = web.AppRunner(app)
     with caplog.at_level("WARNING"):
         await runner.setup()
