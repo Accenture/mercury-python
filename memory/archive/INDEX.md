@@ -22,3 +22,9 @@
 - llm-helper-bedrock-iam — AWS Bedrock through IAM as the LLM helper's second backend. CLOSED 2026-10-14. Built in PR… — faded — 2026-Q4.md
 - otel-forwarder-lockstep — OpenTelemetry forwarder lock-step and the v4.12.15 milestone — CLOSED 2026-09-23: v4.12.15… — faded — 2026-Q4.md
 - reverify-invariants-20261103 — Re-verify invariants - the first, COMPLETE 2026-11-03 (Eric: "Confirm all"). `scope-wrappe… — faded — 2026-Q4.md
+- stack-python-hatchling — Python ≥ 3.10; build backend hatchling; package `mercury-composable` v4.12.30 — faded — 2026-Q4.md
+- historical-releases-tags-and-pages-python — The legacy language pack's releases v1.11.39 to v2.5.0 live here as tags and GitHub releas… — faded — 2026-Q4.md
+- llm-chat-loop-contract — The loop contract in the LLM helper: `llm.chat` serves one turn of the engines' agent loop… — completed thread past archive_window — 2026-Q4.md
+- mcp-binding — The MCP binding (RFC-0011 / ADR-0033 build plan step 4) — CLOSED 2026-11-16: released in v… — completed thread past archive_window — 2026-Q4.md
+- pack-catch-up-4-12-25 — Next pack release: catch up to the Java number with the agent loop's pack half — CLOSED 20… — completed thread past archive_window — 2026-Q4.md
+- pack-catch-up-release — Next pack release: catch up to the Java number and carry the LLM helper — CLOSED 2026-10-0… — completed thread past archive_window — 2026-Q4.md

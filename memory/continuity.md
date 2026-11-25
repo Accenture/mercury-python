@@ -22,7 +22,14 @@
   Python member of the Mercury Composable polyglot initiative: a lightweight Event-over-HTTP function host + thin client,
   repurposed August 2026 (legacy language pack in tagged releases v1.11.39–v2.5.0).
 - **last_enabled:** 2026-08-22
-- **last_review:** 2026-11-19 | through 2026-11-19-060911.md (cadence — 18 sessions since 2026-11-13-030139; `refresh-metadata`
+- **last_review:** 2026-11-25 | through 2026-11-25-001547.md (cadence — 11 sessions since 2026-11-19-060911; `refresh-metadata`
+  refreshed 16 footers; archived 2 faded facts `stack-python-hatchling` (22; the repository's `pyproject.toml` records its
+  substance, the window's commits on that file exercised the declared deps fact) and
+  `historical-releases-tags-and-pages-python` (31; the one window log on the legacy releases decided by a history search,
+  not by its rule); swept 4 completed threads (llm-chat-loop-contract 29, mcp-binding 22, pack-catch-up-4-12-25 22,
+  pack-catch-up-release 22) → 2026-Q4; invariants not due (33 of 40); stalled 1 → [[close-stalled-threads-20261125]]
+  (bp-publish-interop-gate 46); contradictions none; live facts 32 → 27. Smoke test not run.)
+  Prior: 2026-11-19 | through 2026-11-19-060911.md (cadence — 18 sessions since 2026-11-13-030139; `refresh-metadata`
   refreshed 19 footers, tier changes 13; archived no fact - the two the count called faded are declaration gaps, re-affirmed
   ([[otel-forwarder-python]]: the trace-lineage session 2026-11-14-115310 reasoned from the forwarder's kind rule;
   [[conv-resources-next-to-the-application-file]]: the ask-person build 2026-11-19-054804 placed and loaded the extension's
@@ -47,10 +54,6 @@
 > Canonical live home for the current stack — language version, dependencies, tool
 > versions. `instructions.md` keeps only a high-level descriptor and points here.
 
-- Python ≥ 3.10; build backend **hatchling**; package `mercury-composable` v4.12.30
-  (PyPI 2026-11-16; the catch-up to the engines' 4.12.30 with the agent loop's pack half), wheel from
-  `src/mercury_composable`
-  <!-- id: stack-python-hatchling | created: 2026-08-22 | last_used: 2026-11-16 | uses: 8 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 - Runtime deps: `aiohttp` >=3.10,<4 (Event API host), `msgpack` >=1,<2 (envelope codec),
   `PyYAML` >=6,<7 (config); dev: `pytest` >=8 + `pytest-asyncio` >=0.23 (`asyncio_mode=auto`), `ruff` >=0.9, and
   the helper's backends for its tests (`anthropic[bedrock]`, `redis`, `fakeredis[lua]` >=2.26);
@@ -61,7 +64,7 @@
   built-in agent tools (`extensions/agent-tools`): `graph` = `neo4j` >=6,<7 (the knowledge-graph tools over Bolt) and
   `documents` = `pypdf` >=6,<7 + `python-docx` >=1.1,<2 (`file.extract`), both 2026-11-17, and for the ask-a-person
   main flow (`extensions/ask-person`): `ask` = `PyJWT[crypto]` >=2.9,<3 (the reply page's `oauth2` mode), 2026-11-19
-  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-19 | uses: 8 | tier: active | origin: 2026-08-22-171555 -->
+  <!-- id: stack-deps-aiohttp-msgpack | created: 2026-08-22 | last_used: 2026-11-19 | uses: 8 | tier: archive-candidate | origin: 2026-08-22-171555 -->
 
 ## Architectural Invariants
 
@@ -110,7 +113,7 @@
   **Kind rule since 2026-09-22 (PR #36 MERGED, `cbf1f7f6`):** SERVER iff the record's `service` is `http.request` — an
   engine edge's round-trip record — and every function execution is INTERNAL; a record's `from` no longer decides the kind
   (the engines' connected-span-tree fix, mercury-composable/mercury `fix/connected-edge-spans`).
-  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-11-19 | uses: 4 | tier: active | origin: 2026-09-22-164128 -->
+  <!-- id: otel-forwarder-python | created: 2026-09-22 | last_used: 2026-11-24 | uses: 5 | tier: active | origin: 2026-09-22-164128 -->
 
 - **The LLM helper is a dedicated function host on the Anthropic SDK: the engines stay LLM-free, the AI node is a bounded
   function, and one contract is proven by a vector file shared with the Node pack (Eric's rulings, 2026-10-01; PR #38, merge
@@ -152,7 +155,7 @@
   in the helper's store (`llm.transcript.store`: `memory` or `redis`), the loop holds `conversation` and `turn`, a stale or
   ended turn is a 409, the model is pinned at the first turn and no server-side fallback is sent; a second shared vector
   file, `llm-loop-vectors.json`, pins it ([[llm-chat-loop-contract]]).
-  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-17 | uses: 7 | tier: archive-candidate | origin: 2026-10-02-001146 -->
+  <!-- id: llm-helper-app | created: 2026-10-01 | last_used: 2026-11-24 | uses: 8 | tier: active | origin: 2026-10-02-001146 -->
 
 - **The MCP binding serves one composable route per allowlisted MCP tool, and the server cannot change a tool under the
   graph (RFC-0011 / ADR-0033 step 4; built 2026-11-14, Python first).** `extensions/mcp-binding/mcp_binding.py` on the
@@ -191,7 +194,7 @@
   Node twin. **How to apply:** a new tool is a `bind` line, a few-line `@preload` function, a catalog row on the graph and an
   Event-over-HTTP entry; a schema change is a digest re-reviewed next to the function; a new server is a server-file entry;
   never a route in a YAML file and never engine code.
-  <!-- id: mcp-binding-function-per-tool | created: 2026-11-16 | last_used: 2026-11-19 | uses: 5 | tier: active | origin: 2026-11-16-043838 | supersedes: mcp-binding-route-per-tool -->
+  <!-- id: mcp-binding-function-per-tool | created: 2026-11-16 | last_used: 2026-11-19 | uses: 5 | tier: archive-candidate | origin: 2026-11-16-043838 | supersedes: mcp-binding-route-per-tool -->
 
 - **A traced call into the pack leaves the records a Java or Rust callee leaves, so a span lineage is continuous from an
   engine into the pack (2026-11-14; Eric's criterion: for OpenTelemetry to be certified, the span lineage ought to be
@@ -212,7 +215,7 @@
   record, never whether one exists - every traced execution leaves exactly one; before changing a host or client path, ask
   which side records it in the Java engine and mirror that side; a lineage check parses every record of the trace from every
   process and verifies each parent is a span some record owns.
-  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-14 | uses: 1 | tier: archive-candidate | origin: 2026-11-14-115310 -->
+  <!-- id: trace-records-engine-parity | created: 2026-11-14 | last_used: 2026-11-24 | uses: 2 | tier: active | origin: 2026-11-14-115310 -->
 
 - **The transcript audit store: every model turn recorded by a composable function behind a local event, off the
   turn's path, into PostgreSQL beside the working store (RFC-0012 in mercury-composable, Eric's rulings of 2026-11-17;
@@ -242,7 +245,7 @@
   `docs/test-reports/transcript-audit-live-drive.md`): every turn recorded off the turn's path, a stopped database repaired by
   the sweep; #62 added a server-side `statement_timeout` from `.timeout.ms`, because a paused database stalls a pooled
   statement where a stopped one fails it.
-  <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 5 | tier: active | origin: 2026-11-17-080036 -->
+  <!-- id: transcript-audit-store-python | created: 2026-11-17 | last_used: 2026-11-24 | uses: 10 | tier: active | origin: 2026-11-17-080036 -->
 
 - **Ask a person, the main flow: the pack carries an agent loop's wait to a person and brings the decision back, knowing
   no channel and keeping no store (RFC-0014 in mercury-composable, build plan step 1; Eric's concept and rulings R1-R8 of
@@ -274,7 +277,7 @@
   access tokens - and the reply page signs the person in by Authorization Code with PKCE (a shell, `GET /ask/config`,
   the wait read from `GET /ask/{ticket}/wait`). **How to apply (amended):** "keeping no store" means no state of the
   wait - the record is an audit log, never consulted to render a wait; the agent-question app reads it.
-  <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-054804 -->
+  <!-- id: ask-person-main-flow | created: 2026-11-19 | last_used: 2026-11-20 | uses: 6 | tier: active | origin: 2026-11-19-054804 -->
 
 - **The agent-question app is the first channel of RFC-0014: a store-and-forward inbox for the person an agent asks,
   a standalone application on the package that the main flow knows nothing of (build plan step 3; built here
@@ -317,7 +320,7 @@
   ([[static-content-resources-public]]), the engines' actuator endpoints beside it for Kubernetes probes (Eric).
   **Driven live 2026-11-20** with the React UI (mercury-composable `docs/test-reports/agent-question-ui-live-drive.md`);
   the streams end when the application stops ([[platform-on-shutdown-hook]]).
-  <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-19 | uses: 1 | tier: working | origin: 2026-11-19-071444 -->
+  <!-- id: agent-question-app | created: 2026-11-19 | last_used: 2026-11-20 | uses: 7 | tier: active | origin: 2026-11-19-071444 -->
 
 - **The host serves static web content from `resources/public` next to the application file - the engines' `public`
   folder (Eric, 2026-11-20; PR #73, the Node twin mercury-nodejs #138).** `static.html.folder` is honoured as the Java
@@ -335,7 +338,7 @@
   **How to apply:** a web bundle goes into `resources/public` next to the application file and nothing else is
   configured; a host path or an extension route always wins over a file of the same name; a relative folder is never
   the working directory's.
-  <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-075621 -->
+  <!-- id: static-content-resources-public | created: 2026-11-20 | last_used: 2026-11-24 | uses: 3 | tier: active | origin: 2026-11-20-075621 -->
 
 - **`Platform.on_shutdown` runs the moment the application starts to stop - aiohttp's `on_shutdown`, while the host
   still holds its connections and before it waits for the requests in flight - and an extension that holds a stream
@@ -347,7 +350,7 @@
   reconnect to the next instance from their last sequence; the cleanup (`on_cleanup`) still closes the stores after
   the last request. **How to apply:** a stream or a socket ends in `on_shutdown`, a store closes in `on_cleanup`;
   never a shorter `shutdown_timeout` as the remedy - only the extension knows a response is a stream.
-  <!-- id: platform-on-shutdown-hook | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: working | origin: 2026-11-20-094019 -->
+  <!-- id: platform-on-shutdown-hook | created: 2026-11-20 | last_used: 2026-11-20 | uses: 1 | tier: active | origin: 2026-11-20-094019 -->
 
 ## Conventions
 
@@ -359,11 +362,11 @@
   upstream). Run: `uvx ruff check .` / `uvx basedpyright` / `.venv/bin/pytest -q`.
   Unused contract params take the underscore prefix; deliberate suppressions carry
   rationale comments (PyBroadException / noqa only where the rule actually fires).
-  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-19 | uses: 10 | tier: active | origin: 2026-08-23-005709 -->
+  <!-- id: conv-python-quality-gates | created: 2026-08-23 | last_used: 2026-11-24 | uses: 16 | tier: active | origin: 2026-08-23-005709 -->
 - Engine-mirrored configuration/logging/trace conventions (see the invariant above and
   `instructions.md`); GitHub flow with tests + a CHANGELOG entry per change
   (CONTRIBUTING.md).
-  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-17 | uses: 6 | tier: archive-candidate | origin: 2026-08-22-171555 -->
+  <!-- id: conv-github-flow-changelog | created: 2026-08-22 | last_used: 2026-11-24 | uses: 7 | tier: active | origin: 2026-08-22-171555 -->
 - **Each example app lives in a folder of its own, with a README and its own `resources/` (Eric, 2026-10-01; PR #38).**
   `examples/demo-app/` (the minimal polyglot app: `hello.python`, `hello.declarative`, `hello.chain`, `hello.sync.chain`,
   `hello.tokens`, the private `demo.suffix.helper` and `demo.health`) and `examples/llm-helper/`; run one as
@@ -373,7 +376,7 @@
   **2026-11-02 (Eric):** the LLM helper graduates from an example to an extension, `extensions/llm-helper/` (same folder
   shape: a README and its own `resources/`), so `examples/` holds the demo app; merged as #46 (`13cf394`, 2026-11-03),
   and the Node pack followed the same day (mercury-nodejs #114, `62958b5`).
-  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-17 | uses: 6 | tier: active | origin: 2026-10-02-001146 -->
+  <!-- id: examples-one-folder-per-app | created: 2026-10-01 | last_used: 2026-11-17 | uses: 6 | tier: archive-candidate | origin: 2026-10-02-001146 -->
 
 - **The `resources` folder is resolved next to the application file - the file `mercury-serve` is given, or the script Python
   ran (`python app.py`) - and the working directory is never searched (Eric's rule, 2026-10-14; PR #45 merge `a3c5a26`).** The engines' classpath
@@ -385,19 +388,7 @@
   `python llm_helper.py` from the repository root started unconfigured during the Bedrock drive ([[llm-helper-app]]); pinned by
   subprocess tests that run from a decoy working directory. Lock-step with the Node pack (`process.argv[1]`, mercury-nodejs #113 merge `f4132d4`).
   Upgrade: a layout that kept `resources/` in the working directory with the app elsewhere passes `--config` or moves the folder.
-  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-19 | uses: 2 | tier: active | origin: 2026-10-14-015420 -->
-
-- **The legacy language pack's releases v1.11.39 to v2.5.0 live here as tags and GitHub releases; their branches are gone
-  (Eric, 2026-11-13).** Before the August 2026 repurposing this repository held the legacy Mercury language pack for
-  Python, whose releases were cut as `release/*` branches; tags began at `v4.12.0`. Each branch tip now has an annotated
-  tag `vX.Y.Z`, the tagger date the release commit's, and a GitHub release titled with the tag, its notes the version's
-  CHANGELOG section after a line saying it was published retroactively, not marked latest: 13 tags and releases, 17 of
-  each in all, `v4.12.21` still Latest. 1.11.39's section is read from the CHANGELOG at `v1.12.4` (added after its tag);
-  1.12.31 never had one, and its notes say so. The 13 branches were then deleted; GitHub keeps only `main` and
-  `gh-pages`. Twins: mercury-composable `historical-releases-tags-and-pages`, mercury
-  `historical-releases-tags-and-pages-rust`. **How to apply:** find a legacy release by its tag or release page, never a
-  branch; a release published after the fact passes `--latest=false`.
-  <!-- id: historical-releases-tags-and-pages-python | created: 2026-11-13 | last_used: 2026-11-13 | uses: 1 | tier: archive-candidate | origin: 2026-11-13-025101 -->
+  <!-- id: conv-resources-next-to-the-application-file | created: 2026-10-14 | last_used: 2026-11-24 | uses: 5 | tier: active | origin: 2026-10-14-015420 -->
 
 ## Open Threads
 

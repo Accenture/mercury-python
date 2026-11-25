@@ -16,4 +16,4 @@
   connection and the statement. The engines' memory tracks the
   design under `transcript-audit-store` (RFC-0012, settled 2026-11-17).
   → serves: vision-mercury-python
-  <!-- id: bp-transcript-audit-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 2 | tier: active | origin: 2026-11-17-080036 -->
+  <!-- id: bp-transcript-audit-python | created: 2026-11-17 | last_used: 2026-11-17 | uses: 2 | tier: archive-candidate | origin: 2026-11-17-080036 -->
