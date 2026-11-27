@@ -1,6 +1,6 @@
 {
   "name": "graph_query",
-  "description": "Run a read-only openCypher query against the agent's knowledge graph and return its rows. Pass values as parameters ($name in the query, the value under that name in parameters) instead of writing them into the query. A node comes back as {id, labels, properties}, a relationship as {id, type, start, end, properties}, a path as a list of them. Rows are capped: narrow the query with WHERE and LIMIT when the result was cut. A query that writes (CREATE, MERGE, SET, DELETE, REMOVE, DROP, LOAD CSV) is refused - use graph_write or graph_ingest.",
+  "description": "Run a read-only openCypher query against the agent's knowledge graph and return its rows. Pass values as parameters ($name in the query, the value under that name in parameters) instead of writing them into the query. A node comes back as {id, labels, properties}, a relationship as {id, type, start, end, properties}, a path as a list of them. Rows are capped: narrow the query with WHERE and LIMIT when the result was cut. A query that writes (CREATE, MERGE, SET, DELETE, REMOVE, DROP, LOAD CSV) is refused - use graph_write or graph_ingest. To find a node by its key, match it through the label every ingested node carries, which holds the index: MATCH (n:_Ingested {key: $key}).",
   "input_schema": {
     "type": "object",
     "properties": {

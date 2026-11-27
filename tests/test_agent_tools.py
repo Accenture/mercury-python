@@ -1262,13 +1262,27 @@ def test_plan_ingest_groups_and_validates() -> None:
     assert plan.endpoint_keys == ["clause:1", "party:a"]
     statements = tools.ingest_statements(plan)
     assert [q for q, _ in statements] == [
-        "UNWIND $rows AS row MERGE (n:`Clause` {key: row.key}) SET n += row.properties, n.source = $source",
-        "UNWIND $rows AS row MERGE (n:`Party` {key: row.key}) SET n += row.properties, n.source = $source",
         (
-            "UNWIND $rows AS row MATCH (a {key: row.from}) MATCH (b {key: row.to}) MERGE (a)-[r:`BINDS`]->(b) "
+            "UNWIND $rows AS row MERGE (n:`_Ingested`:`Clause` {key: row.key}) "
+            "SET n += row.properties, n.source = $source"
+        ),
+        (
+            "UNWIND $rows AS row MERGE (n:`_Ingested`:`Party` {key: row.key}) "
+            "SET n += row.properties, n.source = $source"
+        ),
+        (
+            "UNWIND $rows AS row MATCH (a:`_Ingested` {key: row.from}) "
+            "MATCH (b:`_Ingested` {key: row.to}) MERGE (a)-[r:`BINDS`]->(b) "
             "SET r += row.properties, r.source = $source"
         ),
     ]
+    # a match on key without a label reads every node of the database: no statement has one
+    every = [q for q, _ in statements] + [tools.ENDPOINTS_QUERY]
+    assert not [q for q in every if "(n {" in q or "(a {" in q or "(b {" in q]
+    assert tools.ENDPOINTS_QUERY == (
+        "UNWIND $keys AS key OPTIONAL MATCH (n:`_Ingested` {key: key}) "
+        "WITH key, n WHERE n IS NULL RETURN key"
+    )
     assert statements[0][1] == {"rows": plan.nodes["Clause"], "source": "docs/a.md"}
     without_source = tools.ingest_statements(
         tools.plan_ingest({"nodes": [{"key": "k", "label": "L"}]}, max_nodes=10)
@@ -1386,11 +1400,14 @@ def _graph(
 def _schema_script(*, memgraph: bool = False) -> Callable[[str, dict[str, Any], int | None], Any]:
     def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
         if query == tools.LABEL_COUNTS_QUERY:
-            return _rows(["label", "count"], [["Clause", 12], ["Party", 3]])
+            return _rows(["label", "count"], [["Clause", 12], ["Party", 3], ["_Ingested", 15]])
         if query == tools.RELATIONSHIP_COUNTS_QUERY:
             return _rows(
                 ["type", "from", "to", "count"],
-                [["BINDS", ["Clause"], ["Party"], 7], ["BINDS", ["Rule"], ["Party"], 1]],
+                [
+                    ["BINDS", ["Clause", "_Ingested"], ["_Ingested", "Party"], 7],
+                    ["BINDS", ["Rule"], ["Party"], 1],
+                ],
             )
         if query == tools.NODE_PROPERTIES_QUERIES[0]:
             if memgraph:
@@ -1398,8 +1415,8 @@ def _schema_script(*, memgraph: bool = False) -> Callable[[str, dict[str, Any], 
             return _rows(
                 ["nodeLabels", "propertyName", "propertyTypes"],
                 [
-                    [["Clause"], "text", ["String"]],
-                    [["Clause"], "key", ["String"]],
+                    [["Clause", "_Ingested"], "text", ["String"]],
+                    [["_Ingested", "Clause"], "key", ["String"]],
                     [["Party"], "key", ["String"]],
                     [["Orphan"], None, None],
                 ],
@@ -1451,6 +1468,7 @@ async def test_graph_schema_merges_counts_and_properties() -> None:
         },
         {"type": "CITES", "count": 0, "from": [], "to": [], "properties": []},
     ]
+    assert "_Ingested" not in str(schema), "the ingest label is on every node and is left out"
     assert backend.modes == [False], "the schema is read in one read transaction"
 
 
@@ -1549,6 +1567,8 @@ async def test_graph_write_returns_counters_and_guards_deletion(
 @pytest.mark.asyncio
 async def test_graph_ingest_merges_nodes_then_checks_endpoints_then_merges_relationships() -> None:
     def script(query: str, parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            return _rows(["name"], [[tools.INGEST_CONSTRAINT]])
         if query == tools.ENDPOINTS_QUERY:
             assert parameters == {"keys": ["clause:1", "party:a"]}
             return _rows(["key"], [])
@@ -1565,29 +1585,170 @@ async def test_graph_ingest_merges_nodes_then_checks_endpoints_then_merges_relat
     }
     assert await graph.ingest({}, body) == {"nodes": 2, "relationships": 1}
     queries = [call[0] for call in backend.calls]
-    assert [q.split(" ")[0] if q != tools.ENDPOINTS_QUERY else "CHECK" for q in queries] == [
+    assert queries[0] == tools.INGEST_CONSTRAINT_QUERY, (
+        "the constraint is there: nothing to prepare"
+    )
+    assert [q.split(" ")[0] if q != tools.ENDPOINTS_QUERY else "CHECK" for q in queries[1:]] == [
         "UNWIND",
         "UNWIND",
         "CHECK",
         "UNWIND",
     ]
     assert (
-        "MERGE (n:`Clause`" in queries[0]
-        and "MERGE (n:`Party`" in queries[1]
-        and "MERGE (a)-[r:`BINDS`]->(b)" in queries[3]
+        "MERGE (n:`_Ingested`:`Clause`" in queries[1]
+        and "MERGE (n:`_Ingested`:`Party`" in queries[2]
+        and "MERGE (a)-[r:`BINDS`]->(b)" in queries[4]
     )
-    assert backend.calls[0][1] == {
+    assert backend.calls[1][1] == {
         "rows": [{"key": "clause:1", "properties": {"text": "pay within 30 days"}}],
         "source": "contracts/a.md",
     }
-    assert backend.modes == [True], "one write transaction"
-    # the same ingest again runs the same statements - idempotence is the MERGE's
+    assert backend.modes == [False, True], "a read for the constraint, then one write transaction"
+    # the same ingest again runs the same statements - idempotence is the MERGE's - and the
+    # constraint is not asked for again in this process
     assert await graph.ingest({}, body) == {"nodes": 2, "relationships": 1}
+    assert backend.modes == [False, True, True]
+    assert [call[0] for call in backend.calls].count(tools.INGEST_CONSTRAINT_QUERY) == 1
+
+
+def _neo4j_error(code: str, message: str = "refused") -> BaseException:
+    import neo4j.exceptions as errors
+
+    return errors.Neo4jError._hydrate_neo4j(code=code, message=message)  # the driver's own factory
+
+
+INGEST_ONE_NODE = {"nodes": [{"key": "clause:1", "label": "Clause"}]}
+
+
+@pytest.mark.asyncio
+async def test_the_first_ingest_prepares_a_graph_written_before_the_label(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            return _rows(["name"], [])
+        if query == tools.INGEST_LABEL_STATEMENT:
+            return _rows([], [], counters={"labels_added": 42})
+        return _rows([], [])
+
+    graph, backend = _graph(script, write=True)
+    with caplog.at_level(logging.INFO):
+        assert await graph.ingest({}, INGEST_ONE_NODE) == {"nodes": 1, "relationships": 0}
+    queries = [call[0] for call in backend.calls]
+    # the nodes take the label before the constraint is made, and both before anything is merged:
+    # a merge through the label would not find an unlabelled node and would write it a second time
+    assert queries[:3] == [
+        tools.INGEST_CONSTRAINT_QUERY,
+        tools.INGEST_LABEL_STATEMENT,
+        tools.INGEST_CONSTRAINT_STATEMENT,
+    ]
+    assert queries[3].startswith("UNWIND $rows AS row MERGE (n:`_Ingested`:`Clause`")
+    assert backend.modes == [False, True, True, True], "a schema change has its own transaction"
+    assert [len(tx.calls) for tx in backend.transactions] == [1, 1, 1, 1]
+    assert (
+        "graph.ingest prepared the graph - 42 node(s) took the label _Ingested, "
+        "constraint mercury_ingested_key created" in caplog.text
+    )
+    assert await graph.ingest({}, INGEST_ONE_NODE) == {"nodes": 1, "relationships": 0}
+    assert len(backend.transactions) == 5, "prepared once in this process"
+
+
+@pytest.mark.asyncio
+async def test_a_key_on_two_nodes_refuses_the_ingest_and_names_the_query_that_lists_them() -> None:
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            return _rows(["name"], [])
+        if query == tools.INGEST_CONSTRAINT_STATEMENT:
+            raise _neo4j_error("Neo.DatabaseError.Schema.ConstraintCreationFailed")
+        return _rows([], [])
+
+    graph, backend = _graph(script, write=True)
+    for _attempt in range(2):
+        status, text = await _astatus(graph.ingest({}, INGEST_ONE_NODE))
+        assert status == 409 and text.endswith(tools.INGEST_DUPLICATES_QUERY)
+        assert "nothing was ingested" in text
+    queries = [call[0] for call in backend.calls]
+    assert not [q for q in queries if q.startswith("UNWIND")], "nothing was merged"
+    assert queries.count(tools.INGEST_CONSTRAINT_STATEMENT) == 2, "the next ingest tries again"
+
+
+@pytest.mark.asyncio
+async def test_a_process_that_may_not_create_the_constraint_names_the_statement() -> None:
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            return _rows(["name"], [])
+        if query == tools.INGEST_CONSTRAINT_STATEMENT:
+            raise _neo4j_error("Neo.ClientError.Security.Forbidden")
+        return _rows([], [])
+
+    graph, backend = _graph(script, write=True)
+    status, text = await _astatus(graph.ingest({}, INGEST_ONE_NODE))
+    assert status == 503 and text.endswith(tools.INGEST_CONSTRAINT_STATEMENT)
+    assert not [call for call in backend.calls if call[0].startswith("UNWIND")]
+
+
+@pytest.mark.asyncio
+async def test_a_database_without_neo4js_constraint_commands_is_matched_by_the_label(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            raise _neo4j_error(
+                "Memgraph.ClientError.MemgraphError.MemgraphError", "mismatched input 'YIELD'"
+            )
+        return _rows([], [])
+
+    graph, backend = _graph(script, write=True)
+    with caplog.at_level(logging.WARNING):
+        assert await graph.ingest({}, INGEST_ONE_NODE) == {"nodes": 1, "relationships": 0}
+    queries = [call[0] for call in backend.calls]
+    assert queries[:2] == [tools.INGEST_CONSTRAINT_QUERY, tools.INGEST_LABEL_STATEMENT]
+    assert tools.INGEST_CONSTRAINT_STATEMENT not in queries
+    assert queries[2].startswith("UNWIND $rows AS row MERGE (n:`_Ingested`:`Clause`")
+    assert "the index on its key is the installation's to create" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_failure_while_preparing_keeps_its_status_and_is_tried_again() -> None:
+    outcomes: list[BaseException | None] = [
+        _neo4j_error("Neo.TransientError.General.DatabaseUnavailable"),
+        None,
+    ]
+
+    def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            failure = outcomes.pop(0)
+            if failure is not None:
+                raise failure
+            return _rows(["name"], [[tools.INGEST_CONSTRAINT]])
+        if query == tools.INGEST_LABEL_STATEMENT:
+            raise TimeoutError
+        return _rows([], [])
+
+    graph, backend = _graph(script, write=True, timeout_ms=1500)
+    status, _text = await _astatus(graph.ingest({}, INGEST_ONE_NODE))
+    assert status == 503, "an unreachable database is not another dialect"
+    assert await graph.ingest({}, INGEST_ONE_NODE) == {"nodes": 1, "relationships": 0}
+
+    def slow(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            return _rows(["name"], [])
+        if query == tools.INGEST_LABEL_STATEMENT:
+            raise TimeoutError
+        return _rows([], [])
+
+    graph, backend = _graph(slow, write=True, timeout_ms=1500)
+    status, text = await _astatus(graph.ingest({}, INGEST_ONE_NODE))
+    assert status == 408 and "did not finish within 1500 ms" in text
+    assert text.endswith(tools.INGEST_LABEL_STATEMENT)
+    assert not [call for call in backend.calls if call[0].startswith("UNWIND")]
 
 
 @pytest.mark.asyncio
 async def test_graph_ingest_refuses_a_missing_endpoint_before_any_relationship_is_written() -> None:
     def script(query: str, _parameters: dict[str, Any], _limit: int | None) -> Any:
+        if query == tools.INGEST_CONSTRAINT_QUERY:
+            return _rows(["name"], [[tools.INGEST_CONSTRAINT]])
         if query == tools.ENDPOINTS_QUERY:
             return _rows(["key"], [["ghost:1"]])
         return _rows([], [])
@@ -1611,7 +1772,7 @@ async def test_graph_ingest_refuses_a_missing_endpoint_before_any_relationship_i
     )
     status, text = await _astatus(graph.ingest({}, {"nodes": [{"key": "k", "label": "Bad Label"}]}))
     assert status == 400 and "identifier" in text
-    assert len(backend.transactions) == 1, "a refused ingest never reaches the database"
+    assert len(backend.transactions) == 2, "a refused ingest never reaches the database"
 
 
 def test_graph_sandbox_address_hides_the_credential() -> None:
@@ -1954,7 +2115,7 @@ async def test_live_graph_round_trip(configure: Callable[[dict[str, Any]], None]
         )
         node, relationship, party, total = rows["rows"][0]
         assert (
-            node["labels"] == ["T_Clause"]
+            sorted(node["labels"]) == ["T_Clause", "_Ingested"]
             and node["properties"]["key"] == "t_clause:1"
             and node["properties"]["source"] == "contracts/a.md"
         )
@@ -1970,10 +2131,13 @@ async def test_live_graph_round_trip(configure: Callable[[dict[str, Any]], None]
         path = await graph.query(
             {}, {"query": "MATCH p = (:T_Clause)-[:T_BINDS]->(:T_Party) RETURN p"}
         )
-        assert [item.get("labels", item.get("type")) for item in path["rows"][0][0]] == [
-            ["T_Clause"],
+        assert [
+            sorted(item["labels"]) if "labels" in item else item["type"]
+            for item in path["rows"][0][0]
+        ] == [
+            ["T_Clause", "_Ingested"],
             "T_BINDS",
-            ["T_Party"],
+            ["T_Party", "_Ingested"],
         ]
         schema = await graph.schema({}, None)
         clause = next(label for label in schema["labels"] if label["label"] == "T_Clause")
@@ -2010,9 +2174,28 @@ async def test_live_graph_round_trip(configure: Callable[[dict[str, Any]], None]
             assert status == 400 and "deletion is not allowed" in text
         finally:
             await guarded.close()
+        # a key names one node: the constraint refuses it under another label
+        status, text = await _astatus(
+            graph.ingest({}, {"nodes": [{"key": "t_clause:1", "label": "T_Party"}]})
+        )
+        assert status == 400 and "ConstraintValidationFailed" in text
+        # a node written before the label existed: a new process prepares the graph, and the
+        # same key is merged into that node, not written a second time
+        await graph.write({}, {"query": "CREATE (:T_Clause {key: 't_clause:old', text: 'old'})"})
+        await graph.write({}, {"query": f"DROP CONSTRAINT `{tools.INGEST_CONSTRAINT}` IF EXISTS"})
+        later = tools.GraphTools(graph.sandbox)
+        try:
+            old = {"key": "t_clause:old", "label": "T_Clause", "properties": {"days": 7}}
+            assert await later.ingest({}, {"nodes": [old]}) == {"nodes": 1, "relationships": 0}
+            found = await later.query(
+                {}, {"query": "MATCH (n:_Ingested {key: 't_clause:old'}) RETURN n.text, n.days"}
+            )
+            assert found["rows"] == [["old", 7]], "one node, with the old and the new property"
+        finally:
+            await later.close()
         deleted = await graph.write({}, {"query": cleanup})
         assert (
-            deleted["counters"]["nodes_deleted"] == 2
+            deleted["counters"]["nodes_deleted"] == 3
             and deleted["counters"]["relationships_deleted"] == 1
         )
     finally:

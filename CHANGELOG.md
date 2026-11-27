@@ -259,6 +259,33 @@
    server connected and every bound route answered 503. Both entry points attach the hooks now, so a bad server file
    stops the direct run by name as it stops the served one.
 
+3. **`graph.ingest` finds a node by an index on its key: the cost of a write no longer grows with the database (a
+   field report).** The ingest matched each end of a relationship, and checked that the ends exist, by `key` without a
+   label. A database index belongs to a label, so no index could serve those matches and the database read every node
+   for each end: on Neo4j 5 with 180,000 nodes, 150 relationships took 9.6 s through `graph.ingest` - at the edge of
+   the default `tools.graph.timeout.ms` of 10 s - against 67 ms on 300 nodes, and an index on every label changed
+   nothing. The node `MERGE` had no index either and read every node of its label. Now every node the ingest writes
+   carries the label `_Ingested` beside its own, one uniqueness constraint `mercury_ingested_key` on
+   `(:_Ingested {key})` gives the index, and the node `MERGE`, the check of the ends and the relationship `MERGE` all
+   go through the label: the same 150 relationships take about 30 ms, whatever the size of the graph. The constraint
+   makes the key what the row says it is, unique across the graph: the same key under another label is a 400 where it
+   was written as a second node (and a relationship to that key reached both), and two ingests of one key at the same
+   moment merge into one node. The first ingest of a process prepares the graph, each step in its own transaction:
+   when the constraint is missing, every node with a `key` takes the label (0.4 s for 180,000 nodes) and the
+   constraint is created; a key on more than one node is a 409 naming the query that lists them, a process without
+   the privilege a 503 naming the statement, a labelling over the deadline a 408 naming it, each before anything is
+   merged. `graph.schema` leaves the label out; the `graph_query` row tells the model to find a node by key through
+   it, and the `graph_ingest` row that a key names one node, so the two catalog files change. A database that does
+   not take Neo4j's constraint commands is labelled and matched by the label, with one warning, and its index is the
+   installation's (driven on Memgraph). Pinned by five new tests and the gated live round trip, which now carries a
+   node written before the label and the refusal of a second label; driven on Neo4j 5 Community and Memgraph. The
+   Node twin makes the same change. **Upgrade note - READ:** the first ingest after the upgrade labels the nodes of
+   an existing graph and creates the constraint, so the process's database user needs the privilege to create a
+   constraint once, or an administrator runs the statement the README gives. A graph that holds one key on several
+   nodes is refused with a 409 until the extra nodes are removed. A node written by `graph.write` is an end of an
+   ingested relationship only when it carries the label `_Ingested` and a key. A query that listed a node's labels
+   now sees `_Ingested` among them.
+
 13. **REST automation: `rest.yaml` as the router of a Python application (RFC-0018 in mercury-composable, build
    plan step 1).** With `rest.automation: true` the host reads one `yaml.rest.automation` location (default
    `classpath:/rest.yaml`, the `resources/rest.yaml` next to the application file; `file:` an absolute path) in the

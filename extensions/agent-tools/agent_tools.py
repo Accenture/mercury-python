@@ -164,6 +164,11 @@ DEFAULT_GRAPH_TIMEOUT_MS = 10000
 DEFAULT_INGEST_MAX_NODES = 500
 # a call may carry this many relationships per allowed node - the tool's own bound
 INGEST_RELATIONSHIPS_PER_NODE = 4
+# every node graph.ingest writes carries this label beside its own, and one uniqueness constraint on
+# its key gives the index that finds a node by key; a caller's label starts with a letter
+# (IDENTIFIER), so it can never be this one
+INGEST_LABEL = "_Ingested"
+INGEST_CONSTRAINT = "mercury_ingested_key"
 IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
 PROPERTY_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 # the clauses a read-only query may not carry, and the ones the delete gate guards
@@ -437,7 +442,9 @@ GRAPH_QUERY_ROW = _row(
     "parameters ($name in the query, the value under that name in parameters) instead of writing them into the "
     "query. A node comes back as {id, labels, properties}, a relationship as {id, type, start, end, properties}, a "
     "path as a list of them. Rows are capped: narrow the query with WHERE and LIMIT when the result was cut. A query "
-    "that writes (CREATE, MERGE, SET, DELETE, REMOVE, DROP, LOAD CSV) is refused - use graph_write or graph_ingest.",
+    "that writes (CREATE, MERGE, SET, DELETE, REMOVE, DROP, LOAD CSV) is refused - use graph_write or graph_ingest. "
+    "To find a node by its key, match it through the label every ingested node carries, which holds the index: "
+    "MATCH (n:_Ingested {key: $key}).",
     {
         "query": {
             "type": "string",
@@ -474,7 +481,8 @@ GRAPH_INGEST_ROW = _row(
     "with its label and properties; each relationship is merged between two keys that exist (in this call or "
     "already in the graph) with its type and properties. Labels and types are identifiers (letters, digits and "
     "underscore, starting with a letter); property values are scalars or lists of scalars. Give source (the "
-    "document's path or URL) so an answer can cite it. Running the same ingest twice changes nothing.",
+    "document's path or URL) so an answer can cite it. Running the same ingest twice changes nothing. A key names "
+    "one node: the same key under another label is refused.",
     {
         "nodes": {
             "type": "array",
@@ -2082,6 +2090,15 @@ def graph_error(exc: BaseException, *, timeout_ms: int) -> AppException:
     return AppException(502, f"the graph database failed ({name})")
 
 
+def _other_dialect(exc: BaseException) -> bool:
+    """A database that speaks Bolt and refuses a Neo4j command as unknown: its error code is not
+    one of Neo4j's, or it is Neo4j's syntax error (an older server)."""
+    code = str(getattr(exc, "code", "") or "")
+    if neo4j_errors is None or not isinstance(exc, neo4j_errors.ClientError):
+        return False
+    return not code.startswith("Neo.") or "SyntaxError" in code
+
+
 def render_value(value: Any) -> Any:
     """A driver value as JSON for the model: a node ``{id, labels, properties}``, a relationship
     ``{id, type, start, end, properties}``, a path as the list of its nodes and relationships in
@@ -2280,13 +2297,18 @@ def plan_ingest(args: dict[str, Any], *, max_nodes: int) -> Ingest:
 
 def ingest_statements(plan: Ingest) -> list[tuple[str, dict[str, Any]]]:
     """The parameterized statements of an ingest, nodes first, then the relationships - one
-    ``UNWIND ... MERGE`` per label and per type, every value a parameter, ``source`` stamped."""
+    ``UNWIND ... MERGE`` per label and per type, every value a parameter, ``source`` stamped. Every
+    node is matched through the ingest label, so the database finds it by the index on its key: a
+    match on ``key`` without a label reads every node of the database."""
     stamp = ", n.source = $source" if plan.source is not None else ""
     statements: list[tuple[str, dict[str, Any]]] = []
     for label, rows in plan.nodes.items():
         statements.append(
             (
-                f"UNWIND $rows AS row MERGE (n:`{label}` {{key: row.key}}) SET n += row.properties{stamp}",
+                (
+                    f"UNWIND $rows AS row MERGE (n:`{INGEST_LABEL}`:`{label}` {{key: row.key}}) "
+                    f"SET n += row.properties{stamp}"
+                ),
                 {"rows": rows, "source": plan.source},
             )
         )
@@ -2295,7 +2317,8 @@ def ingest_statements(plan: Ingest) -> list[tuple[str, dict[str, Any]]]:
         statements.append(
             (
                 (
-                    f"UNWIND $rows AS row MATCH (a {{key: row.from}}) MATCH (b {{key: row.to}}) "
+                    f"UNWIND $rows AS row MATCH (a:`{INGEST_LABEL}` {{key: row.from}}) "
+                    f"MATCH (b:`{INGEST_LABEL}` {{key: row.to}}) "
                     f"MERGE (a)-[r:`{kind}`]->(b) SET r += row.properties{stamp}"
                 ),
                 {"rows": rows, "source": plan.source},
@@ -2305,7 +2328,26 @@ def ingest_statements(plan: Ingest) -> list[tuple[str, dict[str, Any]]]:
 
 
 ENDPOINTS_QUERY = (
-    "UNWIND $keys AS key OPTIONAL MATCH (n {key: key}) WITH key, n WHERE n IS NULL RETURN key"
+    f"UNWIND $keys AS key OPTIONAL MATCH (n:`{INGEST_LABEL}` {{key: key}}) "
+    "WITH key, n WHERE n IS NULL RETURN key"
+)
+
+# what prepares a graph for the ingest, once: is the constraint there; if not, the nodes written
+# before the label existed take it, then the constraint is made. Neo4j's commands; a database that
+# does not take them is matched by the label and left to its own index.
+INGEST_CONSTRAINT_QUERY = (
+    f"SHOW CONSTRAINTS YIELD name WHERE name = '{INGEST_CONSTRAINT}' RETURN name"
+)
+INGEST_LABEL_STATEMENT = (
+    f"MATCH (n) WHERE n.key IS NOT NULL AND NOT n:`{INGEST_LABEL}` SET n:`{INGEST_LABEL}`"
+)
+INGEST_CONSTRAINT_STATEMENT = (
+    f"CREATE CONSTRAINT `{INGEST_CONSTRAINT}` IF NOT EXISTS "
+    f"FOR (n:`{INGEST_LABEL}`) REQUIRE n.key IS UNIQUE"
+)
+INGEST_DUPLICATES_QUERY = (
+    f"MATCH (n:`{INGEST_LABEL}`) WITH n.key AS key, count(*) AS nodes WHERE nodes > 1 "
+    "RETURN key, nodes"
 )
 
 # the schema procedures: Neo4j's, then Memgraph's under the same column names
@@ -2377,20 +2419,100 @@ class GraphTools:
     def __init__(self, sandbox: GraphSandbox, backend: Any | None = None):
         self.sandbox = sandbox
         self.backend: Any = backend if backend is not None else Bolt(sandbox)
+        self._ingest_prepared = False
+        self._ingest_lock = asyncio.Lock()
 
     async def close(self) -> None:
         close = getattr(self.backend, "close", None)
         if close is not None:
             await close()
 
+    async def _prepare_ingest(self) -> None:
+        """Before the first ingest of this process: the graph has the constraint, or gets it. A
+        failure leaves the graph unprepared, so the next ingest tries again."""
+        if self._ingest_prepared:
+            return
+        async with self._ingest_lock:
+            if self._ingest_prepared:
+                return
+            await self._ensure_ingest_constraint()
+            self._ingest_prepared = True
+
+    async def _ensure_ingest_constraint(self) -> None:
+        async def present(tx: Transaction) -> bool:
+            return bool((await tx.run(INGEST_CONSTRAINT_QUERY, limit=1)).values)
+
+        async def label(tx: Transaction) -> int:
+            rows = await tx.run(INGEST_LABEL_STATEMENT)
+            return int((rows.counters or {}).get("labels_added", 0))
+
+        async def constrain(tx: Transaction) -> None:
+            await tx.run(INGEST_CONSTRAINT_STATEMENT)
+
+        try:
+            constraint: bool | None = await self.backend.execute(present, write=False)
+        except Exception as exc:
+            if not _other_dialect(exc):
+                raise self._failed(exc) from exc
+            constraint = None
+        if constraint:
+            return
+        # the nodes of a graph written before the label existed: without it a merge would not find
+        # them and would write each a second time
+        try:
+            labelled = await self._run(label, write=True)
+        except AppException as exc:
+            if exc.status != 408:
+                raise
+            raise AppException(
+                408,
+                f"labelling the nodes written before the label {INGEST_LABEL} existed did not "
+                f"finish within {self.sandbox.timeout_ms} ms and nothing was ingested - an "
+                f"administrator runs it once, in batches on a large graph: {INGEST_LABEL_STATEMENT}",
+            ) from exc
+        if constraint is None:
+            log.warning(
+                "graph.ingest - this database does not take Neo4j's constraint commands: nodes are "
+                "matched by the label %s, and the index on its key is the installation's to create",
+                INGEST_LABEL,
+            )
+            return
+        try:
+            await self.backend.execute(constrain, write=True)
+        except Exception as exc:
+            code = str(getattr(exc, "code", "") or "")
+            if "ConstraintCreationFailed" in code:
+                raise AppException(
+                    409,
+                    f"the graph holds a key on more than one node, so the uniqueness constraint "
+                    f"on (:{INGEST_LABEL} {{key}}) cannot be created and nothing was ingested - "
+                    f"list them with: {INGEST_DUPLICATES_QUERY}",
+                ) from exc
+            if ".Security." in code:
+                raise AppException(
+                    503,
+                    f"this process may not create the constraint the ingest needs - an "
+                    f"administrator runs it once: {INGEST_CONSTRAINT_STATEMENT}",
+                ) from exc
+            raise self._failed(exc) from exc
+        log.info(
+            "graph.ingest prepared the graph - %d node(s) took the label %s, constraint %s created",
+            labelled,
+            INGEST_LABEL,
+            INGEST_CONSTRAINT,
+        )
+
+    def _failed(self, exc: BaseException) -> AppException:
+        error = graph_error(exc, timeout_ms=self.sandbox.timeout_ms)
+        if error.status >= 500 or error.status == 408:
+            log.warning("graph tool failed - %s (%d)", type(exc).__name__, error.status)
+        return error
+
     async def _run(self, work: Work, *, write: bool) -> Any:
         try:
             return await self.backend.execute(work, write=write)
         except Exception as exc:  # every failure becomes the tool's status, by type
-            error = graph_error(exc, timeout_ms=self.sandbox.timeout_ms)
-            if error.status >= 500 or error.status == 408:
-                log.warning("graph tool failed - %s (%d)", type(exc).__name__, error.status)
-            raise error from exc
+            raise self._failed(exc) from exc
 
     @staticmethod
     def _parameters(args: dict[str, Any]) -> dict[str, Any]:
@@ -2407,10 +2529,14 @@ class GraphTools:
         async def work(tx: Transaction) -> Any:
             labels: dict[str, dict[str, Any]] = {}
             for label, count in (await tx.run(LABEL_COUNTS_QUERY)).values:
+                if label == INGEST_LABEL:
+                    continue
                 labels[str(label)] = {"label": str(label), "count": int(count), "properties": []}
             node_properties = await _first_available(tx, NODE_PROPERTIES_QUERIES)
             for node_labels, name, types in node_properties.values:
                 for label in node_labels or []:
+                    if label == INGEST_LABEL:
+                        continue
                     entry = labels.setdefault(
                         str(label), {"label": str(label), "count": 0, "properties": []}
                     )
@@ -2428,10 +2554,10 @@ class GraphTools:
                 )
                 entry["count"] += int(count)
                 for label in from_labels or []:
-                    if str(label) not in entry["from"]:
+                    if label != INGEST_LABEL and str(label) not in entry["from"]:
                         entry["from"].append(str(label))
                 for label in to_labels or []:
-                    if str(label) not in entry["to"]:
+                    if label != INGEST_LABEL and str(label) not in entry["to"]:
                         entry["to"].append(str(label))
             relationship_properties = await _first_available(tx, RELATIONSHIP_PROPERTIES_QUERIES)
             for kind, name, types in relationship_properties.values:
@@ -2531,6 +2657,7 @@ class GraphTools:
         statements = ingest_statements(plan)
         node_statements = len(plan.nodes)
         endpoints = plan.endpoint_keys
+        await self._prepare_ingest()
 
         async def work(tx: Transaction) -> dict[str, int]:
             for query, parameters in statements[:node_statements]:
