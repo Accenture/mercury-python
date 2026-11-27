@@ -110,7 +110,7 @@ server-side, a read in a read transaction, so a statement that writes fails even
 | `graph.schema` | `graph_schema` | none | `{labels: [{label, count, properties: [{name, types}]}], relationship_types: [{type, count, from, to, properties}]}` from the database's own schema procedures (Neo4j's `db.schema.*`, else Memgraph's `schema.*`) and two counting queries; what the model reads before it writes a query or an ingest |
 | `graph.query` | `graph_query` | `query` (openCypher, read-only, required); `parameters` (a map) | `{columns, rows, truncated}`; refused before sending when it carries `CREATE`, `MERGE`, `SET`, `DELETE`, `REMOVE`, `DROP` or `LOAD CSV` outside a string or a comment; rows capped by `tools.graph.max.rows` (200, cap 2000); a node rendered `{id, labels, properties}`, a relationship `{id, type, start, end, properties}`, a path as the list of its nodes and relationships, temporal values as text, points as `{srid, coordinates}` |
 | `graph.write` | `graph_write`, **`write: true`** | `query`, `parameters` | `{counters: {nodes_created, nodes_deleted, relationships_created, relationships_deleted, properties_set, labels_added, labels_removed, indexes_added, constraints_added}, columns, rows, truncated}` from a write transaction |
-| `graph.ingest` | `graph_ingest`, **`write: true`** | `nodes: [{key, label, properties}]`, `relationships: [{from, to, type, properties}]`, `source` (optional) | `{nodes, relationships}` counts: one parameterized `MERGE` per label on `(:Label {key})` with `SET n += properties`, one per type between two keys that exist (in this call or already in the graph - a missing endpoint is a 400 naming the key, and nothing is written), `source` stamped on every node and relationship; labels and types `^[A-Za-z][A-Za-z0-9_]{0,63}$`, values scalars or lists of scalars, at most `tools.graph.ingest.max.nodes` (500) nodes and four times as many relationships per call; running it twice changes nothing |
+| `graph.ingest` | `graph_ingest`, **`write: true`** | `nodes: [{key, label, properties}]`, `relationships: [{from, to, type, properties}]`, `source` (optional) | `{nodes, relationships}` counts: one parameterized `MERGE` per label on `(:_Ingested:Label {key})` with `SET n += properties`, one per type between two keys that exist (in this call or already in the graph - a missing endpoint is a 400 naming the key, and nothing is written), each end found by the index on `(:_Ingested {key})`, `source` stamped on every node and relationship; a key names one node, so the same key under another label is a 400; labels and types `^[A-Za-z][A-Za-z0-9_]{0,63}$`, values scalars or lists of scalars, at most `tools.graph.ingest.max.nodes` (500) nodes and four times as many relationships per call; running it twice changes nothing |
 
 Why `graph.ingest` beside `graph.write`: a list of nodes and relationships is what a model extracts well, and a long
 `MERGE` with dozens of parameters is where Cypher goes wrong. The tool makes the Cypher, no value is ever interpolated
@@ -119,6 +119,35 @@ across the graph, prefixed with the label in lower case (`clause:12`, `party:sup
 so an answer can cite it. A database failure comes back by the database's own code (`Neo.ClientError.Statement.SyntaxError:
 ...`) as a 400 the model can act on; a transaction over the timeout is a 408; an unreachable database or a refused
 credential a 503, logged by type only.
+
+**The ingest label and its index.** Every node `graph.ingest` writes carries the label `_Ingested` beside its own,
+and one uniqueness constraint, `mercury_ingested_key` on `(:_Ingested {key})`, gives the index that finds a node by
+its key. A database index belongs to a label, so a match on `key` alone reads every node of the database: on a graph
+of 180,000 nodes, 150 relationships took 9.6 s that way and take about 30 ms through the label. A caller's label
+starts with a letter, so it can never be `_Ingested`; `graph.schema` leaves the label out, since it is on every node
+and says nothing about the domain; a query result shows it among a node's labels, and the `graph_query` row tells the
+model to find a node by key as `MATCH (n:_Ingested {key: $key})`. The constraint also makes the key what the row
+says it is, unique across the graph: the same key under another label is refused where it used to be written as a
+second node, and two ingests of one key at the same moment merge into one node.
+
+The first ingest of a process prepares the graph, each step in a transaction of its own, since a database does not
+mix a schema change with a write: it asks whether the constraint exists; if not, every node that has a `key` and
+not the label takes it (`MATCH (n) WHERE n.key IS NOT NULL AND NOT n:_Ingested SET n:_Ingested`), and then the
+constraint is created. So a graph written before the label existed is carried over by the first ingest: 0.4 s for
+180,000 nodes. Three things can stop it, each before anything is merged:
+
+- **409** - a key is on more than one node, so the constraint cannot be created. The message carries the query
+  that lists them; remove or re-key the extra nodes and ingest again.
+- **503** - the process may not create a constraint. The message carries the statement an administrator runs once:
+  `CREATE CONSTRAINT mercury_ingested_key IF NOT EXISTS FOR (n:_Ingested) REQUIRE n.key IS UNIQUE`.
+- **408** - labelling a large graph did not finish within `tools.graph.timeout.ms`. An administrator runs the
+  labelling once, in batches: `MATCH (n) WHERE n.key IS NOT NULL AND NOT n:_Ingested CALL { WITH n SET n:_Ingested }
+  IN TRANSACTIONS OF 10000 ROWS`.
+
+A node written by `graph.write` is an end of an ingested relationship when it carries the label and a key. On a
+database that does not take Neo4j's constraint commands (Memgraph refuses them inside a transaction), the tool
+labels and matches by the label, logs one warning, and leaves the index to the installation:
+`CREATE INDEX ON :_Ingested(key)` and `CREATE CONSTRAINT ON (n:_Ingested) ASSERT n.key IS UNIQUE`.
 
 For development, `dev/graph-up.sh` starts Neo4j Community on Colima with its Browser at `http://127.0.0.1:7474`
 (`GRAPH_PASSWORD=... extensions/agent-tools/dev/graph-up.sh`; `graph-down.sh` removes it), and the live test runs

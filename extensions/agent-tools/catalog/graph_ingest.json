@@ -1,6 +1,6 @@
 {
   "name": "graph_ingest",
-  "description": "Load what you extracted from a document into the agent's knowledge graph, idempotently. Each node is merged on its key - unique across the graph, the label in lower case as its prefix (clause:12, party:supplier-a) - with its label and properties; each relationship is merged between two keys that exist (in this call or already in the graph) with its type and properties. Labels and types are identifiers (letters, digits and underscore, starting with a letter); property values are scalars or lists of scalars. Give source (the document's path or URL) so an answer can cite it. Running the same ingest twice changes nothing.",
+  "description": "Load what you extracted from a document into the agent's knowledge graph, idempotently. Each node is merged on its key - unique across the graph, the label in lower case as its prefix (clause:12, party:supplier-a) - with its label and properties; each relationship is merged between two keys that exist (in this call or already in the graph) with its type and properties. Labels and types are identifiers (letters, digits and underscore, starting with a letter); property values are scalars or lists of scalars. Give source (the document's path or URL) so an answer can cite it. Running the same ingest twice changes nothing. A key names one node: the same key under another label is refused.",
   "input_schema": {
     "type": "object",
     "properties": {
